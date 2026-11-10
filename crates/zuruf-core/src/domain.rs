@@ -98,14 +98,12 @@ impl ControlState {
     pub fn settle(&mut self) {
         self.settling = false;
     }
-    /// RFC3339 UTC timestamps with the same precision compare chronologically.
-    pub fn expire(&mut self, now: &str) {
-        if self.owner == ControlStateOwner::Agent
-            && self.lease_expires_at.as_deref().is_some_and(|t| t <= now)
-        {
-            self.release();
-        }
+    /// Invalid timestamps never grant control implicitly.
+    pub fn expire(&mut self,now:&str){
+        let parse=|t:&str|time::OffsetDateTime::parse(t,&time::format_description::well_known::Rfc3339);
+        if self.owner==ControlStateOwner::Agent && self.lease_expires_at.as_deref().is_some_and(|t|match(parse(t),parse(now)){(Ok(expiry),Ok(now))=>expiry<=now,_=>true}){self.release();}
     }
+
 }
 pub fn validate_bindings(bindings: &[Binding]) -> Vec<BindingIssue> {
     let mut issues = Vec::new();

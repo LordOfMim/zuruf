@@ -129,6 +129,7 @@ impl Store {
         let connection = Connection::open(&db)?;
         fs::set_permissions(db, fs::Permissions::from_mode(0o600))?;
         connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS snapshot(id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS entities(kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS receipts(task_id TEXT PRIMARY KEY, body TEXT NOT NULL); INSERT OR IGNORE INTO migrations VALUES(1);")?;
+        connection.execute_batch("CREATE TABLE IF NOT EXISTS entity_links(child_kind TEXT NOT NULL, child_id TEXT NOT NULL, parent_kind TEXT NOT NULL, parent_id TEXT NOT NULL, FOREIGN KEY(child_kind,child_id) REFERENCES entities(kind,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, FOREIGN KEY(parent_kind,parent_id) REFERENCES entities(kind,id) DEFERRABLE INITIALLY DEFERRED); CREATE UNIQUE INDEX IF NOT EXISTS draft_per_review ON entities(json_extract(body,'$.reviewId')) WHERE kind='batch' AND json_extract(body,'$.state')='draft'; CREATE UNIQUE INDEX IF NOT EXISTS task_per_batch ON entities(json_extract(body,'$.batchId')) WHERE kind='task'; INSERT OR IGNORE INTO migrations VALUES(2);")?;
         Ok(Self { connection, paths })
     }
     pub fn load(&self) -> Result<Option<Snapshot>> {
@@ -143,6 +144,9 @@ impl Store {
         }
     }
     pub fn save(&mut self, s: &Snapshot) -> Result<()> {
+        self.save_with_events(s, &[])
+    }
+    pub fn save_with_events(&mut self, s: &Snapshot, events: &[TaskEvent]) -> Result<()> {
         let tx = self.connection.transaction()?;
         tx.execute(
             "INSERT INTO snapshot VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
@@ -188,6 +192,53 @@ impl Store {
                 )?;
             }
         }
+        for (kind, key, relations) in [
+            ("session", "sessions", vec![("projectId", "project")]),
+            ("review", "reviews", vec![("projectId", "project")]),
+            (
+                "batch",
+                "batches",
+                vec![("projectId", "project"), ("reviewId", "review")],
+            ),
+            (
+                "annotation",
+                "annotations",
+                vec![
+                    ("projectId", "project"),
+                    ("reviewId", "review"),
+                    ("batchId", "batch"),
+                ],
+            ),
+            (
+                "segment",
+                "segments",
+                vec![("batchId", "batch"), ("annotationId", "annotation")],
+            ),
+            (
+                "task",
+                "tasks",
+                vec![("batchId", "batch"), ("projectId", "project")],
+            ),
+        ] {
+            if let Some(items) = value[key].as_array() {
+                for item in items {
+                    for (field, parent) in &relations {
+                        if let Some(parent_id) = item[field].as_str() {
+                            tx.execute(
+                                "INSERT INTO entity_links VALUES(?1,?2,?3,?4)",
+                                params![kind, item["id"].as_str(), parent, parent_id],
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        for e in events {
+            tx.execute(
+                "INSERT INTO entities VALUES('task_event',?1,?2)",
+                params![e.id, serde_json::to_string(e)?],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -197,6 +248,25 @@ impl Store {
         s: &mut Snapshot,
         batch_id: &str,
         profile_id: Option<&str>,
+    ) -> Result<DispatchResponse> {
+        self.seal_into(s, batch_id, profile_id, None)
+    }
+    pub fn seal_into(
+        &mut self,
+        s: &mut Snapshot,
+        batch_id: &str,
+        profile_id: Option<&str>,
+        follow_up: Option<&str>,
+    ) -> Result<DispatchResponse> {
+        let result = Self::prepare_seal(s, batch_id, profile_id, follow_up)?;
+        self.save(s)?;
+        Ok(result)
+    }
+    pub fn prepare_seal(
+        s: &mut Snapshot,
+        batch_id: &str,
+        profile_id: Option<&str>,
+        follow_up: Option<&str>,
     ) -> Result<DispatchResponse> {
         let index = s
             .batches
@@ -223,6 +293,15 @@ impl Store {
             .find(|p| Some(p.id.as_str()) == selected)
             .cloned()
             .ok_or_else(|| StoreError::Invalid("profile required".into()))?;
+        let parent = follow_up
+            .map(|id| {
+                s.tasks
+                    .iter()
+                    .find(|t| t.id == id && t.project_id == b.project_id && t.thread_id.is_some())
+                    .cloned()
+                    .ok_or_else(|| StoreError::Invalid("follow-up task missing thread".into()))
+            })
+            .transpose()?;
         let task = Task {
             id: id(),
             batch_id: b.id.clone(),
@@ -240,9 +319,12 @@ impl Store {
                 TaskStatus::Queued
             },
             remote_status: None,
-            profile,
+            profile: parent
+                .as_ref()
+                .map(|t| t.profile.clone())
+                .unwrap_or(profile),
             provider_display_name: None,
-            thread_id: None,
+            thread_id: parent.as_ref().and_then(|t| t.thread_id.clone()),
             thread_url: None,
             workspace_path: None,
             branch: None,
@@ -277,13 +359,17 @@ impl Store {
         candidate.batches.push(draft.clone());
         candidate.tasks.push(task.clone());
         candidate.status.active_batch_id = Some(draft.id.clone());
-        self.save(&candidate)?;
         *s = candidate;
         Ok(DispatchResponse {
             sealed_batch: sealed,
             task,
             active_batch: draft,
         })
+    }
+    pub fn clear_receipt(&self, task: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM receipts WHERE task_id=?1", [task])?;
+        Ok(())
     }
     pub fn receipt(&self, task: &str) -> Result<Option<ThreadReceipt>> {
         match self
