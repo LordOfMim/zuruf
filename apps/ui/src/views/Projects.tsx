@@ -31,6 +31,12 @@ export function ProjectForm(props: { store: AppStore; onDone?: () => void; onCan
   const [baseUrl, setBaseUrl] = createSignal("");
   const [busy, setBusy] = createSignal(false);
 
+  // T3 titles repeat ("main" for every checkout), so ambiguous ones are named by their last two folders.
+  const label = (entry: T3ProjectRef) => {
+    const unique = choices().filter((other) => other.title === entry.title).length === 1;
+    return unique ? entry.title : entry.workspaceRoot.replace(/\/+$/, "").split("/").slice(-2).join("/");
+  };
+
   const manual = () => picked() === OTHER || choices().length === 0;
   const ref = (): T3ProjectRef | undefined => choices().find((entry) => entry.id === (picked() || choices()[0]?.id));
   const repositoryPath = () => (manual() ? path().trim() : (ref()?.workspaceRoot ?? ""));
@@ -45,7 +51,7 @@ export function ProjectForm(props: { store: AppStore; onDone?: () => void; onCan
     if (!ready() || busy()) return;
     setBusy(true);
     const created = await store.commands.createProject({
-      name: manual() ? folderName(repositoryPath()) : (ref()?.title ?? folderName(repositoryPath())),
+      name: manual() || !ref() ? folderName(repositoryPath()) : label(ref()!),
       repositoryPath: repositoryPath(),
       baseUrl: address(),
       t3ProjectId: manual() ? null : (ref()?.id ?? null),
@@ -63,7 +69,7 @@ export function ProjectForm(props: { store: AppStore; onDone?: () => void; onCan
           value={picked() || choices()[0]?.id}
           onChange={(event) => setPicked(event.currentTarget.value)}
         >
-          <For each={choices()}>{(entry) => <option value={entry.id}>{entry.title}</option>}</For>
+          <For each={choices()}>{(entry) => <option value={entry.id}>{label(entry)}</option>}</For>
           <option value={OTHER}>Anderer Ordner …</option>
         </select>
       </Show>
