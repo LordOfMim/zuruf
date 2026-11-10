@@ -268,7 +268,11 @@ impl Browser {
             .flatten()
             .find(|t| {
                 t["type"] == "service_worker"
-                    && t["url"].as_str().is_some_and(|u| u.ends_with("/worker.js"))
+                    && t["url"].as_str().is_some_and(|u| {
+                        u.rsplit('/')
+                            .next()
+                            .is_some_and(|f| f.starts_with("worker") && f.ends_with(".js"))
+                    })
             })
             .and_then(|t| t["targetId"].as_str())
             .ok_or(Error::Closed)?;

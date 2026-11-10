@@ -117,6 +117,14 @@ export function Panel(props: { store: AppStore; onOpenTasks?: () => void }) {
   const [lightbox, setLightbox] = createSignal<string | null>(null);
   const reviewOn = () => store.status()?.reviewMode ?? false;
 
+  // Dictation that belongs to no capture shows up as its own entry once written.
+  const writing = createMemo(() => {
+    const id = store.draft()?.id;
+    return (store.snapshot()?.segments ?? []).some(
+      (segment) => segment.batchId === id && !segment.annotationId && segment.state === "transcribing",
+    );
+  });
+
   // Only tasks that are still moving or need the user stay visible here.
   const liveTasks = createMemo(() =>
     store
@@ -145,11 +153,24 @@ export function Panel(props: { store: AppStore; onOpenTasks?: () => void }) {
       <Recorder store={store} />
 
       <section class="panel-scroll">
-        <Show when={store.draftAnnotations().length > 0} fallback={<EmptyDraft store={store} />}>
+        <Show
+          when={store.draftAnnotations().length > 0 || writing()}
+          fallback={<EmptyDraft store={store} />}
+        >
           <ul class="entries">
             <For each={store.draftAnnotations()}>
               {(annotation) => <Entry annotation={annotation} store={store} onOpenShot={setLightbox} />}
             </For>
+            <Show when={writing()}>
+              <li class="entry entry-pending">
+                <span class="entry-thumb entry-thumb-text">
+                  <Icon name="text" />
+                </span>
+                <div class="entry-body">
+                  <p class="entry-live">schreibt …</p>
+                </div>
+              </li>
+            </Show>
           </ul>
         </Show>
       </section>

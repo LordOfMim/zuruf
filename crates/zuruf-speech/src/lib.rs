@@ -144,6 +144,14 @@ pub async fn voxtype_service_env() -> Vec<(String, String)> {
     env.retain(|(name, _)| std::env::var_os(name).is_none());
     env
 }
+/// True when no 100 ms window of 16 kHz audio rises above the noise floor.
+fn silent(samples: &[i16]) -> bool {
+    const FLOOR: f64 = 200.0;
+    !samples.chunks(1600).any(|window| {
+        let power = window.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
+        (power / window.len() as f64).sqrt() > FLOOR
+    })
+}
 fn parse_env_file(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
@@ -167,6 +175,10 @@ fn parse_env_file(text: &str) -> Vec<(String, String)> {
 impl Transcriber for Voxtype {
     fn transcribe(&self, samples: Vec<i16>) -> AsyncResult<'_, String> {
         Box::pin(async move {
+            // Whisper invents sentences for silence; nothing audible means nothing said.
+            if silent(&samples) {
+                return Ok(String::new());
+            }
             tokio::fs::DirBuilder::new()
                 .recursive(true)
                 .mode(0o700)
@@ -1093,6 +1105,14 @@ mod tests {
 }
 #[cfg(test)]
 mod env_tests {
+    #[test]
+    fn silence_is_not_sent_for_transcription() {
+        assert!(super::silent(&[]));
+        assert!(super::silent(&vec![40; 32000]));
+        let mut speech = vec![40; 32000];
+        speech[8000..9600].fill(3000);
+        assert!(!super::silent(&speech));
+    }
     #[test]
     fn only_voxtype_variables_are_taken() {
         let env = super::parse_env_file(

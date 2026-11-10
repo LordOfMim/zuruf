@@ -15,7 +15,9 @@ let configuration: { review: boolean; bindings: Binding[] } = {
 let pending: Record<string, Envelope> = {};
 const pointerFrames = new Map<number, number>();
 const liveFrames = new Map<number, Set<number>>();
-const scriptable = new Set<number>();
+// Top document of each tab whose content script has spoken to us. Compared with the tab's
+// current document when reporting, so the order of load events and messages cannot matter.
+const scriptable = new Map<number, string>();
 const panelAttempted = new Set<number>();
 const panelWindows = new Set<number>();
 chrome.sidePanel.onOpened.addListener((info) => {
@@ -79,6 +81,9 @@ async function tabReport(): Promise<void> {
     if (tab.id === undefined) continue;
     const target = targets.find((t) => t.tabId === tab.id && t.type === "page");
     if (!target) continue;
+    const top = await chrome.webNavigation
+      .getFrame({ tabId: tab.id, frameId: 0 })
+      .catch(() => null);
     result.push({
       tabId: tab.id,
       targetId: target.id,
@@ -86,7 +91,9 @@ async function tabReport(): Promise<void> {
       title: tab.title ?? "",
       zoom: await chrome.tabs.getZoom(tab.id),
       active: tab.active,
-      scriptable: scriptable.has(tab.id),
+      scriptable:
+        top?.documentId !== undefined &&
+        scriptable.get(tab.id) === top.documentId,
     });
   }
   await send({ type: "tabs", payload: { tabs: result } });
@@ -179,6 +186,16 @@ chrome.runtime.onMessage.addListener(
     const tabId = sender.tab?.id;
     if (tabId === undefined || sender.id !== chrome.runtime.id) return;
     const frameId = sender.frameId ?? 0;
+    // A tab whose content script talks to us is scriptable, whatever load events said.
+    if (
+      frameId === 0 &&
+      sender.documentId !== undefined &&
+      scriptable.get(tabId) !== sender.documentId
+    ) {
+      scriptable.set(tabId, sender.documentId);
+      void chrome.storage.session.set({ documents: [...scriptable] });
+      void tabReport();
+    }
     if (message.type === "action") {
       // Call open directly in the user-gesture message handler, before any await.
       const windowId = sender.tab?.windowId;
@@ -198,7 +215,6 @@ chrome.runtime.onMessage.addListener(
       if (message.payload.action.startsWith("capture.")) return;
     }
     if (message.type === "ready") {
-      scriptable.add(tabId);
       void send({ type: "frame.ready" }, tabId, frameId, sender.documentId);
       let frames = liveFrames.get(tabId);
       if (!frames) {
@@ -208,7 +224,7 @@ chrome.runtime.onMessage.addListener(
       frames.add(frameId);
       void chrome.storage.session.set({
         liveFrames: [...liveFrames].map(([tab, frames]) => [tab, [...frames]]),
-        scriptable: [...scriptable],
+        documents: [...scriptable],
       });
       reply({ type: "configure", payload: configuration });
       void tabReport();
@@ -239,12 +255,7 @@ chrome.runtime.onMessage.addListener(
     return;
   },
 );
-chrome.tabs.onUpdated.addListener((id, change) => {
-  if (change.status === "loading") {
-    scriptable.delete(id);
-    liveFrames.delete(id);
-    pointerFrames.delete(id);
-  }
+chrome.tabs.onUpdated.addListener(() => {
   void tabReport();
 });
 chrome.tabs.onZoomChange.addListener(() => {
@@ -260,8 +271,16 @@ chrome.tabs.onRemoved.addListener((id) => {
   void tabReport();
 });
 chrome.webNavigation.onCommitted.addListener((details) => {
-  if (details.frameId !== 0)
+  if (details.frameId !== 0) {
     liveFrames.get(details.tabId)?.delete(details.frameId);
+    return;
+  }
+  // The new document's content script may already have announced itself.
+  if (scriptable.get(details.tabId) !== details.documentId) {
+    liveFrames.delete(details.tabId);
+    pointerFrames.delete(details.tabId);
+  }
+  void tabReport();
 });
 async function start(): Promise<void> {
   bootstrap = (await (
@@ -272,13 +291,14 @@ async function start(): Promise<void> {
     "configuration",
     "pointerFrames",
     "liveFrames",
-    "scriptable",
+    "documents",
   ]);
   for (const [tab, frame] of (stored.pointerFrames ?? []) as [number, number][])
     pointerFrames.set(tab, frame);
   for (const [tab, frames] of (stored.liveFrames ?? []) as [number, number[]][])
     liveFrames.set(tab, new Set(frames));
-  for (const tab of (stored.scriptable ?? []) as number[]) scriptable.add(tab);
+  for (const [tab, document] of (stored.documents ?? []) as [number, string][])
+    if (!scriptable.has(tab)) scriptable.set(tab, document);
   pending = (stored.pending as typeof pending | undefined) ?? {};
   configuration =
     (stored.configuration as typeof configuration | undefined) ?? configuration;

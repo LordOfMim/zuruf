@@ -308,6 +308,17 @@ impl Daemon {
         })
         .await?;
         self.mutate(|s, _| {
+            // Free dictation used to be collected invisibly on the batch; show it as an entry.
+            let notes: Vec<(Id, String)> = s
+                .batches
+                .iter_mut()
+                .filter(|b| b.state == BatchState::Draft && !b.note.trim().is_empty())
+                .map(|b| (b.id.clone(), std::mem::take(&mut b.note)))
+                .collect();
+            for (batch, note) in notes {
+                let a = new_annotation(s, &batch, AnnotationType::Text, note)?;
+                s.annotations.push(a);
+            }
             // No recording survives a restart; a stale "on" would make the next toggle a no-op.
             s.settings.speech.enabled = false;
             s.status.speech.state = SpeechStateState::Idle;
@@ -570,10 +581,24 @@ impl Daemon {
                                     }
                                     a.transcript.push_str(&text);
                                     a.transcript_state = AnnotationTranscriptState::Ready;
-                                } else if let Some(b) =
-                                    s.batches.iter_mut().find(|b| b.id == seg.batch_id)
-                                {
-                                    b.note.push_str(&text);
+                                } else if !text.is_empty() {
+                                    // Speech that belongs to no capture is an entry of its own.
+                                    let (batch, started, sid) = (
+                                        seg.batch_id.clone(),
+                                        seg.started_at.clone(),
+                                        seg.id.clone(),
+                                    );
+                                    let mut a =
+                                        annotation_in(s, &batch, AnnotationType::Text, text)?;
+                                    a.order = s
+                                        .annotations
+                                        .iter()
+                                        .filter(|x| x.batch_id == batch && x.created_at <= started)
+                                        .map(|x| x.order)
+                                        .fold(0., f64::max)
+                                        + 0.5;
+                                    a.segment_ids.push(sid);
+                                    s.annotations.push(a);
                                 }
                             }
                             Err(_) => seg.state = TranscriptSegmentState::Failed,
@@ -817,7 +842,26 @@ impl Daemon {
                         kind,
                         rect: None,
                     })
-                    .await?;
+                    .await;
+                let result = match result {
+                    Ok(result) => result,
+                    Err(error) => {
+                        // An entry without a picture would block sending; what was said to it
+                        // becomes an entry of its own when its transcript arrives.
+                        let failed = capture_id.clone();
+                        self.mutate(move |s, _| {
+                            s.annotations.retain(|a| {
+                                a.id != failed
+                                    || !a.assets.is_empty()
+                                    || !a.note.is_empty()
+                                    || !a.transcript.is_empty()
+                            });
+                            Ok(())
+                        })
+                        .await?;
+                        return Err(error.into());
+                    }
+                };
                 let raw_result = result.clone();
                 let annotation = self
                     .mutate(move |s, store| {
@@ -1144,14 +1188,26 @@ fn new_annotation(
     kind: AnnotationType,
     note: String,
 ) -> Result<Annotation> {
+    if s.batches
+        .iter()
+        .any(|b| b.id == batch && b.state != BatchState::Draft)
+    {
+        return Err(invalid("batch is sealed"));
+    }
+    annotation_in(s, batch, kind, note)
+}
+/// Like [`new_annotation`], also for a sealed batch whose late transcript still arrives.
+fn annotation_in(
+    s: &Snapshot,
+    batch: &str,
+    kind: AnnotationType,
+    note: String,
+) -> Result<Annotation> {
     let b = s
         .batches
         .iter()
         .find(|b| b.id == batch)
         .ok_or_else(missing)?;
-    if b.state != BatchState::Draft {
-        return Err(invalid("batch is sealed"));
-    }
     Ok(Annotation {
         id: id(),
         batch_id: b.id.clone(),
