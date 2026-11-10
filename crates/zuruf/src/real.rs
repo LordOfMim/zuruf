@@ -488,10 +488,12 @@ impl DesktopHotkeys for Hotkeys {
     }
 }
 
+tokio::task_local! {
+    static CAPTURE_ENVELOPE: std::cell::RefCell<Option<zuruf_browser::extension::Envelope>>;
+}
 pub struct Browsers {
     pub sessions: AsyncMutex<BTreeMap<String, Arc<Browser>>>,
     pub hubs: AsyncMutex<BTreeMap<String, ExtensionHub>>,
-    pub captures: AsyncMutex<BTreeMap<String, zuruf_browser::extension::Envelope>>,
     bindings: AsyncMutex<Vec<Binding>>,
     review: AsyncMutex<bool>,
     paths: Paths,
@@ -588,29 +590,32 @@ impl Browsers {
                     use zuruf_browser::extension::Message;
                     let action = match &envelope.message {
                         Message::Action { action } => Some(action.clone()),
-                        Message::Capture { kind, .. } => {
-                            self.captures
-                                .lock()
-                                .await
-                                .insert(session.clone(), *envelope.clone());
-                            Some(format!("capture.{kind}"))
-                        }
+                        Message::Capture { kind, .. } => Some(format!("capture.{kind}")),
                         _ => None,
                     };
                     if let Some(action) = action {
                         let app = app.clone();
                         let sid = session.clone();
-                        tokio::spawn(async move {
-                            let _ = app
-                                .mutate(move |s, _| {
-                                    s.status.active_session_id = Some(sid);
-                                    Ok(())
-                                })
-                                .await;
-                            if let Err(e) = app.action(&action).await {
-                                tracing::warn!(error=%e,"extension action failed");
-                            }
-                        });
+                        tokio::spawn(CAPTURE_ENVELOPE.scope(
+                            std::cell::RefCell::new(
+                                if matches!(envelope.message, Message::Capture { .. }) {
+                                    Some(*envelope)
+                                } else {
+                                    None
+                                },
+                            ),
+                            async move {
+                                let _ = app
+                                    .mutate(move |s, _| {
+                                        s.status.active_session_id = Some(sid);
+                                        Ok(())
+                                    })
+                                    .await;
+                                if let Err(e) = app.action(&action).await {
+                                    tracing::warn!(error=%e,"extension action failed");
+                                }
+                            },
+                        ));
                     }
                 }
             }
@@ -750,7 +755,12 @@ impl BrowserController for BrowserAdapter {
                     ring.color = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255];
                 }
             }
-            let result = if let Some(envelope) = self.captures.lock().await.remove(&r.session_id) {
+            // Keep each hotkey's document epoch and geometry attached to its own task.
+            let envelope = CAPTURE_ENVELOPE
+                .try_with(|slot| slot.borrow_mut().take())
+                .ok()
+                .flatten();
+            let result = if let Some(envelope) = envelope {
                 b.capture_request(&envelope, ring).await.map_err(io)?
             } else {
                 let tabs = b.list_tabs().await.map_err(io)?;
@@ -914,7 +924,6 @@ impl Daemon {
         let browsers = Arc::new(Browsers {
             sessions: AsyncMutex::default(),
             hubs: AsyncMutex::default(),
-            captures: AsyncMutex::default(),
             bindings: AsyncMutex::new(settings.bindings),
             review: AsyncMutex::new(false),
             paths: paths.clone(),
