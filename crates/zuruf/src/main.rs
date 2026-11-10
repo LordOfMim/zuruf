@@ -1,3 +1,4 @@
+mod doctor;
 use clap::{Parser, Subcommand};
 use zuruf::{Daemon, Error};
 use zuruf_store::{Paths, StoreError};
@@ -12,6 +13,7 @@ enum Command {
         #[arg(long)]
         seed_demo: bool,
     },
+    Doctor,
     Status,
     Action {
         action_id: String,
@@ -30,6 +32,12 @@ async fn main() {
 }
 async fn run() -> Result<(), Error> {
     let args = Cli::parse();
+    if matches!(args.command, Command::Doctor) {
+        if !doctor::run() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let paths = Paths::from_env()?;
     let port = std::env::var("ZURUF_PORT")
         .ok()
@@ -90,7 +98,7 @@ async fn run() -> Result<(), Error> {
                 Command::Open => client
                     .post(format!("{base}/api/v1/auth/code"))
                     .json(&serde_json::json!({})),
-                Command::Daemon { .. } => return Ok(()),
+                Command::Daemon { .. } | Command::Doctor => return Ok(()),
             };
             let response = request
                 .bearer_auth(token.trim())
