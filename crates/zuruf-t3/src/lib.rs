@@ -316,6 +316,11 @@ impl T3Adapter {
                     "orchestration:read",
                     "--scope",
                     "orchestration:operate",
+                    // T3 grants `full-access` only together with these two.
+                    "--scope",
+                    "settings:write",
+                    "--scope",
+                    "source-control:write",
                     "--ttl",
                     "5m",
                     "--label",
@@ -334,7 +339,7 @@ impl T3Adapter {
         );
         let state = uuid::Uuid::new_v4().to_string();
         let authorization = json!({"response_type":"code","client_id":client["client_id"],"redirect_uri":redirect,"code_challenge":pkce(&verifier),"code_challenge_method":"S256","resource":format!("{origin}/mcp"),"state":state});
-        let decision: Value = self.http.post(format!("{origin}/oauth/mcp/decision")).json(&json!({"authorization":authorization,"decision":{"_tag":"pairing-code","access":"approval-required","code":pairing["credential"]}})).send().await?.error_for_status()?.json().await?;
+        let decision: Value = self.http.post(format!("{origin}/oauth/mcp/decision")).json(&json!({"authorization":authorization,"decision":{"_tag":"pairing-code","access":"full-access","code":pairing["credential"]}})).send().await?.error_for_status()?.json().await?;
         let url = reqwest::Url::parse(decision["redirectTo"].as_str().unwrap_or(""))
             .map_err(|_| Error::Protocol("Bad redirect".into()))?;
         let params: BTreeMap<_, _> = url
@@ -755,9 +760,8 @@ impl T3Adapter {
             if !attachments.is_empty() {
                 args["attachments"] = json!(attachments);
             }
-            if let Some(mode) = &profile.runtime_mode {
-                args["runtimeMode"] = json!(mode);
-            }
+            // Agents run unattended; a profile opts into approvals, not out of them.
+            args["runtimeMode"] = json!(profile.runtime_mode.as_deref().unwrap_or("full-access"));
             if let Some(mode) = &profile.interaction_mode {
                 args["interactionMode"] = json!(mode);
             }

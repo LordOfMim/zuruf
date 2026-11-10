@@ -208,8 +208,8 @@ function ProfileEditor(props: { store: AppStore; profile: AgentProfile; onClose:
   const model = createMemo(() => provider()?.models.find((entry) => entry.id === draft().model));
 
   const save = async () => {
-    const { id, ...rest } = draft();
-    await store.commands.saveProfile(id ? draft() : rest);
+    const { id, ...rest } = { ...draft(), runtimeMode: draft().runtimeMode ?? "full-access" };
+    await store.commands.saveProfile(id ? { id, ...rest } : rest);
     props.onClose();
   };
 
@@ -276,6 +276,17 @@ function ProfileEditor(props: { store: AppStore; profile: AgentProfile; onClose:
           />
         </Field>
       </Show>
+      <Field label="Rechte">
+        <Segmented
+          label="Rechte"
+          value={draft().runtimeMode ?? "full-access"}
+          options={[
+            { value: "full-access", label: "Vollzugriff" },
+            { value: "approval-required", label: "fragt nach" },
+          ]}
+          onChange={(runtimeMode) => patch({ runtimeMode })}
+        />
+      </Field>
       <Field label="Schnellwahl">
         <Segmented
           label="Schnellwahl"
@@ -328,6 +339,7 @@ function AgentSettings(props: { store: AppStore }) {
       providerInstanceId: first?.instanceId ?? "",
       model: first?.models[0]?.id ?? "",
       options: {},
+      runtimeMode: "full-access",
       workspaceStrategy: "new_worktree",
     };
   };

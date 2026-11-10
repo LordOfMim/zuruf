@@ -44,6 +44,7 @@ function FirstAgent(props: { store: AppStore; catalog: T3Catalog | null }) {
       providerInstanceId: chosen.instanceId,
       model: chosenModel.id,
       options: {},
+      runtimeMode: "full-access",
       workspaceStrategy: "new_worktree",
       slot: 1,
     });
