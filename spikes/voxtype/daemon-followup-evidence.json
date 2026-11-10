@@ -1,0 +1,15 @@
+{
+  "initialState": "idle",
+  "startConfirmed": true,
+  "stopCode": 0,
+  "stop": {
+    "chars": 25,
+    "message": null,
+    "status": "ok",
+    "text": "Das ist ein Baden-Beteil."
+  },
+  "finalizeSeconds": 0.4071693400037475,
+  "gapMs": 413,
+  "finalState": "recording",
+  "cleanupFollowup": "Own asynchronous restart recording cancelled explicitly; subsequent status idle"
+}

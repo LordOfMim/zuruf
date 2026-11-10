@@ -1,0 +1,16 @@
+[
+  {
+    "seconds": 0.996,
+    "code": 0,
+    "stdout": "Loading audio file: \"/tmp/zuruf-local-audio-ith9rssj/ambient.wav\"\nAudio format: 16000 Hz, 1 channel(s), Int\nProcessing 48000 samples (3.00s)...\n\nI thought I was going to do it.\n",
+    "stderr": "mpute buffer (cross)  =    4.66 MB\nwhisper_init_state: compute buffer (decode) =   96.37 MB\nwhisper_backend_init_gpu: no GPU found\nwhisper_init_state: kv self size  =    6.29 MB\nwhisper_init_state: kv cross size =   18.87 MB\nwhisper_init_state: kv pad  size  =    3.15 MB\nwhisper_init_state: compute buffer (conv)   =   16.28 MB\nwhisper_init_state: compute buffer (encode) =   85.88 MB\nwhisper_init_state: compute buffer (cross)  =    4.66 MB\nwhisper_init_state: compute buffer (decode) =   96.37 MB\n",
+    "peakChildRssKiB": 373760
+  },
+  {
+    "seconds": 0.887,
+    "code": 0,
+    "stdout": "Loading audio file: \"/tmp/zuruf-local-audio-ith9rssj/ambient.wav\"\nAudio format: 16000 Hz, 1 channel(s), Int\nProcessing 48000 samples (3.00s)...\n\nI thought I was going to do it.\n",
+    "stderr": "mpute buffer (cross)  =    4.66 MB\nwhisper_init_state: compute buffer (decode) =   96.37 MB\nwhisper_backend_init_gpu: no GPU found\nwhisper_init_state: kv self size  =    6.29 MB\nwhisper_init_state: kv cross size =   18.87 MB\nwhisper_init_state: kv pad  size  =    3.15 MB\nwhisper_init_state: compute buffer (conv)   =   16.28 MB\nwhisper_init_state: compute buffer (encode) =   85.88 MB\nwhisper_init_state: compute buffer (cross)  =    4.66 MB\nwhisper_init_state: compute buffer (decode) =   96.37 MB\n",
+    "peakChildRssKiB": 375420
+  }
+]
