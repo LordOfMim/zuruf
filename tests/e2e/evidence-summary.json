@@ -1,0 +1,48 @@
+{
+  "date": "2026-11-10",
+  "branch": "feat/finish",
+  "runner": {
+    "command": "bash tests/e2e/run.sh",
+    "passed": [
+      "workspace",
+      "mcp-sdk",
+      "headed-browser",
+      "captures (release)",
+      "app",
+      "install"
+    ],
+    "failed": []
+  },
+  "rust": {
+    "passed": 108,
+    "ignored": 5,
+    "clippy": "passed (-D warnings)",
+    "fmt": "passed"
+  },
+  "frontend": {
+    "ui build": "passed",
+    "extension check/lint/build": "passed"
+  },
+  "acceptance": {
+    "bestanden": 13,
+    "fehlgeschlagen": 0,
+    "manuell offen": [
+      "AT-01",
+      "AT-08",
+      "AT-09",
+      "AT-13",
+      "AT-15",
+      "AT-16",
+      "AT-19"
+    ]
+  },
+  "capture150ms": "not demonstrated; see evidence-latency.json",
+  "followup": "FOLLOWUP_OK via real attachment send, existing test thread",
+  "cleanup": {
+    "testProcesses": 0,
+    "activeZurufUnits": 0,
+    "ZurufWindows": 0,
+    "runtimeBinds": 0,
+    "activeT3TestRuns": 0
+  }
+}
