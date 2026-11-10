@@ -15,9 +15,19 @@ zuruf open --view sessions
 
 `PREFIX`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` und die spezifischen `ZURUF_*_DIR` ändern Ziele. Für CLI und Dienst müssen dieselben Pfade gelten. `.env.example` ist Dokumentation und wird nicht automatisch geladen. Tests installieren ausschließlich in einen Wegwerfpräfix.
 
+## Erster Start
+
+Ein leeres Datenverzeichnis enthält absichtlich keine Demo-Projekte oder Fakeversion. Die T3-Verbindung meldet zunächst `disconnected` ohne Fehlermeldung. Der Einrichtungsclient verbindet über `POST /api/v1/t3/pair` mit `{origin?}`; ohne Adresse verwendet Zuruf den gespeicherten Origin oder prüft die dokumentierte lokale Adresse `http://127.0.0.1:3773` anhand ihrer OAuth-Metadaten. Antwortet dort kein T3, muss die lokale Adresse angegeben werden. Die Verbindung gilt sofort, ein Dienstneustart ist nicht erforderlich. `POST /api/v1/t3/reconnect` liest gespeicherte Adresse und Credentials erneut. Gültige Credentials werden wiederverwendet.
+
+Danach Projekt mit vorhandenem Repository-Verzeichnis und HTTP-/HTTPS-Basis-URL anlegen. Derselbe Repository-Pfad darf nur einmal registriert werden. Zuruf ordnet bei erreichbarem T3 dessen Projekt anhand des Workspace-Roots zu und erzeugt automatisch Review und leeren Draft. Ein Profil aus dem Livekatalog wählen; das erste angelegte Profil wird auch bereits vorhandenen Projekten und offenen Drafts ohne Profil zugeordnet. Eine isolierte Browser-Sitzung für das Projekt anlegen und starten: Chromium öffnet die Basis-URL im eigenen Sitzungsprofil. Anschließend Review einschalten und mit W aufnehmen. Ohne Projekt oder laufende aktive Sitzung meldet Review eine verständliche Fehlermeldung.
+
+Projektwechsel schaltet Review aus und aktiviert den projektspezifischen Draft sowie die zuletzt verwendete Sitzung oder keine Sitzung. Löschen wird bei laufenden Sitzungen oder nicht abgeschlossenen Aufgaben abgewiesen. Beim zulässigen Löschen verschwinden Projekt und zugehörige Einträge aus dem Snapshot; Capturedateien und Browserprofil-Verzeichnisse bleiben konservativ auf der Platte erhalten.
+
+Diese API-Schritte sind implementiert und live geprüft; die parallel entwickelte Setup-Oberfläche wird hiermit nicht als abgenommen erklärt.
+
 ## T3 verbinden
 
-Den tatsächlichen lokalen T3-Origin feststellen, dann `zuruf t3 pair --origin http://127.0.0.1:<port>` ausführen. Zuruf nutzt die verifizierte externe Pairing-/MCP-Schnittstelle. OAuth-Credentials liegen privat im Zustandsverzeichnis. T3-Dateien und Datenbanken werden nicht verändert. Ein abgelaufener Zugang verlangt ausdrückliches erneutes Pairing. Der ausdrücklich gewählte CLI-Fallback (`ZURUF_T3_TRANSPORT=cli`) unterstützt weniger Funktionen, insbesondere keine Bildattachments und keinen Livekatalog.
+Den tatsächlichen lokalen T3-Origin feststellen, dann `zuruf t3 pair --origin http://127.0.0.1:<port>` ausführen. Bei laufendem Daemon verwendet die CLI die Pairing-Route und verbindet live; ohne Daemon speichert sie die Paarung für den nächsten Start. Zuruf nutzt die verifizierte externe Pairing-/MCP-Schnittstelle. OAuth-Credentials liegen privat im Zustandsverzeichnis. T3-Dateien und Datenbanken werden nicht verändert. Ein abgelaufener Zugang verlangt ausdrückliches erneutes Pairing. Der ausdrücklich gewählte CLI-Fallback (`ZURUF_T3_TRANSPORT=cli`) unterstützt weniger Funktionen, insbesondere keine Bildattachments und keinen Livekatalog.
 
 Provider, Modell, Optionen und Arbeitsverzeichnis werden pro Batch eingefroren. Für parallele Schreibaufträge separate Worktrees wählen. `unknown_remote_state` verlangt Abgleich und manuelle Auflösung; ein Retry erzeugt dabei keinen stillen zweiten Thread. Höchstens acht Bilder können pro T3-Nachricht versendet werden.
 

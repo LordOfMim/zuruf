@@ -81,3 +81,15 @@ Der historische Welle-2-Bericht oben bleibt als Übergabenachweis erhalten. Aktu
 `bash tests/e2e/run.sh` führt die sechs unabhängigen Szenarien jeweils unter 3 GiB/1 GiB Swap aus und meldet PASS/FAIL samt Logpfad. Vorher UI → Extension → Rust inklusive `cargo build -p zuruf-browser --example lab -j 2` bauen sowie `npm --prefix tests/mcp ci` ausführen. Keine realen Agentenstarts im Standardlauf. Die Captureprüfung setzt den bereits gepaarten lokalen T3-Zugang voraus, startet aber keinen Thread. Sie misst Keyevent/Bestätigungs-RAF direkt in der Extension und Rohbildereignisse über WebSocket ohne Statuspolling als Zeitquelle. Die sonstige Ablaufsteuerung darf weiterhin pollen.
 
 `wiring.mjs --completion` ist ausdrücklich ein Nutzer-Handabnahmelauf: zwei echte Threads, nötige T3-Freigaben nur durch den Nutzer; bei ausstehender Freigabe scheitert der automatische Teil und räumt auf. Erteilt kein Agent selbst. `followup.mjs` verwendet einen bestehenden synthetischen Task (`ZURUF_FOLLOWUP_RUN`), erzeugt keinen weiteren Thread und unterbricht den Testlauf anschließend. Niemals einen produktiven Task dafür verwenden.
+
+## Leere Erstinstallation
+
+`firstrun.mjs` startet einen echten Daemon auf Port 47643 mit drei leeren temporären Datenverzeichnissen. Er verwendet keine installierte Zuruf-Kopie und kopiert keine bestehenden Credentials. Er prüft Pairing ohne Origin (verifiziertes lokales T3 auf 3773), wiederholtes Pairing, CLI-Livepaarung, Reconnect, Livekatalog, automatische Projekt-/Review-/Draftanlage, erstes Profil, headed Chromium mit Basis-URL, W-Capture, Dispatch eines schreibgeschützten Testauftrags, Interrupt, Projektwechsel und Browserstop. Playwright bedient den verwalteten Browser über den öffentlichen, authentifizierten CDP-Proxy. Kein direkter Storezugriff oder Seed. Die zusätzliche OAuth-Session wird im finally über den verifizierten Befehl `t3 auth session revoke` widerrufen. Ihre ID und Threadlinks werden ohne Secrets ausgegeben. Bei fehlgeschlagener Bereinigung bleibt das temporäre Verzeichnis zur Diagnose erhalten.
+
+```sh
+systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=3G -p MemorySwapMax=1G -- node tests/e2e/firstrun.mjs
+# Optional im Gesamtlauf (erzeugt einen echten T3-Thread):
+ZURUF_E2E_FIRSTRUN=1 bash tests/e2e/run.sh
+```
+
+`T3_URL` kann für den Test einen expliziten lokalen Origin vorgeben; der Testdaemon erhält diese Variable nicht und muss zuerst unverbunden melden. Voraussetzung ist das registrierte Zuruf-Projekt `/home/mika/Projects/Humaify/zuruf/main` und ein aktivierter Codex-Provider im Livekatalog. Alle Server binden ausschließlich Loopback. Keine Audioaufnahme in diesem Szenario.
