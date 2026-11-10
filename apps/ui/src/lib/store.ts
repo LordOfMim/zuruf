@@ -14,6 +14,7 @@ import type {
   Settings,
   Snapshot,
   T3Catalog,
+  T3ProjectRef,
   Task,
   TaskEvent,
 } from "@zuruf/protocol";
@@ -231,8 +232,11 @@ export function createAppStore(transport: Transport) {
       run(() => api<Task>("POST", `/tasks/${id}/follow-up`, body)),
     taskEvents: (id: string) => run(() => api<TaskEvent[]>("GET", `/tasks/${id}/events`)),
 
-    createProject: (body: Pick<Project, "name" | "repositoryPath" | "baseUrl">) =>
+    createProject: (body: Pick<Project, "name" | "repositoryPath" | "baseUrl" | "t3ProjectId">) =>
       run(() => api<Project>("POST", "/projects", body)),
+    removeProject: (id: string) => run(() => api("DELETE", `/projects/${id}`)),
+    t3Projects: () => run(() => api<T3ProjectRef[]>("GET", "/t3/projects")),
+    pairT3: (origin?: string) => run(() => api("POST", "/t3/pair", origin ? { origin } : {})),
     patchProject: (id: string, body: Partial<Project>) => run(() => api<Project>("PATCH", `/projects/${id}`, body)),
     saveProfile: (profile: Omit<AgentProfile, "id"> & { id?: string }) =>
       run(() =>
