@@ -18,7 +18,7 @@ import type {
   TaskEvent,
 } from "@zuruf/protocol";
 import { batch as transaction, createMemo, createSignal } from "solid-js";
-import { createStore, produce, reconcile } from "solid-js/store";
+import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import type { LinkState, Transport } from "./api";
 
 export interface Toast {
@@ -38,8 +38,14 @@ interface State {
 
 function upsert<T extends { id: string }>(list: T[], item: T) {
   const index = list.findIndex((entry) => entry.id === item.id);
-  if (index === -1) list.push(item);
-  else list[index] = item;
+  if (index === -1) {
+    list.push(item);
+    return;
+  }
+  // Update in place: replacing the object would remount its row and drop open/focus state mid-edit.
+  const existing = list[index] as Record<string, unknown>;
+  for (const key of Object.keys(existing)) if (!(key in item)) delete existing[key];
+  Object.assign(existing, item);
 }
 
 function removeById<T extends { id: string }>(list: T[], id: string) {
@@ -271,3 +277,8 @@ export function createAppStore(transport: Transport) {
 }
 
 export type AppStore = ReturnType<typeof createAppStore>;
+
+/** Detached deep copy of store data. Store values are proxies, which structuredClone refuses. */
+export function plain<T>(value: T): T {
+  return structuredClone(unwrap(value));
+}

@@ -3,6 +3,7 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { Button, Keys } from "../components/basics";
 import { chordFromEvent, defaultBindings, sameChord } from "../lib/chord";
 import type { AppStore } from "../lib/store";
+import { plain } from "../lib/store";
 import { actionLabel } from "../lib/text";
 
 type Scope = Binding["scope"];
@@ -93,7 +94,7 @@ export function Shortcuts(props: { store: AppStore }) {
       return;
     }
     setIssue(null);
-    await store.commands.saveSettings({ ...structuredClone(settings), bindings: next });
+    await store.commands.saveSettings({ ...plain(settings), bindings: next });
   }
 
   function onKey(event: KeyboardEvent) {
@@ -124,7 +125,7 @@ export function Shortcuts(props: { store: AppStore }) {
     const settings = store.settings();
     if (!settings) return;
     setIssue(null);
-    await store.commands.saveSettings({ ...structuredClone(settings), bindings: defaultBindings() });
+    await store.commands.saveSettings({ ...plain(settings), bindings: defaultBindings() });
   };
 
   return (

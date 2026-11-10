@@ -2,6 +2,7 @@ import type { AgentProfile, Settings as SettingsData, WorkspaceStrategy } from "
 import { For, type JSX, Show, createMemo, createSignal, onMount } from "solid-js";
 import { Button, Icon } from "../components/basics";
 import type { AppStore } from "../lib/store";
+import { plain } from "../lib/store";
 import { strategyLabel } from "../lib/text";
 import { Shortcuts } from "./Shortcuts";
 
@@ -72,7 +73,7 @@ function useSettings(store: AppStore) {
   return <K extends keyof SettingsData>(key: K, patch: Partial<SettingsData[K]>) => {
     const current = store.settings();
     if (!current) return;
-    const next = structuredClone(current) as SettingsData;
+    const next = plain(current) as SettingsData;
     next[key] = { ...(next[key] as object), ...patch } as SettingsData[K];
     void store.commands.saveSettings(next);
   };
@@ -197,7 +198,7 @@ const STRATEGIES: WorkspaceStrategy[] = ["new_worktree", "existing_worktree", "s
 
 function ProfileEditor(props: { store: AppStore; profile: AgentProfile; onClose: () => void }) {
   const store = props.store;
-  const [draft, setDraft] = createSignal<AgentProfile>(structuredClone(props.profile));
+  const [draft, setDraft] = createSignal<AgentProfile>(plain(props.profile));
   const patch = (change: Partial<AgentProfile>) => setDraft({ ...draft(), ...change });
 
   const providers = createMemo(() => store.catalog()?.providers.filter((provider) => provider.enabled) ?? []);

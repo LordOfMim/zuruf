@@ -15,8 +15,16 @@ function stateLine(task: Task): string {
  * A dispatched batch. Collapsed: one calm line. Expanded: the agent's last
  * words and exactly the actions that make sense in this state.
  */
+const openTasks = new Set<string>();
+
 export function TaskRow(props: { task: Task; store: AppStore; compact?: boolean }) {
-  const [open, setOpen] = createSignal(false);
+  // Rows remount when a task changes group; what the user opened stays open.
+  const [open, setOpenSignal] = createSignal(openTasks.has(props.task.id));
+  const setOpen = (next: boolean) => {
+    if (next) openTasks.add(props.task.id);
+    else openTasks.delete(props.task.id);
+    setOpenSignal(next);
+  };
   const [followUp, setFollowUp] = createSignal("");
   const [adoptId, setAdoptId] = createSignal("");
   const commands = props.store.commands;
