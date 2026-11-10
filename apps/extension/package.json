@@ -1,0 +1,22 @@
+{
+  "name": "@zuruf/extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc --noEmit",
+    "lint": "eslint src && prettier --check src static build.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/mcp": "^0.0.68",
+    "@types/chrome": "^0.1.32",
+    "esbuild": "^0.27.0",
+    "eslint": "^10.14.0",
+    "playwright-core": "^1.58.0",
+    "pngjs": "^7.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.72.1"
+  }
+}

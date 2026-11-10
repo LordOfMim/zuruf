@@ -1,0 +1,44 @@
+:host {
+  --zuruf-accent: #e6522c;
+  --zuruf-background: #202020;
+  --zuruf-text: #fff;
+  --zuruf-radius: 4px;
+  --zuruf-stroke: 2px;
+  all: initial;
+  pointer-events: none;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  font: 12px system-ui;
+}
+.overlay[hidden],
+.outline[hidden],
+.confirmation[hidden],
+.status[hidden] {
+  display: none !important;
+}
+.outline {
+  position: fixed;
+  box-sizing: border-box;
+  border: var(--zuruf-stroke) solid var(--zuruf-accent);
+  left: var(--zuruf-x);
+  top: var(--zuruf-y);
+  width: var(--zuruf-width);
+  height: var(--zuruf-height);
+}
+.status,
+.confirmation {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  padding: 6px 10px;
+  border-radius: var(--zuruf-radius);
+  background: var(--zuruf-background);
+  color: var(--zuruf-text);
+}
+.confirmation {
+  bottom: 44px;
+}

@@ -1996,6 +1996,7 @@ checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -2380,6 +2381,22 @@ dependencies = [
  "tracing-subscriber",
  "zuruf-core",
  "zuruf-store",
+]
+
+[[package]]
+name = "zuruf-browser"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "png",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
