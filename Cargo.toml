@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+# Keep debug builds small: this machine is memory constrained.
+[profile.dev]
+debug = 0
+incremental = true
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
