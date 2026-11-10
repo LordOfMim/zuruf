@@ -2380,6 +2380,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zuruf-core",
+ "zuruf-mcp",
  "zuruf-store",
 ]
 
@@ -2419,6 +2420,18 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "zuruf-mcp"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zuruf-core",
 ]
 
 [[package]]
