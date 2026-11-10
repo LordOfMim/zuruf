@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#172b34"/><path d="M30 32h68v48H63L42 99V80H30z" fill="#79e3b1"/><path d="M48 46h32L48 66h32" fill="none" stroke="#172b34" stroke-width="6"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Zuruf">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232427"/>
+      <stop offset="1" stop-color="#131416"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)"/>
+  <rect x="16.5" y="16.5" width="223" height="223" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.09"/>
+  <circle cx="128" cy="128" r="62" fill="none" stroke="#e8e7e3" stroke-width="15"/>
+  <circle cx="128" cy="128" r="27" fill="#ff5a36"/>
+</svg>

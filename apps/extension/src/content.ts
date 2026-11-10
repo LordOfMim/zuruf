@@ -21,7 +21,11 @@ let owner = "none";
 function renderStatus(): void {
   if (status) {
     status.hidden = !review;
-    status.textContent = `Review${recording ? " · Aufnahme läuft" : ""}${owner === "agent" ? " · Agent steuert" : owner === "human" ? " · Mensch steuert" : ""}`;
+    // One word, one dot: the page stays the subject. State is carried by attributes for overlay.css.
+    status.dataset.recording = String(recording);
+    status.dataset.owner = owner;
+    status.textContent =
+      owner === "agent" ? "Agent steuert" : recording ? "Aufnahme" : "Review";
   }
 }
 function mount(): void {
@@ -275,18 +279,24 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
   if (message.type === "capture.failed") {
     mount();
     if (confirmation) {
-      confirmation.hidden = false;
-      confirmation.textContent = message.payload.reason;
+      const failed = confirmation;
+      failed.hidden = false;
+      failed.dataset.kind = "error";
+      failed.textContent = message.payload.reason;
+      setTimeout(() => {
+        if (failed.dataset.kind === "error") failed.hidden = true;
+      }, 3200);
     }
   }
   if (message.type === "capture.saved") {
     mount();
     if (confirmation) {
       confirmation.hidden = false;
-      confirmation.textContent = "Aufnahme gespeichert";
+      confirmation.dataset.kind = "saved";
+      confirmation.textContent = "Gespeichert";
       setTimeout(() => {
-        if (confirmation) confirmation.hidden = true;
-      }, 650);
+        if (confirmation?.dataset.kind === "saved") confirmation.hidden = true;
+      }, 900);
     }
   }
   if (message.type === "status") {
