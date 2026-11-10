@@ -184,6 +184,9 @@ impl Daemon {
     }
     pub async fn close(&self) -> Result<()> {
         self.shutdown();
+        for task in self.snapshot().await?.tasks {
+            self.revoke_mcp_task(&task.id);
+        }
         let mut failure = self.0.speech.cancel().await.err().map(Error::from);
         if let Err(e) = self.0.hotkeys.clear().await {
             failure.get_or_insert(e.into());
@@ -293,6 +296,14 @@ impl Daemon {
         .await
     }
     pub async fn recover(&self) -> Result<()> {
+        self.access(|p| {
+            let directory = p.store.paths.state.join("agents");
+            if directory.exists() {
+                std::fs::remove_dir_all(directory).map_err(StoreError::from)?;
+            }
+            Ok(())
+        })
+        .await?;
         self.mutate(|s, _| {
             for segment in &mut s.segments {
                 if matches!(
@@ -306,7 +317,12 @@ impl Daemon {
         })
         .await?;
         self.mutate(|s, _| {
-            let incomplete: HashSet<_> = s.annotations.iter().filter(|a| a.r#type != AnnotationType::Text && a.assets.is_empty()).map(|a| a.batch_id.clone()).collect();
+            for annotation in &mut s.annotations {
+                if annotation.r#type != AnnotationType::Text && !annotation.assets.iter().any(|asset| asset.kind == AssetKind::ScreenshotMarked) {
+                    annotation.note.push_str("\nAufnahme durch Neustart unterbrochen; vorhandenes Rohbild prüfen oder neu aufnehmen.");
+                }
+            }
+            let incomplete: HashSet<_> = s.annotations.iter().filter(|a| a.r#type != AnnotationType::Text && !a.assets.iter().any(|asset| asset.kind == AssetKind::ScreenshotMarked)).map(|a| a.batch_id.clone()).collect();
             for task in &mut s.tasks {
                 if incomplete.contains(&task.batch_id) && task.thread_id.is_none() && !task.status.terminal() {
                     task.status = TaskStatus::Failed;
@@ -652,14 +668,35 @@ impl Daemon {
         self.start_worker(result.task.id.clone());
         val(result)
     }
+    async fn action_snapshot(&self) -> Result<Snapshot> {
+        let mut snapshot = self.snapshot().await?;
+        if let Ok(session) = real::ACTION_SESSION.try_with(Clone::clone) {
+            let project = &snapshot
+                .sessions
+                .iter()
+                .find(|s| s.id == session)
+                .ok_or_else(missing)?
+                .project_id;
+            if snapshot
+                .batches
+                .iter()
+                .find(|b| Some(&b.id) == snapshot.status.active_batch_id.as_ref())
+                .is_some_and(|b| &b.project_id != project)
+            {
+                return Err(invalid("Hotkey session does not belong to active review"));
+            }
+            snapshot.status.active_session_id = Some(session);
+        }
+        Ok(snapshot)
+    }
     async fn action(&self, action: &str) -> Result<Value> {
         match action {
             "review.toggle" => {
-                let on = !self.snapshot().await?.status.review_mode;
+                let on = !self.action_snapshot().await?.status.review_mode;
                 self.set_review(on).await?;
             }
             "batch.dispatch" => {
-                let s = self.snapshot().await?;
+                let s = self.action_snapshot().await?;
                 let b = s.status.active_batch_id.ok_or_else(missing)?;
                 self.dispatch(
                     b,
@@ -671,7 +708,7 @@ impl Daemon {
                 .await?;
             }
             "speech.toggle" => {
-                let s = self.snapshot().await?;
+                let s = self.action_snapshot().await?;
                 let enabled = !s.settings.speech.enabled;
                 let _gate = self.0.speech_gate.lock().await;
                 if enabled {
@@ -698,7 +735,24 @@ impl Daemon {
                 .await?;
             }
             "capture.viewport" | "capture.region" | "capture.dom" => {
-                let s = self.snapshot().await?;
+                let mut s = self.action_snapshot().await?;
+                if let Ok(session) = real::ACTION_SESSION.try_with(Clone::clone) {
+                    s.status.active_session_id = Some(session.clone());
+                    let project = s
+                        .sessions
+                        .iter()
+                        .find(|s| s.id == session)
+                        .ok_or_else(missing)?
+                        .project_id
+                        .clone();
+                    if s.batches
+                        .iter()
+                        .find(|b| Some(&b.id) == s.status.active_batch_id.as_ref())
+                        .is_none_or(|b| b.project_id != project)
+                    {
+                        return Err(invalid("Hotkey session does not belong to active review"));
+                    }
+                }
                 let b = s.status.active_batch_id.clone().ok_or_else(missing)?;
                 let kind = match action {
                     "capture.dom" => AnnotationType::Dom,
@@ -757,6 +811,7 @@ impl Daemon {
                         rect: None,
                     })
                     .await?;
+                let raw_result = result.clone();
                 let annotation = self
                     .mutate(move |s, store| {
                         let mut a = s
@@ -802,17 +857,51 @@ impl Daemon {
                                 url: format!("/api/v1/assets/{asset_id}"),
                             });
                         }
+                        a.updated_at = now();
                         if let Some(target) = s.annotations.iter_mut().find(|x| x.id == a.id) {
                             *target = a.clone();
                         }
                         Ok(a)
                     })
                     .await?;
-                let _ = annotation;
+                self.0
+                    .browser
+                    .confirm_capture(raw_result.tab.session_id.clone())
+                    .await?;
+                let images = self.0.browser.complete_capture(raw_result).await?;
+                if !images.is_empty() {
+                    self.mutate(move |s, store| {
+                        let a = s
+                            .annotations
+                            .iter_mut()
+                            .find(|a| a.id == annotation.id)
+                            .ok_or_else(missing)?;
+                        let batch = s
+                            .batches
+                            .iter()
+                            .find(|b| b.id == a.batch_id)
+                            .ok_or_else(missing)?;
+                        for image in images {
+                            let asset_id = id();
+                            let path = format!("assets/ann-{}-marked-{asset_id}.png", a.id);
+                            store.write_asset(batch, &path, &image.bytes)?;
+                            a.assets.push(Asset {
+                                id: asset_id.clone(),
+                                kind: image.kind,
+                                path,
+                                width: Some(image.width as f64),
+                                height: Some(image.height as f64),
+                                url: format!("/api/v1/assets/{asset_id}"),
+                            });
+                        }
+                        Ok(())
+                    })
+                    .await?;
+                }
             }
             "control.takeover" => {
                 let s = self
-                    .snapshot()
+                    .action_snapshot()
                     .await?
                     .status
                     .active_session_id
@@ -1496,6 +1585,17 @@ async fn api(
             app.start_worker(target);
             result
         }
+        ("POST", "app", "open", _) => {
+            let view = v["view"].as_str().unwrap_or("tasks");
+            if !["tasks", "sessions", "settings", "review"].contains(&view) {
+                return Err(invalid("view"));
+            }
+            let _ = app
+                .0
+                .events
+                .send(json!({"type":"app.open_requested","payload":{"view":view}}));
+            json!({"ok":true})
+        }
         ("POST", "tasks", _, "cancel") => {
             let t = app
                 .snapshot()
@@ -1504,6 +1604,24 @@ async fn api(
                 .into_iter()
                 .find(|t| t.id == key)
                 .ok_or_else(missing)?;
+            app.revoke_mcp_task(&t.id);
+            if let Some(session) = app
+                .snapshot()
+                .await?
+                .sessions
+                .iter()
+                .find(|s| s.control.agent_id.as_deref() == Some(&t.id))
+            {
+                app.session_control(
+                    session.id.clone(),
+                    ControlRequest {
+                        action: ControlRequestAction::Revoke,
+                        agent_id: None,
+                        lease_seconds: None,
+                    },
+                )
+                .await?;
+            }
             if let Some(thread) = t.thread_id {
                 app.0.t3.interrupt(thread).await?;
             }
@@ -1632,6 +1750,9 @@ async fn api(
                     t.status = TaskStatus::Queued;
                     t.finished_at = None;
                     t.error = None;
+                    t.pending_request = None;
+                    t.last_message = None;
+                    t.remote_status = None;
                     let response = val(&*t)?;
                     let event = TaskEvent {
                         id: request_id.clone(),

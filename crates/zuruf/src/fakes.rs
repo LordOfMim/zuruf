@@ -456,7 +456,16 @@ impl BrowserController for FakeBrowser {
                     s.control.take_over(false)
                 }
                 ControlRequestAction::Release => s.control.release(),
-                ControlRequestAction::Grant => {
+                ControlRequestAction::Grant | ControlRequestAction::Renew => {
+                    if r.action == ControlRequestAction::Renew {
+                        s.control.expire(&now());
+                        if s.control.owner != ControlStateOwner::Agent
+                            || s.control.agent_id != r.agent_id
+                        {
+                            return Err(AdapterError::Rejected("not lease owner".into()));
+                        }
+                        s.control.release();
+                    }
                     if !s.agent_access {
                         return Err(AdapterError::Rejected("agent access disabled".into()));
                     }

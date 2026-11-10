@@ -590,3 +590,46 @@ async fn panel_cors_allows_only_the_built_extension() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = Harness::new().await;
+    let sid = h.state().await["status"]["activeSessionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    h.call("POST", &format!("/sessions/{sid}/start"), json!({}))
+        .await;
+    h.call("POST", "/actions/capture.viewport", json!({})).await;
+    let dispatched = h.dispatch().await;
+    let task = dispatched["task"]["id"].as_str().unwrap();
+    let credential = h
+        .paths
+        .state
+        .join("agents")
+        .join(task)
+        .join("credential.json");
+    for _ in 0..100 {
+        if credential.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        std::fs::metadata(&credential).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let private: Value = serde_json::from_slice(&std::fs::read(&credential).unwrap()).unwrap();
+    let secret = private["token"].as_str().unwrap();
+    assert!(h.app.mcp_agent_scope(secret).is_some());
+    assert!(
+        !serde_json::to_string(&h.state().await)
+            .unwrap()
+            .contains(secret)
+    );
+    h.call("POST", &format!("/tasks/{task}/cancel"), json!({}))
+        .await;
+    assert!(!credential.exists());
+    assert!(h.app.mcp_agent_scope(secret).is_none());
+}

@@ -425,6 +425,7 @@ export interface Snapshot {
 }
 
 export type ServerEvent =
+  | { type: "app.open_requested"; payload: { view: "tasks" | "sessions" | "settings" | "review" } }
   | { type: "snapshot"; payload: Snapshot }
   | { type: "status.changed"; payload: AppStatus }
   | { type: "speech.level"; payload: { level: number } }
@@ -489,7 +490,7 @@ export interface ResolveRequest {
 }
 
 export interface ControlRequest {
-  action: "takeover" | "release" | "grant" | "revoke";
+  action: "takeover" | "release" | "grant" | "renew" | "revoke";
   agentId?: string;
   leaseSeconds?: number;
 }
@@ -497,6 +498,7 @@ export interface ControlRequest {
 /**
  * Routes. `→` is the JSON response body; mutations also emit the matching events.
  *
+ * POST   /app/open { view }                       → { ok: true }; emits app.open_requested
  * GET    /state                                   → Snapshot
  * WS     /events                                  first client frame: { "type": "auth", "token": "…" }; then ServerEnvelope frames
  * POST   /auth/exchange        { code }           → { token }      one-time code minted by `zuruf open`

@@ -315,6 +315,28 @@ impl Browser {
     }
     pub async fn grant(&self, agent: String, lease: Duration) -> Result<()> {
         self.control.grant(agent, lease).await?;
+        let control = self.control.clone();
+        let events = self.events.clone();
+        let extension = self.extension.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                if control.expire().await {
+                    let state = control.snapshot().await;
+                    let _ = events.send(BrowserEvent::ControlChanged(state.clone()));
+                    let _ = extension.send(Message::Control(state), None, None).await;
+                    break;
+                }
+                if control.snapshot().await.owner != "agent" {
+                    break;
+                }
+            }
+        });
+        self.control_event().await;
+        Ok(())
+    }
+    pub async fn renew(&self, agent: &str, lease: Duration) -> Result<()> {
+        self.control.renew(agent, lease).await?;
         self.control_event().await;
         Ok(())
     }
@@ -389,7 +411,26 @@ impl Browser {
         request: &extension::Envelope,
         ring: Ring,
     ) -> Result<CaptureResult> {
-        let Message::Capture { kind, rect, .. } = &request.message else {
+        self.capture_request_stage(request, Some(ring)).await
+    }
+    pub async fn capture_request_raw(
+        &self,
+        request: &extension::Envelope,
+    ) -> Result<CaptureResult> {
+        self.capture_request_stage(request, None).await
+    }
+    async fn capture_request_stage(
+        &self,
+        request: &extension::Envelope,
+        ring: Option<Ring>,
+    ) -> Result<CaptureResult> {
+        let Message::Capture {
+            kind,
+            rect,
+            cursor,
+            dom,
+        } = &request.message
+        else {
             return Err(Error::Invalid("expected capture request".into()));
         };
         let tab = request.tab_id.ok_or(Error::Denied("missing tab"))?;
@@ -415,7 +456,16 @@ impl Browser {
             "dom" => CaptureKind::Dom,
             _ => return Err(Error::Invalid("capture kind".into())),
         };
-        let result = self.capture(&target, kind, *rect, ring).await?;
+        let pointer_frame = self.extension.pointer(tab).await.0;
+        let pointer_document = self.extension.document(tab, pointer_frame).await;
+        // Keyboard focus can remain in the top frame while the pointer is in a child.
+        let context = (pointer_frame == frame).then(|| (*cursor, dom.clone()));
+        let result = self
+            .capture_stage(&target, kind, *rect, ring, context)
+            .await?;
+        if self.extension.document(tab, pointer_frame).await != pointer_document {
+            return Err(Error::Denied("pointer document changed during capture"));
+        }
         if self.extension.document(tab, frame).await.as_ref() != Some(document) {
             return Err(Error::Denied("document changed during capture"));
         }
@@ -428,6 +478,26 @@ impl Browser {
         rect: Option<Rect>,
         ring: Ring,
     ) -> Result<CaptureResult> {
+        self.capture_stage(target, kind, rect, Some(ring), None)
+            .await
+    }
+    pub async fn capture_raw(
+        &self,
+        target: &str,
+        kind: CaptureKind,
+        rect: Option<Rect>,
+    ) -> Result<CaptureResult> {
+        self.capture_stage(target, kind, rect, None, None).await
+    }
+    async fn capture_stage(
+        &self,
+        target: &str,
+        kind: CaptureKind,
+        rect: Option<Rect>,
+        ring: Option<Ring>,
+        context: Option<(Point, Option<DomCapture>)>,
+    ) -> Result<CaptureResult> {
+        let stage_started = std::time::Instant::now();
         let _lock = self.capture_lock.lock().await;
         let tab = self
             .list_tabs()
@@ -442,8 +512,11 @@ impl Browser {
             .into_iter()
             .find(|t| t.target_id == target && t.scriptable)
             .ok_or(Error::Denied("unscriptable tab"))?;
-        let (frame, cursor) = self.extension.pointer(ext.tab_id).await;
-        let mut dom = if matches!(kind, CaptureKind::Dom) {
+        let (frame, live_cursor) = self.extension.pointer(ext.tab_id).await;
+        let cursor = context.as_ref().map(|c| c.0).unwrap_or(live_cursor);
+        let mut dom = if let Some((_, dom)) = context {
+            dom
+        } else if matches!(kind, CaptureKind::Dom) {
             let response = self
                 .extension
                 .request(Message::DomRequest, ext.tab_id, Some(frame))
@@ -459,6 +532,10 @@ impl Browser {
             .request(Message::Hide, ext.tab_id, None)
             .await?;
         let session = self.page_session(target).await?;
+        tracing::info!(
+            "ZURUF_CAPTURE {}",
+            json!({"prepareMs":stage_started.elapsed().as_secs_f64()*1000.})
+        );
         let result = self
             .capture_inner(&session, tab, kind, rect, cursor, &mut dom, ring)
             .await;
@@ -477,18 +554,42 @@ impl Browser {
         rect: Option<Rect>,
         cursor: Point,
         dom: &mut Option<DomCapture>,
-        ring: Ring,
+        ring: Option<Ring>,
     ) -> Result<CaptureResult> {
-        let epoch = self
-            .cdp
-            .call("Page.getFrameTree", json!({}), Some(session))
-            .await?;
-        let metrics = self
-            .cdp
-            .call("Page.getLayoutMetrics", json!({}), Some(session))
-            .await?;
-        let eval=self.cdp.call("Runtime.evaluate",json!({"expression":"({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY,title:document.title,url:location.href})","returnByValue":true}),Some(session)).await?;
+        let stage_started = std::time::Instant::now();
+        let selectors = std::env::var("ZURUF_MASK_SELECTORS").unwrap_or_default();
+        let selector = format!(
+            "input[type=password], [data-zuruf-private]{}{}",
+            if selectors.is_empty() { "" } else { "," },
+            selectors
+        );
+        let expression = format!(
+            "({{width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY,title:document.title,url:location.href,masks:Array.from(document.querySelectorAll({})).map(e=>{{const r=e.getBoundingClientRect();return {{x:r.x,y:r.y,width:r.width,height:r.height}}}})}})",
+            serde_json::to_string(&selector)?
+        );
+        // Read geometry and masks in one page snapshot; independent CDP reads overlap.
+        let (epoch, metrics, eval) = tokio::try_join!(
+            self.cdp.call("Page.getFrameTree", json!({}), Some(session)),
+            async {
+                if matches!(kind, CaptureKind::Region) {
+                    self.cdp
+                        .call("Page.getLayoutMetrics", json!({}), Some(session))
+                        .await
+                } else {
+                    Ok(json!({}))
+                }
+            },
+            self.cdp.call(
+                "Runtime.evaluate",
+                json!({"expression":expression,"returnByValue":true}),
+                Some(session)
+            ),
+        )?;
+        if eval.get("exceptionDetails").is_some() {
+            return Err(Error::Invalid("invalid mask selector".into()));
+        }
         let m = &eval["result"]["value"];
+        let mut rectangles: Vec<Rect> = serde_json::from_value(m["masks"].clone())?;
         let number = |key: &str| m[key].as_f64().unwrap_or(0.0);
         let viewport = Viewport {
             width: number("width"),
@@ -598,10 +699,14 @@ impl Browser {
             params["clip"] = serde_json::to_value(clip)?;
             params["clip"]["scale"] = json!(1);
         }
+        let metadata_ms = stage_started.elapsed().as_secs_f64() * 1000.;
+        let shot_started = std::time::Instant::now();
         let shot = self
             .cdp
             .call("Page.captureScreenshot", params, Some(session))
             .await?;
+        let screenshot_ms = shot_started.elapsed().as_secs_f64() * 1000.;
+        let post_started = std::time::Instant::now();
         let after = self
             .cdp
             .call("Page.getFrameTree", json!({}), Some(session))
@@ -616,20 +721,59 @@ impl Browser {
                     .ok_or_else(|| Error::Invalid("missing PNG".into()))?,
             )
             .map_err(|e| Error::Invalid(e.to_string()))?;
-        let marked = if matches!(kind, CaptureKind::Region) {
-            raw.clone()
+        if let Some(d) = dom.as_mut()
+            && rectangles.iter().any(|r| {
+                r.x < d.bounding_box.x + d.bounding_box.width
+                    && r.x + r.width > d.bounding_box.x
+                    && r.y < d.bounding_box.y + d.bounding_box.height
+                    && r.y + r.height > d.bounding_box.y
+            })
+        {
+            d.text = None;
+            d.name = None;
+            d.attributes.clear();
+            d.locators.clear();
+            d.parent = None;
+            d.children.clear();
+        }
+        let image_viewport = if let Some(rect) = rect {
+            for mask in &mut rectangles {
+                mask.x -= rect.x;
+                mask.y -= rect.y;
+            }
+            Point {
+                x: rect.width,
+                y: rect.height,
+            }
         } else {
-            mark(
-                &raw,
-                Point {
-                    x: viewport.width,
-                    y: viewport.height,
-                },
-                cursor,
-                ring,
-                dom.as_ref().map(|d| d.bounding_box),
-            )?
+            Point {
+                x: viewport.width,
+                y: viewport.height,
+            }
         };
+        let raw = crate::capture::mask(&raw, image_viewport, &rectangles)?;
+        let marked = if let Some(ring) = ring {
+            if matches!(kind, CaptureKind::Region) {
+                raw.clone()
+            } else {
+                mark(
+                    &raw,
+                    Point {
+                        x: viewport.width,
+                        y: viewport.height,
+                    },
+                    cursor,
+                    ring,
+                    dom.as_ref().map(|d| d.bounding_box),
+                )?
+            }
+        } else {
+            vec![]
+        };
+        tracing::info!(
+            "ZURUF_CAPTURE {}",
+            json!({"metadataMs":metadata_ms,"screenshotMs":screenshot_ms,"postprocessMs":post_started.elapsed().as_secs_f64()*1000.})
+        );
         Ok(CaptureResult {
             raw_png: raw,
             marked_png: marked,

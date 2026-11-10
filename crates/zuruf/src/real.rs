@@ -71,12 +71,17 @@ impl T3Adapter for T3 {
             let mut adapter = self.connected().await?;
             let mut attachments = Vec::new();
             for (name, bytes) in assets {
-                attachments.push(
-                    adapter
-                        .upload_image(&name, "image/png", bytes)
-                        .await
-                        .map_err(t3_error)?,
-                );
+                match adapter.upload_image(&name, "image/png", bytes).await {
+                    Ok(upload) => attachments.push(upload),
+                    Err(error) => {
+                        for upload in &attachments {
+                            if let Some(id) = upload["id"].as_str() {
+                                let _ = adapter.discard_upload(id).await;
+                            }
+                        }
+                        return Err(t3_error(error));
+                    }
+                }
             }
             // This verified endpoint has no request-id parameter; never replay an ambiguous send.
             adapter
@@ -102,11 +107,17 @@ impl T3Adapter for T3 {
             let mut a = self.connected().await?;
             let mut attachments = Vec::new();
             for (name, bytes) in assets {
-                attachments.push(
-                    a.upload_image(&name, "image/png", bytes)
-                        .await
-                        .map_err(t3_error)?,
-                );
+                match a.upload_image(&name, "image/png", bytes).await {
+                    Ok(upload) => attachments.push(upload),
+                    Err(error) => {
+                        for upload in &attachments {
+                            if let Some(id) = upload["id"].as_str() {
+                                let _ = a.discard_upload(id).await;
+                            }
+                        }
+                        return Err(t3_error(error));
+                    }
+                }
             }
             let result = a
                 .create_thread_with_attachments(
@@ -115,11 +126,26 @@ impl T3Adapter for T3 {
                     &r.prompt,
                     &profile,
                     &r.client_request_id,
-                    attachments,
+                    attachments.clone(),
                 )
-                .await
-                .map_err(|e| AdapterError::Ambiguous(e.to_string()))?;
-            Ok(receipt(result))
+                .await;
+            match result {
+                Ok(result) => Ok(receipt(result)),
+                Err(error) => {
+                    // Transport loss may mean the remote launch consumed these uploads.
+                    if matches!(
+                        error,
+                        zuruf_t3::Error::Protocol(_) | zuruf_t3::Error::Unsupported(_)
+                    ) {
+                        for upload in &attachments {
+                            if let Some(id) = upload["id"].as_str() {
+                                let _ = a.discard_upload(id).await;
+                            }
+                        }
+                    }
+                    Err(AdapterError::Ambiguous(error.to_string()))
+                }
+            }
         })
     }
 
@@ -489,6 +515,7 @@ impl DesktopHotkeys for Hotkeys {
 }
 
 tokio::task_local! {
+    pub(crate) static ACTION_SESSION: String;
     static CAPTURE_ENVELOPE: std::cell::RefCell<Option<zuruf_browser::extension::Envelope>>;
 }
 pub struct Browsers {
@@ -596,6 +623,7 @@ impl Browsers {
                     if let Some(action) = action {
                         let app = app.clone();
                         let sid = session.clone();
+                        let session_for_action = session.clone();
                         tokio::spawn(CAPTURE_ENVELOPE.scope(
                             std::cell::RefCell::new(
                                 if matches!(envelope.message, Message::Capture { .. }) {
@@ -611,7 +639,10 @@ impl Browsers {
                                         Ok(())
                                     })
                                     .await;
-                                if let Err(e) = app.action(&action).await {
+                                if let Err(e) = ACTION_SESSION
+                                    .scope(session_for_action, app.action(&action))
+                                    .await
+                                {
                                     tracing::warn!(error=%e,"extension action failed");
                                 }
                             },
@@ -744,24 +775,13 @@ impl BrowserController for BrowserAdapter {
     fn capture(&self, r: CaptureRequest) -> AdapterFuture<'_, CaptureResult> {
         Box::pin(async move {
             let b = self.get(&r.session_id).await?;
-            let mut ring = zuruf_browser::capture::Ring::default();
-            if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) {
-                let settings = Daemon(inner).snapshot().await.map_err(io)?.settings.capture;
-                ring.radius = settings.ring_radius;
-                if let Some(hex) = settings.ring_color.strip_prefix('#')
-                    && hex.len() == 6
-                    && let Ok(rgb) = u32::from_str_radix(hex, 16)
-                {
-                    ring.color = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255];
-                }
-            }
             // Keep each hotkey's document epoch and geometry attached to its own task.
             let envelope = CAPTURE_ENVELOPE
                 .try_with(|slot| slot.borrow_mut().take())
                 .ok()
                 .flatten();
             let result = if let Some(envelope) = envelope {
-                b.capture_request(&envelope, ring).await.map_err(io)?
+                b.capture_request_raw(&envelope).await.map_err(io)?
             } else {
                 let tabs = b.list_tabs().await.map_err(io)?;
                 let target_id = if let Some(tab_id) = &r.tab_id {
@@ -782,7 +802,7 @@ impl BrowserController for BrowserAdapter {
                     .or(tabs.first())
                     .ok_or_else(|| io("no tab"))?;
                 let kind = convert(r.kind)?;
-                b.capture(&target.id, kind, r.rect.map(convert).transpose()?, ring)
+                b.capture_raw(&target.id, kind, r.rect.map(convert).transpose()?)
                     .await
                     .map_err(io)?
             };
@@ -796,6 +816,9 @@ impl BrowserController for BrowserAdapter {
                 (AssetKind::Screenshot, result.raw_png),
                 (AssetKind::ScreenshotMarked, result.marked_png),
             ] {
+                if bytes.is_empty() {
+                    continue;
+                }
                 let (width, height) = dimensions(&bytes)?;
                 images.push(CaptureImage {
                     kind,
@@ -813,6 +836,70 @@ impl BrowserController for BrowserAdapter {
                 rect: result.rect.map(convert).transpose()?,
                 dom: result.dom.map(convert).transpose()?,
             })
+        })
+    }
+    fn confirm_capture(&self, session: Id) -> AdapterFuture<'_, ()> {
+        Box::pin(async move {
+            self.get(&session)
+                .await?
+                .extension
+                .send(zuruf_browser::extension::Message::Saved, None, None)
+                .await
+                .map_err(io)
+        })
+    }
+    fn complete_capture(&self, result: CaptureResult) -> AdapterFuture<'_, Vec<CaptureImage>> {
+        Box::pin(async move {
+            let mut ring = zuruf_browser::capture::Ring::default();
+            if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) {
+                let settings = Daemon(inner).snapshot().await.map_err(io)?.settings.capture;
+                ring.radius = settings.ring_radius;
+                if let Some(hex) = settings.ring_color.strip_prefix('#')
+                    && hex.len() == 6
+                    && let Ok(rgb) = u32::from_str_radix(hex, 16)
+                {
+                    ring.color = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255];
+                }
+            }
+            let raw = result
+                .images
+                .into_iter()
+                .find(|i| i.kind == AssetKind::Screenshot)
+                .ok_or_else(|| io("raw image missing"))?;
+            let bytes = if result.rect.is_some() {
+                raw.bytes
+            } else {
+                let viewport = result.viewport.ok_or_else(|| io("viewport missing"))?;
+                let cursor = result.cursor.ok_or_else(|| io("cursor missing"))?;
+                tokio::task::spawn_blocking(move || {
+                    zuruf_browser::capture::mark(
+                        &raw.bytes,
+                        zuruf_browser::Point {
+                            x: viewport.width,
+                            y: viewport.height,
+                        },
+                        zuruf_browser::Point {
+                            x: cursor.x,
+                            y: cursor.y,
+                        },
+                        ring,
+                        result
+                            .dom
+                            .map(convert)
+                            .transpose()?
+                            .map(|d: zuruf_browser::DomCapture| d.bounding_box),
+                    )
+                    .map_err(io)
+                })
+                .await
+                .map_err(io)??
+            };
+            Ok(vec![CaptureImage {
+                kind: AssetKind::ScreenshotMarked,
+                bytes,
+                width: raw.width,
+                height: raw.height,
+            }])
         })
     }
     fn set_review_mode(&self, on: bool) -> AdapterFuture<'_, ()> {
@@ -845,14 +932,18 @@ impl BrowserController for BrowserAdapter {
             match r.action {
                 ControlRequestAction::Takeover => b.takeover().await.map_err(io)?,
                 ControlRequestAction::Release | ControlRequestAction::Revoke => b.release().await,
-                ControlRequestAction::Grant => {
+                ControlRequestAction::Grant | ControlRequestAction::Renew => {
                     let seconds = r.lease_seconds.unwrap_or(60.).clamp(1., 3600.);
-                    b.grant(
-                        r.agent_id.ok_or_else(|| io("agentId required"))?,
-                        Duration::from_secs_f64(seconds),
-                    )
-                    .await
-                    .map_err(io)?;
+                    let agent = r.agent_id.ok_or_else(|| io("agentId required"))?;
+                    if r.action == ControlRequestAction::Renew {
+                        b.renew(&agent, Duration::from_secs_f64(seconds))
+                            .await
+                            .map_err(io)?;
+                    } else {
+                        b.grant(agent, Duration::from_secs_f64(seconds))
+                            .await
+                            .map_err(io)?;
+                    }
                     expires = Some(
                         (time::OffsetDateTime::now_utc()
                             + time::Duration::milliseconds((seconds * 1000.) as i64))
@@ -1190,19 +1281,41 @@ pub async fn cdp_ws(
 ) -> Result<Response> {
     let runtime = app.0.real.get().ok_or_else(missing)?;
     let b = runtime.browsers.get(&session).await?;
-    let access = runtime
-        .access
-        .lock()
-        .await
-        .get(&session)
-        .cloned()
-        .ok_or_else(|| Error::Api(StatusCode::UNAUTHORIZED, "agent access missing".into()))?;
     let authorization = request
         .headers()
         .get("authorization")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("")
         .to_owned();
+    let token = authorization.strip_prefix("Bearer ").unwrap_or("");
+    let access = if let Some(scope) = app.mcp_agent_scope(token) {
+        if scope.session_id != session {
+            return Err(Error::Api(
+                StatusCode::UNAUTHORIZED,
+                "session scope mismatch".into(),
+            ));
+        }
+        let registry = app.0.agent_auth.clone();
+        let credential = token.to_owned();
+        let expected = scope.clone();
+        zuruf_browser::proxy::AgentAccess::new(scope.task_id, token.to_owned()).with_validator(
+            move || {
+                registry.scope(&credential).is_some_and(|s| {
+                    s.session_id == expected.session_id
+                        && s.task_id == expected.task_id
+                        && s.project_id == expected.project_id
+                })
+            },
+        )
+    } else {
+        runtime
+            .access
+            .lock()
+            .await
+            .get(&session)
+            .cloned()
+            .ok_or_else(|| Error::Api(StatusCode::UNAUTHORIZED, "agent access missing".into()))?
+    };
     zuruf_browser::proxy::authenticate(Some(&authorization), &access.token)
         .map_err(|_| Error::Api(StatusCode::UNAUTHORIZED, "agent bearer rejected".into()))?;
     access

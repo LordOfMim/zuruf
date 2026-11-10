@@ -56,8 +56,10 @@ Exec="$PREFIX/bin/zuruf" open
 Icon=zuruf
 Terminal=false
 Categories=Development;
-StartupWMClass=zuruf
+StartupWMClass=chrome-127.0.0.1__-Default
 DESKTOP
+# Native Wayland resolves the desktop file by the generated Chromium app-id.
+sed '/Categories=/a NoDisplay=true' "$XDG_DATA_HOME/applications/zuruf.desktop" > "$XDG_DATA_HOME/applications/chrome-127.0.0.1__-Default.desktop"
 install -m644 assets/icon/zuruf.svg "$XDG_DATA_HOME/icons/hicolor/scalable/apps/zuruf.svg"
 echo 'ok: Zuruf wurde im Benutzerbereich installiert.'
 echo 'Nächste Schritte: zuruf doctor ausführen.'

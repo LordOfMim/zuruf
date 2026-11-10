@@ -110,7 +110,7 @@ async function relay(value: Envelope): Promise<void> {
     }
     return;
   }
-  if (value.tabId === undefined) {
+  if (value.tabId == null) {
     for (const tab of await chrome.tabs.query({})) {
       if (tab.id !== undefined)
         void chrome.tabs.sendMessage(tab.id, value).catch(() => {});

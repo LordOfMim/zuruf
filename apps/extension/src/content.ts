@@ -294,6 +294,16 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
       confirmation.hidden = false;
       confirmation.dataset.kind = "saved";
       confirmation.textContent = "Gespeichert";
+      // A second frame callback follows a rendering opportunity for the confirmation.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          window.dispatchEvent(
+            new CustomEvent("zuruf:capture-confirmed", {
+              detail: performance.timeOrigin + performance.now(),
+            }),
+          );
+        }),
+      );
       setTimeout(() => {
         if (confirmation?.dataset.kind === "saved") confirmation.hidden = true;
       }, 900);
@@ -408,6 +418,17 @@ window.addEventListener(
     event.preventDefault();
     event.stopImmediatePropagation();
     const action = binding.action;
+    if (
+      action === "capture.viewport" ||
+      action === "capture.dom" ||
+      action === "capture.region"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent("zuruf:capture-start", {
+          detail: performance.timeOrigin + event.timeStamp,
+        }),
+      );
+    }
     if (action === "action.cancel") {
       cancel();
       return;
@@ -425,7 +446,7 @@ window.addEventListener(
           kind: action === "capture.dom" ? "dom" : "viewport",
           cursor: topPoint(cursor),
           rect: null,
-          dom: null,
+          dom: action === "capture.dom" ? domCapture() : null,
         },
       });
   },

@@ -11,7 +11,7 @@ python3 - "$PREFIX" "$unit_dir" "$XDG_DATA_HOME" "$ZURUF_DATA_DIR" <<'PY'
 from pathlib import Path
 import shutil,sys
 prefix,unit,data,app=map(Path,sys.argv[1:])
-for p in [prefix/'bin/zuruf',unit/'zuruf.service',data/'applications/zuruf.desktop',data/'icons/hicolor/scalable/apps/zuruf.svg']: p.unlink(missing_ok=True)
+for p in [prefix/'bin/zuruf',unit/'zuruf.service',data/'applications/zuruf.desktop',data/'applications/chrome-127.0.0.1__-Default.desktop',data/'icons/hicolor/scalable/apps/zuruf.svg']: p.unlink(missing_ok=True)
 for name in ['ui','extension']:
     p=app/name
     if p.exists(): shutil.rmtree(p)

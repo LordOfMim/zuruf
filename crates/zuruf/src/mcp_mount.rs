@@ -31,12 +31,67 @@ impl Daemon {
             .issue(scope, port, Duration::from_secs(3600))
             .map_err(|e| Error::Join(e.to_string()))
     }
+    /// The external T3 launch contract has no private per-thread MCP/env field.
+    /// Hand off only a path; the secret remains in a private state file.
+    pub(crate) async fn agent_credential_path(&self, task: &Task) -> Result<Option<String>> {
+        let snapshot = self.snapshot().await?;
+        let session = snapshot
+            .annotations
+            .iter()
+            .find(|a| a.batch_id == task.batch_id && a.session_id.is_some())
+            .and_then(|a| a.session_id.clone());
+        let Some(session_id) = session else {
+            return Ok(None);
+        };
+        let port = std::env::var("ZURUF_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(47600);
+        let handoff = self
+            .mcp_handoff(
+                Scope {
+                    project_id: task.project_id.clone(),
+                    task_id: task.id.clone(),
+                    session_id,
+                },
+                port,
+            )
+            .await?;
+        let task_id = task.id.clone();
+        self.access(move |p| {
+            let path = p
+                .store
+                .paths
+                .state
+                .join("agents")
+                .join(task_id)
+                .join("credential.json");
+            zuruf_store::atomic_write(
+                &path,
+                &serde_json::to_vec(&json!({
+                    "url": handoff.url, "origin": handoff.origin, "token": handoff.token
+                }))?,
+            )?;
+            Ok(Some(path.to_string_lossy().into_owned()))
+        })
+        .await
+    }
     /// CDP wiring must validate the same credential registry before every command.
     pub fn mcp_agent_scope(&self, token: &str) -> Option<Scope> {
         self.0.agent_auth.scope(token)
     }
     pub fn revoke_mcp_task(&self, task: &str) {
-        self.0.agent_auth.revoke_task(task)
+        self.0.agent_auth.revoke_task(task);
+        if let Ok(p) = self.0.persist.lock() {
+            let _ = std::fs::remove_file(
+                p.store
+                    .paths
+                    .state
+                    .join("agents")
+                    .join(task)
+                    .join("credential.json"),
+            );
+        }
     }
 }
 pub(super) fn router(app: &Daemon) -> Router {
@@ -169,12 +224,12 @@ impl ZurufApi for Daemon {
                     json!({"endpoint":format!("ws://127.0.0.1:{port}/cdp/{}",scope.session_id),"control":control}),
                 );
             }
-            // The current BrowserController contract has no atomic renewal operation.
-            // Fail closed rather than release/regrant across a possible human takeover.
-            if action == "renew_browser_control" {
-                return Err("atomic lease renewal not supported by BrowserController".into());
-            }
-            let action = if action == "release_browser_control" {
+            let action = if action == "renew_browser_control" {
+                if !owns {
+                    return Err("not owner".into());
+                }
+                ControlRequestAction::Renew
+            } else if action == "release_browser_control" {
                 if !owns {
                     return Err("not owner".into());
                 }

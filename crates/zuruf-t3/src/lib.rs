@@ -577,16 +577,29 @@ impl T3Adapter {
             .header("Content-Type", mime_type)
             .body(bytes)
             .send()
-            .await?;
-        if !response.status().is_success() {
-            return Err(Error::Protocol(format!(
-                "Upload HTTP {}",
-                response.status()
-            )));
+            .await;
+        let failure = match response {
+            Ok(response) if response.status().is_success() => {
+                return Ok(
+                    json!({"type":"image","id":prepared["attachmentId"],"name":name,"mimeType":mime_type,"sizeBytes":size}),
+                );
+            }
+            Ok(response) => Error::Protocol(format!("Upload HTTP {}", response.status())),
+            Err(error) => Error::Http(error),
+        };
+        // No thread launch has occurred, so even an uncertain upload is pending only.
+        if let Some(id) = prepared["attachmentId"].as_str() {
+            let _ = self.discard_upload(id).await;
         }
-        Ok(
-            json!({"type":"image","id":prepared["attachmentId"],"name":name,"mimeType":mime_type,"sizeBytes":size}),
+        Err(failure)
+    }
+    pub async fn discard_upload(&mut self, attachment_id: &str) -> Result<()> {
+        self.call(
+            "t3_attachment_discard",
+            json!({"attachmentId":attachment_id}),
         )
+        .await?;
+        Ok(())
     }
     pub async fn send_attachments(
         &mut self,

@@ -26,11 +26,11 @@ pub struct Envelope {
     pub v: u32,
     pub request_id: String,
     pub session_id: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_id: Option<i64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_id: Option<i64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_id: Option<String>,
     pub timestamp: u64,
     #[serde(flatten)]
