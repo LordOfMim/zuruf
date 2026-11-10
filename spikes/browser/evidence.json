@@ -1,0 +1,587 @@
+{
+  "browser": {
+    "timestamp": "2026-11-10T16:46:46.520Z",
+    "initialTargets": [
+      {
+        "targetId": "FDE67A684F84904EEAC4E46C33F2B8A9",
+        "type": "service_worker",
+        "title": "Service Worker chrome-extension://egjnpcmekhnieplhboioipdbpdakepbf/worker.js",
+        "url": "chrome-extension://egjnpcmekhnieplhboioipdbpdakepbf/worker.js",
+        "attached": true,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      },
+      {
+        "targetId": "A217557270938B4FD3C92C356021B258",
+        "type": "browser_ui",
+        "title": "Omnibox Popup",
+        "url": "chrome://omnibox-popup.top-chrome/",
+        "attached": false,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      },
+      {
+        "targetId": "2CB3BB4C25E380F67650D3696EDFA08B",
+        "type": "browser_ui",
+        "title": "Omnibox Popup",
+        "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html",
+        "attached": false,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      },
+      {
+        "targetId": "4F849CD6C7B43AE8543D2616FC521105",
+        "type": "page",
+        "title": "Zuruf Browser-Spike",
+        "url": "http://127.0.0.1:43155/",
+        "attached": true,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      },
+      {
+        "targetId": "A0FEEC351E6AE9B83435C3512DDF3138",
+        "type": "background_page",
+        "title": "Google Hangouts",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html",
+        "attached": false,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      }
+    ],
+    "workerState": {
+      "state": 1
+    },
+    "extension": {
+      "loaded": true,
+      "worker": {
+        "type": "hello",
+        "extensionId": "egjnpcmekhnieplhboioipdbpdakepbf"
+      }
+    },
+    "sidePanelWithoutGesture": "Error: `sidePanel.open()` may only be called in response to a user gesture.",
+    "hotkeys": {
+      "#text": {
+        "value": "wsd",
+        "actions": 0
+      },
+      "#password": {
+        "value": "[redacted; endsWith wsd verified]",
+        "actions": 0
+      },
+      "#area": {
+        "value": "wsd",
+        "actions": 0
+      },
+      "#editable": {
+        "value": "Editierbar:wsd",
+        "actions": 0
+      },
+      "#shadow input": {
+        "value": "wsd",
+        "actions": 0
+      },
+      "editorGuard": true,
+      "frameInput": true,
+      "bodyCaptureDespitePageStopPropagation": true,
+      "selectGuard": true,
+      "reviewOff": true
+    },
+    "passwordMetadataRedacted": true,
+    "dom": [
+      {
+        "tag": "button",
+        "attributes": {
+          "data-testid": "counter",
+          "aria-label": "Zähler erhöhen"
+        },
+        "text": "Zähler erhöhen",
+        "role": "button",
+        "name": "Zähler erhöhen",
+        "candidates": [
+          {
+            "kind": "testid",
+            "value": "counter",
+            "stable": true,
+            "reason": "Expliziter Testvertrag; Eindeutigkeit separat prüfen",
+            "count": 1
+          },
+          {
+            "kind": "role",
+            "value": "button",
+            "stable": true,
+            "reason": "Semantischer Vertrag; Name kann sich übersetzen",
+            "name": "Zähler erhöhen",
+            "count": 1
+          },
+          {
+            "kind": "text",
+            "value": "Zähler erhöhen",
+            "stable": false,
+            "reason": "Nur aktuell im Root eindeutig; Text ist veränderlich",
+            "count": 1
+          },
+          {
+            "kind": "css",
+            "value": "body:nth-of-type(1) > button:nth-of-type(1)",
+            "stable": false,
+            "reason": "Positionsabhängig",
+            "count": 1
+          },
+          {
+            "kind": "xpath",
+            "value": "/html[1]/body[1]/button[1]",
+            "stable": false,
+            "reason": "Positionsabhängiger Fallback; durchdringt keine Shadow Roots",
+            "count": 1
+          }
+        ],
+        "bbox": {
+          "x": 28,
+          "y": 99.875,
+          "width": 110.40625,
+          "height": 35
+        },
+        "parent": "body",
+        "children": [],
+        "shadowPath": [],
+        "iframePath": [],
+        "frame": {
+          "url": "http://127.0.0.1:43155/",
+          "top": true
+        },
+        "scroll": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "tag": "button",
+        "attributes": {
+          "data-testid": "shadow-button"
+        },
+        "text": "Shadow-Aktion",
+        "role": "button",
+        "name": "Shadow-Aktion",
+        "candidates": [
+          {
+            "kind": "testid",
+            "value": "shadow-button",
+            "stable": true,
+            "reason": "Expliziter Testvertrag; Eindeutigkeit separat prüfen",
+            "count": 1
+          },
+          {
+            "kind": "role",
+            "value": "button",
+            "stable": true,
+            "reason": "Semantischer Vertrag; Name kann sich übersetzen",
+            "name": "Shadow-Aktion",
+            "count": 1
+          },
+          {
+            "kind": "text",
+            "value": "Shadow-Aktion",
+            "stable": false,
+            "reason": "Nur aktuell im Root eindeutig; Text ist veränderlich",
+            "count": 1
+          },
+          {
+            "kind": "css",
+            "value": "button:nth-of-type(1)",
+            "stable": false,
+            "reason": "Positionsabhängig",
+            "count": 1
+          },
+          {
+            "kind": "xpath",
+            "value": "/button[1]",
+            "stable": false,
+            "reason": "Positionsabhängiger Fallback; durchdringt keine Shadow Roots",
+            "count": null
+          }
+        ],
+        "bbox": {
+          "x": 205,
+          "y": 210.875,
+          "width": 105.65625,
+          "height": 21
+        },
+        "children": [],
+        "shadowPath": [
+          "#shadow"
+        ],
+        "iframePath": [],
+        "frame": {
+          "url": "http://127.0.0.1:43155/",
+          "top": true
+        },
+        "scroll": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "tag": "button",
+        "attributes": {
+          "data-testid": "frame-button"
+        },
+        "text": "Frame-Aktion",
+        "role": "button",
+        "name": "Frame-Aktion",
+        "candidates": [
+          {
+            "kind": "testid",
+            "value": "frame-button",
+            "stable": true,
+            "reason": "Expliziter Testvertrag; Eindeutigkeit separat prüfen"
+          },
+          {
+            "kind": "role",
+            "value": "button",
+            "stable": true,
+            "reason": "Semantischer Vertrag; Name kann sich übersetzen",
+            "name": "Frame-Aktion"
+          },
+          {
+            "kind": "text",
+            "value": "Frame-Aktion",
+            "stable": false,
+            "reason": "Nur aktuell im Root eindeutig; Text ist veränderlich"
+          },
+          {
+            "kind": "css",
+            "value": "body:nth-of-type(1) > button:nth-of-type(1)",
+            "stable": false,
+            "reason": "Positionsabhängig"
+          },
+          {
+            "kind": "xpath",
+            "value": "/html[1]/body[1]/button[1]",
+            "stable": false,
+            "reason": "Positionsabhängiger Fallback; durchdringt keine Shadow Roots"
+          }
+        ],
+        "bbox": {
+          "x": 193,
+          "y": 8,
+          "width": 96,
+          "height": 21
+        },
+        "parent": "body",
+        "children": [],
+        "shadowPath": [],
+        "iframePath": [
+          {
+            "selector": "#frame",
+            "src": "http://127.0.0.1:43155/frame.html"
+          }
+        ],
+        "frame": {
+          "url": "http://127.0.0.1:43155/frame.html",
+          "top": false
+        },
+        "scroll": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    ],
+    "shared": {
+      "sameTarget": true,
+      "targetId": "4F849CD6C7B43AE8543D2616FC521105",
+      "takeoverRejection": "Error: page.evaluate: Execution context was destroyed, most likely because of a navigation.",
+      "rejectedCommands": 1,
+      "releasedClick": true
+    },
+    "mcp": {
+      "server": {
+        "name": "Playwright",
+        "version": "1.65.0-alpha-2026-10-30"
+      },
+      "toolNames": [
+        "browser_close",
+        "browser_resize",
+        "browser_console_messages",
+        "browser_handle_dialog",
+        "browser_emulate_media",
+        "browser_evaluate",
+        "browser_file_upload",
+        "browser_drop",
+        "browser_find",
+        "browser_fill_form",
+        "browser_press_key",
+        "browser_type",
+        "browser_navigate",
+        "browser_navigate_back",
+        "browser_network_requests",
+        "browser_network_request",
+        "browser_run_code_unsafe",
+        "browser_take_screenshot",
+        "browser_snapshot",
+        "browser_click",
+        "browser_drag",
+        "browser_hover",
+        "browser_select_option",
+        "browser_tabs",
+        "browser_wait_for"
+      ],
+      "evaluate": {
+        "content": [
+          {
+            "type": "text",
+            "text": "### Result\n{\n  \"title\": \"Zuruf Browser-Spike\",\n  \"count\": \"3\"\n}\n### Ran Playwright code\n```js\nawait page.evaluate('() => { const button = document.querySelector(\"[data-testid=counter]\"); button.click(); return { title: document.title, count: button.dataset.count }; }');\n```\n### Page\n- Page URL: http://127.0.0.1:43155/\n- Page Title: Zuruf Browser-Spike\n### Events\n- New console entries: .playwright-mcp/console-2026-11-10T16-46-48-089Z.log#L1"
+          }
+        ]
+      }
+    },
+    "panelGesture": {
+      "type": "panel-result",
+      "result": {
+        "ok": true
+      },
+      "at": 1794329208150,
+      "tabId": 915497707,
+      "frameId": 0
+    },
+    "panelTargets": [
+      {
+        "targetId": "C77D8F34A2BF550FAEA6919BDD7ADB70",
+        "type": "page",
+        "title": "Zuruf Panel",
+        "url": "chrome-extension://egjnpcmekhnieplhboioipdbpdakepbf/panel.html",
+        "attached": false,
+        "canAccessOpener": false,
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      },
+      {
+        "targetId": "C09A6D21B750CD4CC9BA8547D0D9FD48",
+        "type": "iframe",
+        "title": "http://127.0.0.1:43155/ui",
+        "url": "http://127.0.0.1:43155/ui",
+        "attached": false,
+        "parentId": "C77D8F34A2BF550FAEA6919BDD7ADB70",
+        "canAccessOpener": false,
+        "parentFrameId": "C77D8F34A2BF550FAEA6919BDD7ADB70",
+        "browserContextId": "E6E5B1F34FD29C35B320C6EBA597C3B0"
+      }
+    ],
+    "panelIframeLoaded": "panel not exposed as Playwright Page",
+    "screenshots": [
+      {
+        "dpr": 1,
+        "zoom": 1,
+        "viewport": {
+          "width": 900,
+          "height": 700,
+          "dpr": 1
+        },
+        "output": [
+          900,
+          700
+        ],
+        "region": [
+          80,
+          40
+        ],
+        "allRegionPixelsMatch": true,
+        "keyToRawFileMs": 62,
+        "keyToCompositeMs": 112
+      },
+      {
+        "dpr": 1,
+        "zoom": 1.25,
+        "viewport": {
+          "width": 720,
+          "height": 560,
+          "dpr": 1.25
+        },
+        "output": [
+          900,
+          700
+        ],
+        "region": [
+          100,
+          50
+        ],
+        "allRegionPixelsMatch": true,
+        "keyToRawFileMs": 270,
+        "keyToCompositeMs": 311
+      },
+      {
+        "dpr": 2,
+        "zoom": 1,
+        "viewport": {
+          "width": 900,
+          "height": 700,
+          "dpr": 2
+        },
+        "output": [
+          1800,
+          1400
+        ],
+        "region": [
+          160,
+          80
+        ],
+        "allRegionPixelsMatch": true,
+        "keyToRawFileMs": 163,
+        "keyToCompositeMs": 289
+      },
+      {
+        "dpr": 2,
+        "zoom": 1.25,
+        "viewport": {
+          "width": 720,
+          "height": 560,
+          "dpr": 2.5
+        },
+        "output": [
+          1800,
+          1400
+        ],
+        "region": [
+          200,
+          100
+        ],
+        "allRegionPixelsMatch": true,
+        "keyToRawFileMs": 160,
+        "keyToCompositeMs": 289
+      }
+    ],
+    "scrolledDOM": {
+      "tag": "button",
+      "attributes": {
+        "data-testid": "deep"
+      },
+      "text": "Unten",
+      "role": "button",
+      "name": "Unten",
+      "candidates": [
+        {
+          "kind": "testid",
+          "value": "deep",
+          "stable": true,
+          "reason": "Expliziter Testvertrag; Eindeutigkeit separat prüfen"
+        },
+        {
+          "kind": "role",
+          "value": "button",
+          "stable": true,
+          "reason": "Semantischer Vertrag; Name kann sich übersetzen",
+          "name": "Unten"
+        },
+        {
+          "kind": "text",
+          "value": "Unten",
+          "stable": false,
+          "reason": "Nur aktuell im Root eindeutig; Text ist veränderlich"
+        },
+        {
+          "kind": "css",
+          "value": "body:nth-of-type(1) > div:nth-of-type(5) > button:nth-of-type(1)",
+          "stable": false,
+          "reason": "Positionsabhängig"
+        },
+        {
+          "kind": "xpath",
+          "value": "/html[1]/body[1]/div[5]/button[1]",
+          "stable": false,
+          "reason": "Positionsabhängiger Fallback; durchdringt keine Shadow Roots"
+        }
+      ],
+      "bbox": {
+        "x": 28,
+        "y": 496.4750061035156,
+        "width": 54.76250076293945,
+        "height": 35.20000076293945
+      },
+      "parent": "div",
+      "children": [],
+      "shadowPath": [],
+      "iframePath": [],
+      "frame": {
+        "url": "http://127.0.0.1:43155/",
+        "top": true
+      },
+      "scroll": {
+        "x": 0,
+        "y": 1350.4000244140625
+      }
+    },
+    "isolation": {
+      "separateContext": true,
+      "separateProfile": true
+    },
+    "hyprland": {
+      "xwayland": false,
+      "commands": [
+        "ok\n",
+        "ok\n",
+        "ok\n"
+      ]
+    },
+    "resources": [
+      "MemoryPeak=258015232\nMemorySwapPeak=0",
+      "MemoryPeak=202620928\nMemorySwapPeak=0",
+      "MemoryPeak=188641280\nMemorySwapPeak=0"
+    ],
+    "persistence": true,
+    "appWindow": [
+      {
+        "type": "service_worker",
+        "url": "chrome-extension://egjnpcmekhnieplhboioipdbpdakepbf/worker.js"
+      },
+      {
+        "type": "page",
+        "url": "http://127.0.0.1:43155/ui"
+      },
+      {
+        "type": "background_page",
+        "url": "chrome-extension://nkeimhogjdpnpccoofpliimaahmaaome/background.html"
+      }
+    ],
+    "appSidePanelGesture": {
+      "type": "panel-result",
+      "result": {
+        "ok": true
+      },
+      "at": 1794329212382,
+      "tabId": 503192766,
+      "frameId": 0
+    },
+    "appPanelTargets": []
+  },
+  "pipe": {
+    "pipeLoadUnpacked": {
+      "id": "egjnpcmekhnieplhboioipdbpdakepbf"
+    }
+  },
+  "hyprland": {
+    "legacy": "keyword can't work with non-legacy parsers. Use eval.",
+    "register": "ok",
+    "found": [
+      {
+        "locked": false,
+        "mouse": false,
+        "release": false,
+        "repeat": false,
+        "longPress": false,
+        "non_consuming": false,
+        "auto_consuming": false,
+        "has_description": true,
+        "modmask": 77,
+        "submap": "",
+        "submap_universal": "false",
+        "key": "F24",
+        "keycode": 0,
+        "catch_all": false,
+        "description": "Zuruf Phase-0 temporary proof",
+        "allow_input_capture": false,
+        "dispatcher": "__lua",
+        "arg": "388"
+      }
+    ],
+    "unregister": "ok",
+    "remaining": 0
+  }
+}
