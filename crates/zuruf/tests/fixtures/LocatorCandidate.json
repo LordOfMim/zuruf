@@ -1,0 +1,7 @@
+{
+  "kind": "testid",
+  "value": "example",
+  "playwright": "example",
+  "stable": true,
+  "reason": "example"
+}

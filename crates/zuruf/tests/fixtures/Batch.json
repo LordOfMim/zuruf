@@ -1,0 +1,13 @@
+{
+  "id": "example",
+  "reviewId": "example",
+  "projectId": "example",
+  "seq": 1.0,
+  "state": "draft",
+  "title": "example",
+  "note": "example",
+  "profileId": "example",
+  "taskId": "example",
+  "createdAt": "example",
+  "sealedAt": "example"
+}

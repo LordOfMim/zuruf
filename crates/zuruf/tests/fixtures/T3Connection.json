@@ -1,0 +1,14 @@
+{
+  "state": "disconnected",
+  "version": "example",
+  "transport": "mcp",
+  "capabilities": {
+    "modelOptions": true,
+    "existingWorktree": true,
+    "idempotentLaunch": true,
+    "interrupt": true,
+    "attachments": true,
+    "push": true
+  },
+  "error": "example"
+}

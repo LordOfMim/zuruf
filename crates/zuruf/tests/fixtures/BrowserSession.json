@@ -1,0 +1,25 @@
+{
+  "id": "example",
+  "projectId": "example",
+  "name": "example",
+  "mode": "shared",
+  "state": "stopped",
+  "agentAccess": true,
+  "control": {
+    "owner": "none",
+    "agentId": "example",
+    "leaseExpiresAt": "example",
+    "settling": true
+  },
+  "tabs": [
+    {
+      "id": "example",
+      "sessionId": "example",
+      "url": "example",
+      "title": "example",
+      "active": true,
+      "scriptable": true
+    }
+  ],
+  "createdAt": "example"
+}

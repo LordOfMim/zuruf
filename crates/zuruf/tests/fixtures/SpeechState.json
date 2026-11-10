@@ -1,0 +1,6 @@
+{
+  "state": "unavailable",
+  "pendingSegments": 1.0,
+  "lastGapMs": 1.0,
+  "error": "example"
+}

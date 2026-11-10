@@ -1,0 +1,10 @@
+{
+  "action": "review.toggle",
+  "scope": "page",
+  "chord": {
+    "mods": [
+      "ctrl"
+    ],
+    "code": "example"
+  }
+}

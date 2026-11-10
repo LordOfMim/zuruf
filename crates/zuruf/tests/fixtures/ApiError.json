@@ -1,0 +1,14 @@
+{
+  "error": {
+    "code": "example",
+    "message": "example",
+    "issues": [
+      {
+        "action": "review.toggle",
+        "scope": "page",
+        "kind": "duplicate",
+        "detail": "example"
+      }
+    ]
+  }
+}
