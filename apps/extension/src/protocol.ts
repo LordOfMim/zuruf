@@ -16,13 +16,16 @@ export interface ExtensionTab {
   targetId: string;
   url: string;
   title: string;
+  zoom: number;
   active: boolean;
   scriptable: boolean;
 }
 export type Message =
+  | { type: "status"; payload: { recording: boolean } }
   | {
       type:
         | "hello"
+        | "frame.ready"
         | "resume"
         | "heartbeat"
         | "overlay.hide"

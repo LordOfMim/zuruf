@@ -48,6 +48,14 @@ pub fn mark(
     ring: Ring,
     outline: Option<Rect>,
 ) -> Result<Vec<u8>> {
+    if !ring.radius.is_finite()
+        || ring.radius < 2.0
+        || !ring.width.is_finite()
+        || ring.width <= 0.0
+        || ring.width > ring.radius
+    {
+        return Err(Error::Invalid("invalid ring geometry".into()));
+    }
     let decoder = png::Decoder::new(Cursor::new(raw));
     let mut reader = decoder
         .read_info()
@@ -59,6 +67,9 @@ pub fn mark(
     let info = reader
         .next_frame(&mut bytes)
         .map_err(|e| Error::Invalid(e.to_string()))?;
+    if info.bit_depth != png::BitDepth::Eight {
+        return Err(Error::Invalid("expected 8-bit PNG".into()));
+    }
     let channels = match info.color_type {
         png::ColorType::Rgb => 3,
         png::ColorType::Rgba => 4,
@@ -69,8 +80,23 @@ pub fn mark(
     }
     let sx = f64::from(info.width) / viewport.x;
     let sy = f64::from(info.height) / viewport.y;
-    for y in 0..info.height {
-        for x in 0..info.width {
+    let bounds = outline.unwrap_or(Rect {
+        x: cursor.x - ring.radius,
+        y: cursor.y - ring.radius,
+        width: 2.0 * ring.radius,
+        height: 2.0 * ring.radius,
+    });
+    let padding = ring.width + 2.0;
+    let min_x = ((bounds.x - padding) * sx).floor().max(0.0) as u32;
+    let max_x = ((bounds.x + bounds.width + padding) * sx)
+        .ceil()
+        .clamp(0.0, f64::from(info.width)) as u32;
+    let min_y = ((bounds.y - padding) * sy).floor().max(0.0) as u32;
+    let max_y = ((bounds.y + bounds.height + padding) * sy)
+        .ceil()
+        .clamp(0.0, f64::from(info.height)) as u32;
+    for y in min_y..max_y {
+        for x in min_x..max_x {
             let px = (f64::from(x) + 0.5) / sx;
             let py = (f64::from(y) + 0.5) / sy;
             let distance = if let Some(r) = outline {
@@ -104,7 +130,7 @@ pub fn mark(
         let mut encoder = png::Encoder::new(&mut output, info.width, info.height);
         encoder.set_color(info.color_type);
         encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_compression(png::Compression::Fast);
+        encoder.set_compression(png::Compression::Fastest);
         let mut writer = encoder
             .write_header()
             .map_err(|e| Error::Invalid(e.to_string()))?;

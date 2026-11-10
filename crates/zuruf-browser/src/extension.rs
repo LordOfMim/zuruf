@@ -41,6 +41,8 @@ pub struct Envelope {
 pub enum Message {
     #[serde(rename = "hello")]
     Hello,
+    #[serde(rename = "frame.ready")]
+    FrameReady,
     #[serde(rename = "resume")]
     Resume,
     #[serde(rename = "heartbeat")]
@@ -81,6 +83,8 @@ pub enum Message {
     Failed { reason: String },
     #[serde(rename = "control.changed")]
     Control(ControlState),
+    #[serde(rename = "status")]
+    Status { recording: bool },
     #[serde(rename = "tabs")]
     Tabs { tabs: Vec<ExtensionTab> },
     #[serde(rename = "dom.request")]
@@ -100,8 +104,13 @@ pub struct ExtensionTab {
     pub target_id: String,
     pub url: String,
     pub title: String,
+    #[serde(default = "default_zoom")]
+    pub zoom: f64,
     pub active: bool,
     pub scriptable: bool,
+}
+fn default_zoom() -> f64 {
+    1.0
 }
 #[derive(Clone)]
 pub struct ExtensionHub {
@@ -118,6 +127,7 @@ struct State {
     review: bool,
     bindings: Vec<Binding>,
     pub tabs: Vec<ExtensionTab>,
+    documents: HashMap<(i64, i64), String>,
     pub pointers: HashMap<i64, (i64, Point)>,
 }
 impl ExtensionHub {
@@ -143,6 +153,14 @@ impl ExtensionHub {
             .get(&tab)
             .copied()
             .unwrap_or_default()
+    }
+    pub async fn document(&self, tab: i64, frame: i64) -> Option<String> {
+        self.inner
+            .lock()
+            .await
+            .documents
+            .get(&(tab, frame))
+            .cloned()
     }
     pub fn envelope(
         &self,
@@ -199,6 +217,14 @@ impl ExtensionHub {
             .map_err(|_| Error::Timeout("extension acknowledgement"))?
             .map_err(|_| Error::Closed)
     }
+    pub async fn set_review_mode(&self, on: bool) -> Result<()> {
+        let bindings = self.inner.lock().await.bindings.clone();
+        self.configure(on, bindings).await
+    }
+    pub async fn push_bindings(&self, bindings: Vec<Binding>) -> Result<()> {
+        let review = self.inner.lock().await.review;
+        self.configure(review, bindings).await
+    }
     pub async fn configure(&self, review: bool, bindings: Vec<Binding>) -> Result<()> {
         {
             let mut s = self.inner.lock().await;
@@ -254,32 +280,163 @@ impl ExtensionHub {
         let mut last_seen = tokio::time::Instant::now();
         loop {
             tokio::select! {
-                outgoing=rx.recv()=>{let Some(outgoing)=outgoing else{break;};ws.send(serde_json::to_string(&outgoing)?.into()).await?;},
+                outgoing=rx.recv()=>{
+                    let Some(outgoing) = outgoing else {
+                        break;
+                    };
+                    ws.send(serde_json::to_string(&outgoing)?.into()).await?;
+                },
                 _=heartbeat.tick()=>{if last_seen.elapsed()>Duration::from_secs(45){return Err(Error::Timeout("extension heartbeat"));}ws.send(serde_json::to_string(&self.envelope(Message::Heartbeat,None,None))?.into()).await?;},
                 incoming=ws.next()=>{
-                    let Some(incoming)=incoming else{break;};let incoming=incoming?;if incoming.is_close(){break;}
-                if !incoming.is_text(){continue;}
-                    let envelope:Envelope=serde_json::from_str(incoming.to_text()?)?;
-                    if envelope.v!=1 || envelope.session_id!=self.bootstrap.session_id{return Err(Error::Denied("extension session/version"));}
-                    last_seen=tokio::time::Instant::now();
-                    if matches!(envelope.message,Message::Ack{..}|Message::Heartbeat){continue;}
-                    let mut state=self.inner.lock().await;
-                    let duplicate=!state.seen.insert(envelope.request_id.clone());
+                    let Some(incoming) = incoming else {
+                        break;
+                    };
+                    let incoming = incoming?;
+                    if incoming.is_close() {
+                        break;
+                    }
+                    if !incoming.is_text() {
+                        continue;
+                    }
+                    let envelope: Envelope = serde_json::from_str(incoming.to_text()?)?;
+                    if envelope.v != 1 || envelope.session_id != self.bootstrap.session_id {
+                        return Err(Error::Denied("extension session/version"));
+                    }
+                    last_seen = tokio::time::Instant::now();
+                    if matches!(envelope.message, Message::Ack { .. } | Message::Heartbeat) {
+                        continue;
+                    }
+                    let mut state = self.inner.lock().await;
+                    if matches!(envelope.message,Message::FrameReady|Message::Pointer{..}) && let (Some(tab),Some(frame),Some(document))=(envelope.tab_id,envelope.frame_id,&envelope.document_id){state.documents.insert((tab,frame),document.clone());}
+                    let duplicate = !state.seen.insert(envelope.request_id.clone());
                     if !duplicate {
-                        state.order.push_back(envelope.request_id.clone());if state.order.len()>4096 && let Some(old)=state.order.pop_front(){state.seen.remove(&old);}
-                        match &envelope.message {
-                            Message::Hidden{request_id}|Message::DomResult{request_id,..}=>{if let Some(reply)=state.waiting.remove(request_id){let _=reply.send(envelope.clone());}},
-                            Message::Tabs{tabs}=>state.tabs=tabs.clone(),
-                            Message::Pointer{cursor}=>{if let(Some(tab),Some(frame))=(envelope.tab_id,envelope.frame_id){state.pointers.insert(tab,(frame,*cursor));}},
-                            _=>{},
+                        state.order.push_back(envelope.request_id.clone());
+                        if state.order.len() > 4096
+                            && let Some(old) = state.order.pop_front()
+                        {
+                            state.seen.remove(&old);
                         }
-                        let _=self.events.send(envelope.clone());
+                        match &envelope.message {
+                            Message::Hidden { request_id } | Message::DomResult { request_id, .. } => {
+                                if let Some(reply) = state.waiting.remove(request_id) {
+                                    let _ = reply.send(envelope.clone());
+                                }
+                            }
+                            Message::Tabs { tabs } => state.tabs = tabs.clone(),
+                            Message::Pointer { cursor } => {
+                                if let (Some(tab), Some(frame)) = (envelope.tab_id, envelope.frame_id) {
+                                    state.pointers.insert(tab, (frame, *cursor));
+                                }
+                            }
+                            _ => {}
+                        }
+                        let _ = self.events.send(envelope.clone());
                     }
                     drop(state);
-                    ws.send(serde_json::to_string(&self.envelope(Message::Ack{request_id:envelope.request_id},None,None))?.into()).await?;
+                    ws.send(
+                        serde_json::to_string(&self.envelope(
+                            Message::Ack {
+                                request_id: envelope.request_id,
+                            },
+                            None,
+                            None,
+                        ))?
+                        .into(),
+                    )
+                    .await?;
                 }
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn reconnect_deduplicates_requests_and_checks_origin() {
+        let hub = ExtensionHub::new(Bootstrap {
+            port: 1,
+            session_id: "session".into(),
+            token: "synthetic".into(),
+            protocol_version: 1,
+        });
+        let mut events = hub.subscribe();
+        for _ in 0..2 {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = format!("ws://{}", listener.local_addr().unwrap());
+            let server = hub.clone();
+            let task = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                server
+                    .serve(ws, "chrome-extension://trusted", "trusted")
+                    .await
+            });
+            let (mut ws, _) = tokio_tungstenite::connect_async(address).await.unwrap();
+            ws.send(r#"{"type":"auth","token":"synthetic"}"#.into())
+                .await
+                .unwrap();
+            let _ = ws.next().await;
+            let mut envelope = hub.envelope(
+                Message::Action {
+                    action: "capture.viewport".into(),
+                },
+                Some(1),
+                Some(0),
+            );
+            envelope.request_id = "same-request".into();
+            ws.send(serde_json::to_string(&envelope).unwrap().into())
+                .await
+                .unwrap();
+            loop {
+                let message = ws.next().await.unwrap().unwrap();
+                let value: serde_json::Value =
+                    serde_json::from_str(message.to_text().unwrap()).unwrap();
+                if value["type"] == "ack" {
+                    break;
+                }
+            }
+            ws.close(None).await.unwrap();
+            let _ = task.await;
+        }
+        assert!(events.try_recv().is_ok());
+        assert!(events.try_recv().is_err());
+    }
+}
+
+#[cfg(test)]
+mod authentication_tests {
+    use super::*;
+    #[tokio::test]
+    async fn rejects_wrong_origin_and_token() {
+        for (origin, token) in [
+            ("chrome-extension://wrong", "synthetic"),
+            ("chrome-extension://trusted", "wrong"),
+        ] {
+            let hub = ExtensionHub::new(Bootstrap {
+                port: 1,
+                session_id: "session".into(),
+                token: "synthetic".into(),
+                protocol_version: 1,
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = format!("ws://{}", listener.local_addr().unwrap());
+            let task = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                hub.serve(ws, origin, "trusted").await
+            });
+            let (mut ws, _) = tokio_tungstenite::connect_async(address).await.unwrap();
+            let _ = ws
+                .send(
+                    serde_json::json!({"type":"auth","token":token})
+                        .to_string()
+                        .into(),
+                )
+                .await;
+            assert!(matches!(task.await.unwrap(), Err(Error::Denied(_))));
+        }
     }
 }

@@ -16,6 +16,14 @@ let outline: HTMLElement | undefined;
 let status: HTMLElement | undefined;
 let confirmation: HTMLElement | undefined;
 let hidden = false;
+let recording = false;
+let owner = "none";
+function renderStatus(): void {
+  if (status) {
+    status.hidden = !review;
+    status.textContent = `Review${recording ? " · Aufnahme läuft" : ""}${owner === "agent" ? " · Agent steuert" : owner === "human" ? " · Mensch steuert" : ""}`;
+  }
+}
 function mount(): void {
   if (host || !document.documentElement) return;
   host = document.createElement("zuruf-overlay");
@@ -245,7 +253,7 @@ function configure(payload: { review: boolean; bindings: Binding[] }): void {
   review = payload.review;
   bindings = payload.bindings;
   mount();
-  if (status) status.hidden = !review;
+  renderStatus();
   if (!review) cancel();
 }
 chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
@@ -264,6 +272,13 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
     reply({ dom: domCapture(), cursor: topPoint(cursor) });
     return;
   }
+  if (message.type === "capture.failed") {
+    mount();
+    if (confirmation) {
+      confirmation.hidden = false;
+      confirmation.textContent = message.payload.reason;
+    }
+  }
   if (message.type === "capture.saved") {
     mount();
     if (confirmation) {
@@ -274,15 +289,15 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
       }, 650);
     }
   }
-  if (message.type === "control.changed") {
+  if (message.type === "status") {
+    recording = message.payload.recording;
     mount();
-    if (status)
-      status.textContent =
-        message.payload.owner === "agent"
-          ? "Review · Agent steuert"
-          : message.payload.owner === "human"
-            ? "Review · Mensch steuert"
-            : "Review";
+    renderStatus();
+  }
+  if (message.type === "control.changed") {
+    owner = message.payload.owner;
+    mount();
+    renderStatus();
   }
   reply({ ok: true });
 });
@@ -290,6 +305,7 @@ let lastPointer = 0;
 window.addEventListener(
   "pointermove",
   (event) => {
+    if (!event.isTrusted) return;
     cursor = { x: event.clientX, y: event.clientY };
     if (performance.now() - lastPointer > 32) {
       lastPointer = performance.now();
@@ -313,7 +329,7 @@ window.addEventListener(
 window.addEventListener(
   "pointerdown",
   (event) => {
-    if (!region) return;
+    if (!event.isTrusted || !region) return;
     origin = { x: event.clientX, y: event.clientY };
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -323,7 +339,7 @@ window.addEventListener(
 window.addEventListener(
   "pointerup",
   (event) => {
-    if (!origin) return;
+    if (!event.isTrusted || !origin) return;
     cursor = { x: event.clientX, y: event.clientY };
     const start = topPoint(origin),
       end = topPoint(cursor);
@@ -369,6 +385,7 @@ window.addEventListener(
   "keydown",
   (event) => {
     if (
+      !event.isTrusted ||
       !review ||
       event.repeat ||
       event.isComposing ||

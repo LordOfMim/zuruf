@@ -57,6 +57,9 @@ pub struct Browser {
     pub control: Arbitration,
     events: broadcast::Sender<BrowserEvent>,
     capture_lock: Mutex<()>,
+    remembered: std::sync::Arc<Mutex<Vec<String>>>,
+    stopping: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    page_sessions: Mutex<std::collections::HashMap<String, String>>,
 }
 impl Browser {
     pub async fn start(config: SessionConfig, extension: ExtensionHub) -> Result<Self> {
@@ -133,12 +136,18 @@ impl Browser {
         .await
         .map_err(|_| Error::Timeout("Chromium startup"))??;
         let cdp = Cdp::connect(&endpoint).await?;
+        tracing::info!(session_id=%config.session_id,"managed Chromium started");
         let (events, _) = broadcast::channel(256);
+        let remembered = std::sync::Arc::new(Mutex::new(config.urls.clone()));
+        let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_flag = stopping.clone();
         let mut disconnected = cdp.subscribe();
         let notify = events.clone();
         tokio::spawn(async move {
             while let Ok(event) = disconnected.recv().await {
-                if event["method"] == "Zuruf.disconnected" {
+                if event["method"] == "Zuruf.disconnected"
+                    && !stop_flag.load(std::sync::atomic::Ordering::Relaxed)
+                {
                     let _ = notify.send(BrowserEvent::Crashed);
                     break;
                 }
@@ -147,9 +156,11 @@ impl Browser {
         let mut ext_events = extension.subscribe();
         let notify = events.clone();
         let id = config.session_id.clone();
+        let urls = remembered.clone();
         tokio::spawn(async move {
             while let Ok(event) = ext_events.recv().await {
                 if let Message::Tabs { tabs } = &event.message {
+                    *urls.lock().await = tabs.iter().map(|t| t.url.clone()).collect();
                     let _ = notify.send(BrowserEvent::TabsChanged(
                         tabs.iter()
                             .map(|t| BrowserTab {
@@ -176,6 +187,9 @@ impl Browser {
             control: Arbitration::default(),
             events,
             capture_lock: Mutex::new(()),
+            remembered,
+            stopping,
+            page_sessions: Mutex::new(std::collections::HashMap::new()),
         })
     }
     pub fn bootstrap(port: u16, session_id: String) -> Bootstrap {
@@ -217,6 +231,66 @@ impl Browser {
             })
             .collect())
     }
+    async fn page_session(&self, target: &str) -> Result<String> {
+        let mut sessions = self.page_sessions.lock().await;
+        if let Some(session) = sessions.get(target) {
+            return Ok(session.clone());
+        }
+        let session = self.cdp.attach(target).await?;
+        sessions.insert(target.into(), session.clone());
+        Ok(session)
+    }
+    /// Lab/acceptance aid. Uses a real browser zoom, not CSS zoom.
+    pub async fn set_zoom(&self, target: &str, zoom: f64) -> Result<()> {
+        if !zoom.is_finite() || !(0.25..=5.0).contains(&zoom) {
+            return Err(Error::Invalid("zoom range".into()));
+        }
+        let tab = self
+            .extension
+            .tabs()
+            .await
+            .into_iter()
+            .find(|t| t.target_id == target)
+            .ok_or(Error::Closed)?;
+        let targets = self.cdp.call("Target.getTargets", json!({}), None).await?;
+        let worker = targets["targetInfos"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|t| {
+                t["type"] == "service_worker"
+                    && t["url"].as_str().is_some_and(|u| u.ends_with("/worker.js"))
+            })
+            .and_then(|t| t["targetId"].as_str())
+            .ok_or(Error::Closed)?;
+        let session = self.cdp.attach(worker).await?;
+        let result=self.cdp.call("Runtime.evaluate",json!({"expression":format!("chrome.tabs.setZoom({}, {})",tab.tab_id,zoom),"awaitPromise":true}),Some(&session)).await;
+        let _ = self
+            .cdp
+            .call(
+                "Target.detachFromTarget",
+                json!({"sessionId":session}),
+                None,
+            )
+            .await;
+        let value = result?;
+        if value.get("exceptionDetails").is_some() {
+            return Err(Error::Cdp(value));
+        }
+        Ok(())
+    }
+    /// Lab-only DPR emulation; never passed through to an agent browser context.
+    pub async fn emulate_dpr(&self, target: &str, dpr: f64) -> Result<()> {
+        let session = self.page_session(target).await?;
+        self.cdp
+            .call(
+                "Emulation.setDeviceMetricsOverride",
+                json!({"width":1000,"height":800,"deviceScaleFactor":dpr,"mobile":false}),
+                Some(&session),
+            )
+            .await?;
+        Ok(())
+    }
     pub async fn open_tab(&self, url: &str) -> Result<String> {
         let value = self
             .cdp
@@ -226,6 +300,9 @@ impl Browser {
     }
     pub async fn set_review_mode(&self, on: bool, bindings: Vec<Binding>) -> Result<()> {
         self.extension.configure(on, bindings).await
+    }
+    pub async fn push_bindings(&self, bindings: Vec<Binding>) -> Result<()> {
+        self.extension.push_bindings(bindings).await
     }
     pub async fn grant(&self, agent: String, lease: Duration) -> Result<()> {
         self.control.grant(agent, lease).await?;
@@ -247,10 +324,19 @@ impl Browser {
             .await;
     }
     pub async fn takeover(&self) -> Result<()> {
+        tracing::info!(session_id=%self.config.session_id,"human takeover");
         self.control.begin_takeover().await;
         self.control_event().await;
         tokio::time::sleep(Duration::from_millis(500)).await;
-        for tab in self.list_tabs().await? {
+        let tabs = match self.list_tabs().await {
+            Ok(tabs) => tabs,
+            Err(error) => {
+                self.control.finish_takeover().await;
+                self.control_event().await;
+                return Err(error);
+            }
+        };
+        for tab in tabs {
             if let Ok(session) = self.cdp.attach(&tab.id).await {
                 let _ = self
                     .cdp
@@ -287,6 +373,44 @@ impl Browser {
             self.control.clone(),
         )
         .await
+    }
+    /// Validate the source document epoch at both ends of a hotkey capture.
+    pub async fn capture_request(
+        &self,
+        request: &extension::Envelope,
+        ring: Ring,
+    ) -> Result<CaptureResult> {
+        let Message::Capture { kind, rect, .. } = &request.message else {
+            return Err(Error::Invalid("expected capture request".into()));
+        };
+        let tab = request.tab_id.ok_or(Error::Denied("missing tab"))?;
+        let frame = request.frame_id.ok_or(Error::Denied("missing frame"))?;
+        let document = request
+            .document_id
+            .as_ref()
+            .ok_or(Error::Denied("missing document epoch"))?;
+        if self.extension.document(tab, frame).await.as_ref() != Some(document) {
+            return Err(Error::Denied("stale document"));
+        }
+        let target = self
+            .extension
+            .tabs()
+            .await
+            .into_iter()
+            .find(|t| t.tab_id == tab)
+            .ok_or(Error::Denied("unknown tab"))?
+            .target_id;
+        let kind = match kind.as_str() {
+            "viewport" => CaptureKind::Viewport,
+            "region" => CaptureKind::Region,
+            "dom" => CaptureKind::Dom,
+            _ => return Err(Error::Invalid("capture kind".into())),
+        };
+        let result = self.capture(&target, kind, *rect, ring).await?;
+        if self.extension.document(tab, frame).await.as_ref() != Some(document) {
+            return Err(Error::Denied("document changed during capture"));
+        }
+        Ok(result)
     }
     pub async fn capture(
         &self,
@@ -325,17 +449,9 @@ impl Browser {
         self.extension
             .request(Message::Hide, ext.tab_id, None)
             .await?;
-        let session = self.cdp.attach(target).await?;
+        let session = self.page_session(target).await?;
         let result = self
             .capture_inner(&session, tab, kind, rect, cursor, &mut dom, ring)
-            .await;
-        let _ = self
-            .cdp
-            .call(
-                "Target.detachFromTarget",
-                json!({"sessionId":session}),
-                None,
-            )
             .await;
         let _ = self
             .extension
@@ -354,6 +470,10 @@ impl Browser {
         dom: &mut Option<DomCapture>,
         ring: Ring,
     ) -> Result<CaptureResult> {
+        let epoch = self
+            .cdp
+            .call("Page.getFrameTree", json!({}), Some(session))
+            .await?;
         let metrics = self
             .cdp
             .call("Page.getLayoutMetrics", json!({}), Some(session))
@@ -446,15 +566,17 @@ impl Browser {
                 }
             }
         }
-        let mut params = json!({"format":"png","captureBeyondViewport":false,"fromSurface":true});
+        let mut params = json!({"format":"png","captureBeyondViewport":false,"fromSurface":true,"optimizeForSpeed":true});
         if matches!(kind, CaptureKind::Region) {
             let r = rect.ok_or_else(|| Error::Invalid("region requires rect".into()))?;
-            let zoom = metrics["visualViewport"]["clientWidth"]
-                .as_f64()
-                .unwrap_or(viewport.width)
-                / metrics["cssVisualViewport"]["clientWidth"]
-                    .as_f64()
-                    .unwrap_or(viewport.width);
+            let zoom = self
+                .extension
+                .tabs()
+                .await
+                .into_iter()
+                .find(|t| t.target_id == tab.id)
+                .map(|t| t.zoom)
+                .ok_or(Error::Closed)?;
             let offset = Point {
                 x: metrics["cssVisualViewport"]["pageX"]
                     .as_f64()
@@ -471,6 +593,13 @@ impl Browser {
             .cdp
             .call("Page.captureScreenshot", params, Some(session))
             .await?;
+        let after = self
+            .cdp
+            .call("Page.getFrameTree", json!({}), Some(session))
+            .await?;
+        if epoch != after {
+            return Err(Error::Denied("navigation during capture"));
+        }
         let raw = base64::engine::general_purpose::STANDARD
             .decode(
                 shot["data"]
@@ -509,6 +638,8 @@ impl Browser {
         })
     }
     pub async fn stop(&self) -> Result<()> {
+        self.stopping
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = self.cdp.call("Browser.close", json!({}), None).await;
         let mut child = self.child.lock().await;
         if tokio::time::timeout(Duration::from_secs(5), child.wait())
@@ -526,7 +657,7 @@ impl Browser {
     /// Restart uses remembered page URLs; cookies remain in the same private profile.
     pub async fn restart(&self) -> Result<Self> {
         let mut config = self.config.clone();
-        config.urls = self.list_tabs().await?.into_iter().map(|t| t.url).collect();
+        config.urls = self.remembered.lock().await.clone();
         self.stop().await?;
         Self::start(config, self.extension.clone()).await
     }

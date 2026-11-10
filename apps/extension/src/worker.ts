@@ -16,6 +16,14 @@ let pending: Record<string, Envelope> = {};
 const pointerFrames = new Map<number, number>();
 const liveFrames = new Map<number, Set<number>>();
 const scriptable = new Set<number>();
+const panelAttempted = new Set<number>();
+const panelWindows = new Set<number>();
+chrome.sidePanel.onOpened.addListener((info) => {
+  panelWindows.add(info.windowId);
+});
+chrome.sidePanel.onClosed.addListener((info) => {
+  panelWindows.delete(info.windowId);
+});
 let retry = 250;
 function envelope(
   message: Message,
@@ -41,11 +49,24 @@ async function send(
   documentId?: string,
 ): Promise<void> {
   const value = envelope(message, tabId, frameId, documentId);
-  if (message.type !== "heartbeat" && message.type !== "ack") {
+  if (
+    !(["heartbeat", "ack", "pointer", "tabs"] as string[]).includes(
+      message.type,
+    )
+  ) {
+    if (Object.keys(pending).length >= 1024) {
+      if (tabId !== undefined)
+        void chrome.tabs
+          .sendMessage(tabId, {
+            type: "capture.failed",
+            payload: {
+              reason: "Aufnahmepuffer voll – Verbindung zum Dienst prüfen.",
+            },
+          })
+          .catch(() => {});
+      return;
+    }
     pending[value.requestId] = value;
-    // Bound memory during a long daemon outage, retaining newest unsent events.
-    const ids = Object.keys(pending);
-    if (ids.length > 1024) delete pending[ids[0] ?? ""];
     await chrome.storage.session.set({ pending });
   }
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value));
@@ -63,6 +84,7 @@ async function tabReport(): Promise<void> {
       targetId: target.id,
       url: tab.url ?? "",
       title: tab.title ?? "",
+      zoom: await chrome.tabs.getZoom(tab.id),
       active: tab.active,
       scriptable: scriptable.has(tab.id),
     });
@@ -159,24 +181,61 @@ chrome.runtime.onMessage.addListener(
     const frameId = sender.frameId ?? 0;
     if (message.type === "action") {
       // Call open directly in the user-gesture message handler, before any await.
-      if (message.payload.action === "panel.toggle" || configuration.review) {
+      const windowId = sender.tab?.windowId;
+      if (
+        message.payload.action === "panel.toggle" &&
+        windowId !== undefined &&
+        panelWindows.has(windowId)
+      ) {
+        void chrome.sidePanel.close({ windowId }).catch(() => {});
+      } else if (
+        message.payload.action === "panel.toggle" ||
+        (configuration.review && !panelAttempted.has(tabId))
+      ) {
+        panelAttempted.add(tabId);
         void chrome.sidePanel.open({ tabId }).catch(() => {});
       }
+      if (message.payload.action.startsWith("capture.")) return;
     }
     if (message.type === "ready") {
       scriptable.add(tabId);
+      void send({ type: "frame.ready" }, tabId, frameId, sender.documentId);
       let frames = liveFrames.get(tabId);
       if (!frames) {
         frames = new Set();
         liveFrames.set(tabId, frames);
       }
       frames.add(frameId);
+      void chrome.storage.session.set({
+        liveFrames: [...liveFrames].map(([tab, frames]) => [tab, [...frames]]),
+        scriptable: [...scriptable],
+      });
       reply({ type: "configure", payload: configuration });
       void tabReport();
       return;
     }
-    if (message.type === "pointer") pointerFrames.set(tabId, frameId);
-    void send(message, tabId, frameId, sender.documentId);
+    if (message.type === "pointer") {
+      if (pointerFrames.get(tabId) !== frameId) {
+        pointerFrames.set(tabId, frameId);
+        void chrome.storage.session.set({ pointerFrames: [...pointerFrames] });
+      }
+    }
+    if (message.type === "capture.request") {
+      void chrome.webNavigation.getFrame({ tabId, frameId }).then((current) => {
+        if (current?.documentId !== sender.documentId) {
+          void chrome.tabs
+            .sendMessage(tabId, {
+              type: "capture.failed",
+              payload: {
+                reason: "Seite wurde während der Aufnahme gewechselt.",
+              },
+            })
+            .catch(() => {});
+          return;
+        }
+        void send(message, tabId, frameId, sender.documentId);
+      });
+    } else void send(message, tabId, frameId, sender.documentId);
     return;
   },
 );
@@ -186,6 +245,9 @@ chrome.tabs.onUpdated.addListener((id, change) => {
     liveFrames.delete(id);
     pointerFrames.delete(id);
   }
+  void tabReport();
+});
+chrome.tabs.onZoomChange.addListener(() => {
   void tabReport();
 });
 chrome.tabs.onActivated.addListener(() => {
@@ -205,7 +267,18 @@ async function start(): Promise<void> {
   bootstrap = (await (
     await fetch(chrome.runtime.getURL("bootstrap.json"))
   ).json()) as Bootstrap;
-  const stored = await chrome.storage.session.get(["pending", "configuration"]);
+  const stored = await chrome.storage.session.get([
+    "pending",
+    "configuration",
+    "pointerFrames",
+    "liveFrames",
+    "scriptable",
+  ]);
+  for (const [tab, frame] of (stored.pointerFrames ?? []) as [number, number][])
+    pointerFrames.set(tab, frame);
+  for (const [tab, frames] of (stored.liveFrames ?? []) as [number, number[]][])
+    liveFrames.set(tab, new Set(frames));
+  for (const tab of (stored.scriptable ?? []) as number[]) scriptable.add(tab);
   pending = (stored.pending as typeof pending | undefined) ?? {};
   configuration =
     (stored.configuration as typeof configuration | undefined) ?? configuration;

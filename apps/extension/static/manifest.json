@@ -31,5 +31,6 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; style-src 'self';"
   },
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm271NSbhm0YPAE4Oo9NSrI0Api4RAoMvAF1agADYMO4gePu+xAKHVgEa9PL2SabgKA5L4TOAkJxuKftnslVKLbfwRgEzfU+vSycsFsCsbbkAqf4jLAw28u1JRgU5lQq3r+P6+gOfHOxJW3eY87FFKr4u0ucmps7jfz2AmialZ/PNw9A1nMlHRCNTFOQu3uH1OnmAHiKOOhMam0uWo6a8sBh2ZfKxp/rqIW70UJX3hrhP+B6uczq00Td5hXWd6M/cksHFaz+UEfXJI1Vjti+v7L9r9c103CVndUS0yFLWklc0IjgoEMX9laezUeM9NkB1Sle/ATKzED6sEQCkoSPBUQIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm271NSbhm0YPAE4Oo9NSrI0Api4RAoMvAF1agADYMO4gePu+xAKHVgEa9PL2SabgKA5L4TOAkJxuKftnslVKLbfwRgEzfU+vSycsFsCsbbkAqf4jLAw28u1JRgU5lQq3r+P6+gOfHOxJW3eY87FFKr4u0ucmps7jfz2AmialZ/PNw9A1nMlHRCNTFOQu3uH1OnmAHiKOOhMam0uWo6a8sBh2ZfKxp/rqIW70UJX3hrhP+B6uczq00Td5hXWd6M/cksHFaz+UEfXJI1Vjti+v7L9r9c103CVndUS0yFLWklc0IjgoEMX9laezUeM9NkB1Sle/ATKzED6sEQCkoSPBUQIDAQAB",
+  "minimum_chrome_version": "142"
 }
