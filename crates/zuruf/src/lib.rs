@@ -1,4 +1,5 @@
 pub mod fakes;
+mod mcp_mount;
 mod worker;
 use axum::{
     Router,
@@ -78,6 +79,8 @@ struct Inner {
     events: broadcast::Sender<Value>,
     token: String,
     codes: Mutex<BTreeMap<String, Instant>>,
+    agent_auth: zuruf_mcp::AgentAuth,
+    control_gate: tokio::sync::Mutex<()>,
     pub(crate) t3: Arc<dyn T3Adapter>,
     speech: Arc<dyn SpeechAdapter>,
     speech_gate: tokio::sync::Mutex<()>,
@@ -127,6 +130,8 @@ impl Daemon {
             events,
             token,
             codes: Mutex::new(BTreeMap::new()),
+            agent_auth: zuruf_mcp::AgentAuth::default(),
+            control_gate: tokio::sync::Mutex::new(()),
             t3,
             speech,
             speech_gate: tokio::sync::Mutex::new(()),
@@ -152,6 +157,7 @@ impl Daemon {
             .route("/api/v1/{*path}", any(api))
             .fallback(get(ui))
             .with_state(self.clone())
+            .merge(mcp_mount::router(self))
     }
     pub fn shutdown(&self) {
         if let Ok(handles) = self.0.handles.lock() {
@@ -817,6 +823,7 @@ impl Daemon {
         .await
     }
     async fn session_control(&self, id: Id, r: ControlRequest) -> Result<Value> {
+        let _guard = self.0.control_gate.lock().await;
         let control = self.0.browser.control(id.clone(), r).await?;
         self.mutate(move |s, _| {
             let session = s

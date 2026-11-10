@@ -6,3 +6,6 @@ dist/
 .spike/
 target/
 .spike/
+tests/*.log
+tests/mcp/.run-*/
+tests/.install-*/

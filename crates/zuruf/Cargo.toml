@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 build = "build.rs"
 [dependencies]
+zuruf-mcp = { path = "../zuruf-mcp" }
 zuruf-core = { path = "../zuruf-core" }
 zuruf-store = { path = "../zuruf-store" }
 serde = { version = "1", features = ["derive"] }
