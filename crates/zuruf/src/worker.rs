@@ -30,14 +30,31 @@ impl Daemon {
             if let Ok(mut running) = app.0.workers.lock() {
                 running.remove(&id);
             }
+            // A retry can race with the final iteration of the previous worker.
+            if let Ok(snapshot) = app.snapshot().await
+                && snapshot.tasks.iter().any(|t| {
+                    t.id == id
+                        && matches!(
+                            t.status,
+                            TaskStatus::Queued
+                                | TaskStatus::FinalizingTranscript
+                                | TaskStatus::Dispatching
+                                | TaskStatus::Running
+                        )
+                })
+            {
+                app.start_worker(id);
+            }
         });
         if let Ok(mut handles) = self.0.handles.lock() {
+            handles.retain(|h| !h.is_finished());
             handles.push(job.abort_handle());
         }
     }
     pub(crate) async fn apply_receipt(&self, id: Id, r: ThreadReceipt) -> Result<Value> {
         self.mutate(move |s, store| {
             store.save_receipt(&id, &r)?;
+            store.clear_message(&id)?;
             let conflict = s.tasks.iter().any(|t| {
                 t.id != id
                     && !t.status.terminal()
@@ -49,10 +66,10 @@ impl Daemon {
                 .iter_mut()
                 .find(|t| t.id == id)
                 .ok_or_else(missing)?;
-            if t.status == TaskStatus::Cancelled {
-                return val(t);
+            let cancelled = t.status == TaskStatus::Cancelled;
+            if !cancelled {
+                t.status = TaskStatus::Running;
             }
-            t.status = TaskStatus::Running;
             t.thread_id = Some(r.thread_id);
             t.thread_url = r.thread_url;
             t.workspace_path = r.workspace_path;
@@ -84,6 +101,7 @@ impl Daemon {
         .await
     }
     async fn work(&self, id: Id) -> Result<()> {
+        let finalize_started = Instant::now();
         loop {
             let s = self.snapshot().await?;
             let task = s
@@ -94,6 +112,23 @@ impl Daemon {
                 .ok_or_else(missing)?;
             if task.status.terminal() || task.status == TaskStatus::UnknownRemoteState {
                 return Ok(());
+            }
+            if s.annotations.iter().any(|a| {
+                a.batch_id == task.batch_id
+                    && a.r#type != AnnotationType::Text
+                    && a.assets.is_empty()
+            }) {
+                if finalize_started.elapsed() > Duration::from_secs(120) {
+                    self.task_status(
+                        id,
+                        TaskStatus::Failed,
+                        Some("Capture did not finish; annotation retained".into()),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                continue;
             }
             if task.status == TaskStatus::FinalizingTranscript {
                 if s.segments.iter().any(|x| {
@@ -187,8 +222,24 @@ impl Daemon {
                         return Ok(());
                     }
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_secs_f64(
+                    s.settings.t3.poll_seconds.clamp(0.05, 300.),
+                ))
+                .await;
                 continue;
+            }
+            let task_key = id.clone();
+            let message = self
+                .access(move |p| Ok(p.store.message(&task_key)?))
+                .await?;
+            if task.status == TaskStatus::Dispatching && message.is_some() {
+                self.task_status(
+                    id,
+                    TaskStatus::UnknownRemoteState,
+                    Some("Follow-up receipt missing; resolve before resending".into()),
+                )
+                .await?;
+                return Ok(());
             }
             // A dispatching task after restart may already have created a remote thread.
             if task.status == TaskStatus::Dispatching {
@@ -255,6 +306,11 @@ impl Daemon {
             tracing::info!(task_id=%id,manifest=%manifest_path,"dispatching batch");
             self.task_status(id.clone(), TaskStatus::Dispatching, None)
                 .await?;
+            let prompt = message.as_ref().map(|m| m.prompt.clone()).unwrap_or(prompt);
+            let send_id = message
+                .as_ref()
+                .map(|m| m.request_id.clone())
+                .unwrap_or_else(|| id.clone());
             let request = CreateThreadRequest {
                 client_request_id: id.clone(),
                 profile: task.profile,
@@ -262,18 +318,41 @@ impl Daemon {
                 title: format!("{} [zuruf:{}]", task.title, id),
                 prompt,
             };
+            if self
+                .snapshot()
+                .await?
+                .tasks
+                .iter()
+                .any(|t| t.id == id && t.status == TaskStatus::Cancelled)
+            {
+                return Ok(());
+            }
             let sending_follow_up = task.thread_id.is_some();
-            let outcome = if let Some(thread) = task.thread_id {
-                self.0
-                    .t3
-                    .send_message(thread, id.clone(), request.prompt)
-                    .await
-            } else {
-                self.0.t3.create_thread(request).await
+            let operation = async {
+                if let Some(thread) = task.thread_id {
+                    self.0
+                        .t3
+                        .send_message(thread, send_id, request.prompt)
+                        .await
+                } else {
+                    self.0.t3.create_thread(request).await
+                }
             };
+            let outcome = tokio::time::timeout(Duration::from_secs(30), operation)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(AdapterError::Ambiguous(
+                        "T3 launch receipt timed out".into(),
+                    ))
+                });
             match outcome {
                 Ok(receipt) => {
-                    self.apply_receipt(id.clone(), receipt).await?;
+                    let thread = receipt.thread_id.clone();
+                    let updated = self.apply_receipt(id.clone(), receipt).await?;
+                    if updated["status"] == "cancelled" {
+                        self.0.t3.interrupt(thread).await?;
+                        return Ok(());
+                    }
                 }
                 Err(AdapterError::Ambiguous(reason)) if sending_follow_up => {
                     self.task_status(id, TaskStatus::UnknownRemoteState, Some(reason))

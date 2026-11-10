@@ -80,6 +80,7 @@ struct Inner {
     codes: Mutex<BTreeMap<String, Instant>>,
     pub(crate) t3: Arc<dyn T3Adapter>,
     speech: Arc<dyn SpeechAdapter>,
+    speech_gate: tokio::sync::Mutex<()>,
     browser: Arc<dyn BrowserController>,
     hotkeys: Arc<dyn DesktopHotkeys>,
     workers: Mutex<HashSet<Id>>,
@@ -111,7 +112,11 @@ impl Daemon {
                 zuruf_store::atomic_write(&token_path, token.as_bytes())?;
                 token
             };
-            let snapshot = store.load()?.unwrap_or(empty_snapshot(store.settings()?));
+            let settings = store.settings()?;
+            let mut snapshot = store
+                .load()?
+                .unwrap_or_else(|| empty_snapshot(settings.clone()));
+            snapshot.settings = settings;
             Ok((store, snapshot, token))
         })
         .await
@@ -124,6 +129,7 @@ impl Daemon {
             codes: Mutex::new(BTreeMap::new()),
             t3,
             speech,
+            speech_gate: tokio::sync::Mutex::new(()),
             browser,
             hotkeys,
             workers: Mutex::new(HashSet::new()),
@@ -154,11 +160,13 @@ impl Daemon {
             }
         }
     }
-    pub async fn close(&self)->Result<()> {
+    pub async fn close(&self) -> Result<()> {
         self.shutdown();
         self.0.speech.cancel().await?;
         self.0.hotkeys.clear().await?;
-        for session in self.snapshot().await?.sessions{self.0.browser.stop_session(session.id).await?;}
+        for session in self.snapshot().await?.sessions {
+            self.0.browser.stop_session(session.id).await?;
+        }
         Ok(())
     }
     pub async fn snapshot(&self) -> Result<Snapshot> {
@@ -197,6 +205,30 @@ impl Daemon {
             let before = p.snapshot.clone();
             let mut candidate = before.clone();
             let result = f(&mut candidate, &mut p.store)?;
+            candidate.status.speech.pending_segments = candidate
+                .segments
+                .iter()
+                .filter(|s| {
+                    matches!(
+                        s.state,
+                        TranscriptSegmentState::Recording | TranscriptSegmentState::Transcribing
+                    )
+                })
+                .count() as f64;
+            let writers = candidate
+                .tasks
+                .iter()
+                .filter(|t| !t.status.terminal())
+                .filter_map(|t| t.workspace_path.clone().map(|path| (t.id.clone(), path)))
+                .collect::<Vec<_>>();
+            for t in &mut candidate.tasks {
+                t.workspace_conflict = !t.status.terminal()
+                    && t.workspace_path.as_ref().is_some_and(|path| {
+                        writers
+                            .iter()
+                            .any(|(id, other)| id != &t.id && other == path)
+                    });
+            }
             let mut events = diff(&before, &candidate)?;
             let mut task_events = Vec::new();
             for task in &candidate.tasks {
@@ -352,7 +384,7 @@ impl Daemon {
         let original = self.snapshot().await?;
         for status in [
             TaskStatus::Completed,
-            TaskStatus::NeedsReview,
+            TaskStatus::Cancelled,
             TaskStatus::Failed,
         ] {
             let profile = original.profiles[0].clone();
@@ -416,7 +448,7 @@ impl Daemon {
             let job = tokio::spawn(async move {
                 let text = handle.transcript.await;
                 let _ = app
-                    .mutate(move |s, _| {
+                    .mutate(move |s, store| {
                         let seg = s
                             .segments
                             .iter_mut()
@@ -435,6 +467,14 @@ impl Daemon {
                                     TranscriptSegmentState::Ready
                                 };
                                 seg.original_text = text.clone();
+                                if let Some(batch) = s.batches.iter().find(|b| b.id == seg.batch_id)
+                                {
+                                    store.write_asset(
+                                        batch,
+                                        &format!("transcripts/segment-{}.txt", seg.id),
+                                        text.as_bytes(),
+                                    )?;
+                                }
                                 if let Some(a) = s
                                     .annotations
                                     .iter_mut()
@@ -464,13 +504,21 @@ impl Daemon {
         Ok(())
     }
     async fn dispatch(&self, batch: Id, request: DispatchRequest) -> Result<Value> {
-        let speech_on = self.snapshot().await?.settings.speech.enabled;
-        if speech_on {
-            let handles = self.0.speech.stop().await?;
-            self.add_segments(handles).await?;
-        }
+        let guard_id = id();
+        let boundary_id = guard_id.clone();
         let result = self
             .mutate(move |s, _| {
+                if s.settings.speech.enabled {
+                    s.segments.push(TranscriptSegment {
+                        id: boundary_id,
+                        batch_id: batch.clone(),
+                        annotation_id: None,
+                        started_at: now(),
+                        ended_at: Some(now()),
+                        state: TranscriptSegmentState::Recording,
+                        original_text: String::new(),
+                    });
+                }
                 Ok(Store::prepare_seal(
                     s,
                     &batch,
@@ -479,15 +527,65 @@ impl Daemon {
                 )?)
             })
             .await?;
+        let speech_on = self
+            .snapshot()
+            .await?
+            .segments
+            .iter()
+            .any(|seg| seg.id == guard_id);
         if speech_on {
-            self.0
-                .speech
-                .start_epoch(SpeechBoundary {
-                    batch_id: result.active_batch.id.clone(),
-                    annotation_id: None,
-                    at: now(),
-                })
-                .await?;
+            let app = self.clone();
+            let new_batch = result.active_batch.id.clone();
+            let job = tokio::spawn(async move {
+                let _gate = app.0.speech_gate.lock().await;
+                let outcome = match app.0.speech.stop().await {
+                    Ok(handles) => app.add_segments(handles).await,
+                    Err(e) => Err(e.into()),
+                };
+                let successful = outcome.is_ok();
+                let error = outcome.err().map(|e| e.to_string());
+                let _ = app
+                    .mutate(move |s, _| {
+                        let guard = s
+                            .segments
+                            .iter_mut()
+                            .find(|seg| seg.id == guard_id)
+                            .ok_or_else(missing)?;
+                        guard.state = if successful {
+                            TranscriptSegmentState::Empty
+                        } else {
+                            TranscriptSegmentState::Failed
+                        };
+                        if let Some(error) = error {
+                            s.status.speech.state = SpeechStateState::Error;
+                            s.status.speech.error = Some(error);
+                        }
+                        Ok(())
+                    })
+                    .await;
+                if let Err(e) = app
+                    .0
+                    .speech
+                    .start_epoch(SpeechBoundary {
+                        batch_id: new_batch,
+                        annotation_id: None,
+                        at: now(),
+                    })
+                    .await
+                {
+                    let _ = app
+                        .mutate(move |s, _| {
+                            s.status.speech.state = SpeechStateState::Error;
+                            s.status.speech.error = Some(e.to_string());
+                            Ok(())
+                        })
+                        .await;
+                }
+            });
+            if let Ok(mut handles) = self.0.handles.lock() {
+                handles.retain(|h| !h.is_finished());
+                handles.push(job.abort_handle());
+            }
         }
         self.start_worker(result.task.id.clone());
         val(result)
@@ -513,6 +611,7 @@ impl Daemon {
             "speech.toggle" => {
                 let s = self.snapshot().await?;
                 let enabled = !s.settings.speech.enabled;
+                let _gate = self.0.speech_gate.lock().await;
                 if enabled {
                     self.0
                         .speech
@@ -544,6 +643,48 @@ impl Daemon {
                     "capture.region" => AnnotationType::Region,
                     _ => AnnotationType::Viewport,
                 };
+                let batch_id = b.clone();
+                let placeholder = self
+                    .mutate(move |s, _| {
+                        let existing =
+                            if s.settings.capture.mode == SettingsCaptureMode::ExtendOpenEntry {
+                                s.annotations
+                                    .iter()
+                                    .rev()
+                                    .find(|a| {
+                                        a.batch_id == batch_id && a.status == AnnotationStatus::Open
+                                    })
+                                    .cloned()
+                            } else {
+                                None
+                            };
+                        if let Some(a) = existing {
+                            Ok(a)
+                        } else {
+                            let a = new_annotation(s, &batch_id, kind, String::new())?;
+                            s.annotations.push(a.clone());
+                            Ok(a)
+                        }
+                    })
+                    .await?;
+                if s.settings.speech.enabled {
+                    let _gate = self.0.speech_gate.lock().await;
+                    let boundary = SpeechBoundary {
+                        batch_id: placeholder.batch_id.clone(),
+                        annotation_id: Some(placeholder.id.clone()),
+                        at: now(),
+                    };
+                    let mut handles = self.0.speech.mark(boundary).await?;
+                    if s.settings.speech.attach == SettingsSpeechAttach::Before {
+                        for handle in &mut handles {
+                            if handle.segment.batch_id == placeholder.batch_id {
+                                handle.segment.annotation_id = Some(placeholder.id.clone());
+                            }
+                        }
+                    }
+                    self.add_segments(handles).await?;
+                }
+                let capture_id = placeholder.id.clone();
                 let result = self
                     .0
                     .browser
@@ -556,7 +697,13 @@ impl Daemon {
                     .await?;
                 let annotation = self
                     .mutate(move |s, store| {
-                        let mut a = new_annotation(s, &b, kind, String::new())?;
+                        let mut a = s
+                            .annotations
+                            .iter()
+                            .find(|a| a.id == capture_id)
+                            .cloned()
+                            .ok_or_else(missing)?;
+                        a.r#type = kind;
                         a.url = Some(redact_url(&result.tab.url, &s.settings.redaction));
                         a.page_title = Some(result.tab.title);
                         a.session_id = Some(result.tab.session_id);
@@ -566,10 +713,23 @@ impl Daemon {
                         a.cursor = result.cursor;
                         a.rect = result.rect;
                         a.dom = result.dom;
+                        if let Some(dom) = &mut a.dom {
+                            dom.attributes.retain(|key, _| {
+                                matches!(
+                                    key.as_str(),
+                                    "id" | "class"
+                                        | "role"
+                                        | "data-testid"
+                                        | "aria-label"
+                                        | "aria-labelledby"
+                                        | "type"
+                                ) && !sensitive(key, &s.settings.redaction.patterns)
+                            });
+                        }
                         let batch = s.batches.iter().find(|x| x.id == b).ok_or_else(missing)?;
                         for (n, image) in result.images.into_iter().enumerate() {
                             let asset_id = id();
-                            let path = format!("assets/ann-{}-{n}.png", a.id);
+                            let path = format!("assets/ann-{}-{n}-{asset_id}.png", a.id);
                             store.write_asset(batch, &path, &image.bytes)?;
                             a.assets.push(Asset {
                                 id: asset_id.clone(),
@@ -580,22 +740,13 @@ impl Daemon {
                                 url: format!("/api/v1/assets/{asset_id}"),
                             });
                         }
-                        s.annotations.push(a.clone());
+                        if let Some(target) = s.annotations.iter_mut().find(|x| x.id == a.id) {
+                            *target = a.clone();
+                        }
                         Ok(a)
                     })
                     .await?;
-                if s.settings.speech.enabled {
-                    let handles = self
-                        .0
-                        .speech
-                        .mark(SpeechBoundary {
-                            batch_id: annotation.batch_id,
-                            annotation_id: Some(annotation.id),
-                            at: now(),
-                        })
-                        .await?;
-                    self.add_segments(handles).await?;
-                }
+                let _ = annotation;
             }
             "control.takeover" => {
                 let s = self
@@ -717,7 +868,13 @@ fn create_draft(s: &mut Snapshot, r: &Review) {
         id: id(),
         review_id: r.id.clone(),
         project_id: r.project_id.clone(),
-        seq: s.batches.iter().filter(|b|b.review_id==r.id).map(|b|b.seq).fold(0.,f64::max)+1.,
+        seq: s
+            .batches
+            .iter()
+            .filter(|b| b.review_id == r.id)
+            .map(|b| b.seq)
+            .fold(0., f64::max)
+            + 1.,
         state: BatchState::Draft,
         title: "Aufgabe 1".into(),
         note: String::new(),
@@ -838,7 +995,65 @@ async fn events(
     if !origin_ok(&headers) {
         return Err(Error::Api(StatusCode::FORBIDDEN, "origin rejected".into()));
     }
-    Ok(ws.on_upgrade(move|mut socket|async move{let auth=tokio::time::timeout(Duration::from_secs(5),socket.recv()).await;let accepted=match auth{Ok(Some(Ok(Message::Text(text))))=>serde_json::from_str::<Value>(&text).is_ok_and(|v|v["type"]=="auth" && v["token"].as_str()==Some(&app.0.token)),_=>false};if !accepted{let _=socket.send(Message::Close(None)).await;return;}let source=app.0.clone();let Ok((s,mut rx))=app.access(move|p|Ok((p.snapshot.clone(),source.events.subscribe()))).await else{return};let mut seq=1u64;if socket.send(Message::Text(json!({"type":"snapshot","payload":s,"seq":seq}).to_string().into())).await.is_err(){return;}loop{tokio::select!{event=rx.recv()=>{let mut event=match event{Ok(e)=>e,Err(broadcast::error::RecvError::Lagged(_))=>{let Ok(s)=app.snapshot().await else{break};json!({"type":"snapshot","payload":s})},Err(_)=>break};seq+=1;event["seq"]=json!(seq);if socket.send(Message::Text(event.to_string().into())).await.is_err(){break;}},frame=socket.recv()=>{match frame{Some(Ok(Message::Ping(bytes)))=>{if socket.send(Message::Pong(bytes)).await.is_err(){break;}},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,_=>{}}}}}}).into_response())
+    Ok(ws
+        .on_upgrade(move |socket| event_socket(app, socket))
+        .into_response())
+}
+async fn stream_snapshot(app: &Daemon) -> Result<(Snapshot, broadcast::Receiver<Value>)> {
+    let source = app.0.clone();
+    app.access(move |p| Ok((p.snapshot.clone(), source.events.subscribe())))
+        .await
+}
+async fn event_socket(app: Daemon, mut socket: axum::extract::ws::WebSocket) {
+    let auth = tokio::time::timeout(Duration::from_secs(5), socket.recv()).await;
+    let accepted = match auth {
+        Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<Value>(&text)
+            .is_ok_and(|v| v["type"] == "auth" && v["token"].as_str() == Some(&app.0.token)),
+        _ => false,
+    };
+    if !accepted {
+        let _ = socket.send(Message::Close(None)).await;
+        return;
+    }
+    let Ok((snapshot, mut rx)) = stream_snapshot(&app).await else {
+        return;
+    };
+    let mut seq = 1u64;
+    let first = json!({"type":"snapshot","payload":snapshot,"seq":seq});
+    if socket
+        .send(Message::Text(first.to_string().into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+    loop {
+        tokio::select! {
+            event=rx.recv()=>{
+                let mut event=match event{
+                    Ok(event)=>event,
+                    Err(broadcast::error::RecvError::Lagged(_))=>{
+                        let Ok((snapshot,new_rx))=stream_snapshot(&app).await else{break};
+                        rx=new_rx;
+                        json!({"type":"snapshot","payload":snapshot})
+                    }
+                    Err(_)=>break,
+                };
+                seq+=1;
+                event["seq"]=json!(seq);
+                if socket.send(Message::Text(event.to_string().into())).await.is_err(){break;}
+            }
+            frame=socket.recv()=>{
+                match frame{
+                    Some(Ok(Message::Ping(bytes)))=>{
+                        if socket.send(Message::Pong(bytes)).await.is_err(){break;}
+                    }
+                    Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,
+                    _=>{}
+                }
+            }
+        }
+    }
 }
 #[derive(rust_embed::RustEmbed)]
 #[folder = "$OUT_DIR/ui"]
@@ -1250,29 +1465,102 @@ async fn api(
         }
         ("POST", "tasks", _, "follow-up") => {
             let request: FollowUpRequest = serde_json::from_value(v)?;
-            let s = app.snapshot().await?;
-            let t = s.tasks.iter().find(|t| t.id == key).ok_or_else(missing)?;
-            let thread = t
-                .thread_id
-                .clone()
-                .ok_or_else(|| invalid("thread required"))?;
-            let mut text = request.text.unwrap_or_default();
-            for id in request.annotation_ids.unwrap_or_default() {
-                let a = s
-                    .annotations
-                    .iter()
-                    .find(|a| a.id == id && a.project_id == t.project_id)
-                    .ok_or_else(missing)?;
-                text.push_str(&format!(
-                    "\nAnnotation {}: {}\n{}",
-                    a.id, a.note, a.transcript
-                ));
-            }
-            if text.trim().is_empty() {
-                return Err(invalid("empty follow-up"));
-            }
-            let receipt = app.0.t3.send_message(thread, id(), text).await?;
-            let result = app.apply_receipt(key.clone(), receipt).await?;
+            let task_id = key.clone();
+            let inner = app.0.clone();
+            let result = app
+                .access(move |p| {
+                    let before = p.snapshot.clone();
+                    let mut next = before.clone();
+                    let task = next
+                        .tasks
+                        .iter()
+                        .find(|t| t.id == task_id)
+                        .cloned()
+                        .ok_or_else(missing)?;
+                    if !task.status.terminal() {
+                        return Err(invalid("wait for the current run before sending follow-up"));
+                    }
+                    if task.thread_id.is_none() {
+                        return Err(invalid("thread required"));
+                    }
+                    let request_id = id();
+                    let mut prompt = request.text.unwrap_or_default();
+                    for annotation_id in request.annotation_ids.unwrap_or_default() {
+                        let a = next
+                            .annotations
+                            .iter()
+                            .find(|a| a.id == annotation_id && a.project_id == task.project_id)
+                            .cloned()
+                            .ok_or_else(missing)?;
+                        let batch = next
+                            .batches
+                            .iter()
+                            .find(|b| b.id == a.batch_id)
+                            .ok_or_else(missing)?;
+                        let project = next
+                            .projects
+                            .iter()
+                            .find(|pr| pr.id == task.project_id)
+                            .ok_or_else(missing)?;
+                        let manifest = build_manifest(
+                            batch,
+                            project,
+                            &task.profile,
+                            &[a],
+                            &next.settings.redaction,
+                        )
+                        .map_err(|e| invalid(&e.to_string()))?;
+                        let path = p.store.write_asset(
+                            batch,
+                            &format!("follow-up-{request_id}-{annotation_id}.json"),
+                            &serde_json::to_vec_pretty(&manifest)?,
+                        )?;
+                        prompt.push('\n');
+                        prompt.push_str(
+                            &build_prompt(&path.to_string_lossy())
+                                .map_err(|e| invalid(&e.to_string()))?,
+                        );
+                    }
+                    if prompt.trim().is_empty() {
+                        return Err(invalid("empty follow-up"));
+                    }
+                    let t = next
+                        .tasks
+                        .iter_mut()
+                        .find(|t| t.id == task_id)
+                        .ok_or_else(missing)?;
+                    t.status = TaskStatus::Queued;
+                    t.finished_at = None;
+                    t.error = None;
+                    let response = val(&*t)?;
+                    let event = TaskEvent {
+                        id: request_id.clone(),
+                        task_id: task_id.clone(),
+                        at: now(),
+                        kind: TaskEventKind::FollowUp,
+                        status: Some(TaskStatus::Queued),
+                        text: Some(prompt.clone()),
+                    };
+                    let message = zuruf_store::QueuedMessage {
+                        task_id,
+                        request_id,
+                        prompt,
+                    };
+                    p.store.save_with_message(
+                        &next,
+                        std::slice::from_ref(&event),
+                        Some(&message),
+                    )?;
+                    p.snapshot = next.clone();
+                    for e in diff(&before, &next)? {
+                        let _ = inner.events.send(e);
+                    }
+                    let _ = inner
+                        .events
+                        .send(json!({"type":"task.event","payload":event}));
+                    Ok(response)
+                })
+                .await?;
             app.start_worker(key);
             result
         }

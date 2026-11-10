@@ -462,7 +462,12 @@ impl BrowserController for FakeBrowser {
                     s.control
                         .grant(
                             r.agent_id.unwrap_or_default(),
-                            (time::OffsetDateTime::now_utc()+time::Duration::seconds(r.lease_seconds.unwrap_or(60.).clamp(1.,3600.) as i64)).format(&time::format_description::well_known::Rfc3339).map_err(|e|AdapterError::Rejected(e.to_string()))?,
+                            (time::OffsetDateTime::now_utc()
+                                + time::Duration::seconds(
+                                    r.lease_seconds.unwrap_or(60.).clamp(1., 3600.) as i64,
+                                ))
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .map_err(|e| AdapterError::Rejected(e.to_string()))?,
                         )
                         .map_err(|e| AdapterError::Rejected(e.to_string()))?;
                 }
