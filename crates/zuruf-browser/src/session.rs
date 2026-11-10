@@ -78,6 +78,15 @@ impl Browser {
             serde_json::to_vec(&extension.bootstrap)?,
         )
         .await?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(
+                runtime.join("bootstrap.json"),
+                std::fs::Permissions::from_mode(0o600),
+            )
+            .await?;
+        }
         let active = profile.join("DevToolsActivePort");
         if active.exists() {
             tokio::fs::remove_file(&active).await?;

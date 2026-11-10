@@ -66,6 +66,10 @@ pub struct SegmentHandle {
     receiver: watch::Receiver<Segment>,
 }
 impl SegmentHandle {
+    /// Immutable ownership and sample bounds, available before transcription finishes.
+    pub fn segment(&self) -> Segment {
+        self.receiver.borrow().clone()
+    }
     pub async fn resolve(mut self) -> Segment {
         loop {
             let s = self.receiver.borrow().clone();
@@ -93,6 +97,8 @@ pub trait SpeechAdapter: Send {
         next_annotation: Option<String>,
         next_epoch: Option<String>,
     ) -> AsyncResult<'_, SegmentHandle>;
+    /// Stop capture without invalidating already sealed transcript handles.
+    fn finish(&mut self) -> AsyncResult<'_, ()>;
     fn cancel(&mut self) -> AsyncResult<'_, ()>;
 }
 #[derive(Clone)]
@@ -455,6 +461,9 @@ impl<T: Transcriber> SpeechAdapter for Continuous<T> {
     ) -> AsyncResult<'_, SegmentHandle> {
         Box::pin(async move { self.boundary(annotation, epoch) })
     }
+    fn finish(&mut self) -> AsyncResult<'_, ()> {
+        Box::pin(async move { self.stop_recorder().await })
+    }
     fn cancel(&mut self) -> AsyncResult<'_, ()> {
         Box::pin(async move {
             self.generation
@@ -672,6 +681,9 @@ impl SpeechAdapter for DaemonIo {
             Ok(SegmentHandle { id, receiver })
         })
     }
+    fn finish(&mut self) -> AsyncResult<'_, ()> {
+        self.cancel()
+    }
     fn cancel(&mut self) -> AsyncResult<'_, ()> {
         Box::pin(async move {
             if self.owned {
@@ -840,6 +852,9 @@ impl SpeechAdapter for Daemon {
 
             Ok(SegmentHandle { id, receiver })
         })
+    }
+    fn finish(&mut self) -> AsyncResult<'_, ()> {
+        self.cancel()
     }
     fn cancel(&mut self) -> AsyncResult<'_, ()> {
         Box::pin(async move {

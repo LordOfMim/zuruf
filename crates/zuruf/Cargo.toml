@@ -17,7 +17,15 @@ tracing-subscriber = "0.3"
 thiserror = "2"
 rust-embed = { version = "8", features = ["interpolate-folder-path", "debug-embed"] }
 png = "0.18"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
+zuruf-browser = { path = "../zuruf-browser" }
+zuruf-t3 = { path = "../zuruf-t3" }
+zuruf-speech = { path = "../zuruf-speech" }
+zuruf-hypr = { path = "../zuruf-hypr" }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 [dev-dependencies]
 tempfile = "3"
 tokio-tungstenite = "0.28"

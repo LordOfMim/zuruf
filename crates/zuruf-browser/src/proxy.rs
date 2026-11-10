@@ -85,7 +85,7 @@ impl AgentAccess {
         self.revoked
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
-    fn check(&self) -> Result<()> {
+    pub fn check(&self) -> Result<()> {
         if self.revoked.load(std::sync::atomic::Ordering::SeqCst) {
             Err(Error::Denied("agent token revoked"))
         } else {

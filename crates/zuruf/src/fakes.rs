@@ -179,6 +179,7 @@ impl T3Adapter for FakeT3 {
                 "running"
             };
             Ok(RemoteStatus {
+                error: None,
                 run_id: run,
                 status: status.into(),
                 last_assistant_message: if status == "completed" {

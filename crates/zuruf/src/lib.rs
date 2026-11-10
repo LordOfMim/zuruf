@@ -1,4 +1,5 @@
 pub mod fakes;
+pub mod real;
 mod worker;
 use axum::{
     Router,
@@ -74,6 +75,8 @@ struct Persist {
     snapshot: Snapshot,
 }
 struct Inner {
+    stop: tokio::sync::Notify,
+    real: std::sync::OnceLock<real::Runtime>,
     persist: Mutex<Persist>,
     events: broadcast::Sender<Value>,
     token: String,
@@ -123,6 +126,8 @@ impl Daemon {
         .map_err(|e| Error::Join(e.to_string()))??;
         let (events, _) = broadcast::channel(1024);
         Ok(Self(Arc::new(Inner {
+            stop: tokio::sync::Notify::new(),
+            real: std::sync::OnceLock::new(),
             persist: Mutex::new(Persist { store, snapshot }),
             events,
             token,
@@ -147,13 +152,24 @@ impl Daemon {
     }
     pub fn router(&self) -> Router {
         Router::new()
+            .route("/ext", get(real::extension_ws))
+            .route("/cdp/{session}", get(real::cdp_ws))
+            .route(
+                "/api/v1/sessions/{session}/agent-access",
+                axum::routing::post(real::agent_access),
+            )
             .route("/api/v1/events", get(events))
             .route("/events", get(events))
             .route("/api/v1/{*path}", any(api))
             .fallback(get(ui))
+            .layer(axum::middleware::from_fn(real::cors))
             .with_state(self.clone())
     }
+    pub async fn stopped(&self) {
+        self.0.stop.notified().await;
+    }
     pub fn shutdown(&self) {
+        self.0.stop.notify_waiters();
         if let Ok(handles) = self.0.handles.lock() {
             for h in handles.iter() {
                 h.abort();
@@ -162,12 +178,19 @@ impl Daemon {
     }
     pub async fn close(&self) -> Result<()> {
         self.shutdown();
-        self.0.speech.cancel().await?;
-        self.0.hotkeys.clear().await?;
-        for session in self.snapshot().await?.sessions {
-            self.0.browser.stop_session(session.id).await?;
+        let mut failure = self.0.speech.cancel().await.err().map(Error::from);
+        if let Err(e) = self.0.hotkeys.clear().await {
+            failure.get_or_insert(e.into());
         }
-        Ok(())
+        for session in self.snapshot().await?.sessions {
+            if let Err(e) = self.0.browser.stop_session(session.id).await {
+                failure.get_or_insert(e.into());
+            }
+        }
+        match failure {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
     pub async fn snapshot(&self) -> Result<Snapshot> {
         self.access(|p| Ok(p.snapshot.clone())).await
@@ -276,6 +299,16 @@ impl Daemon {
             Ok(())
         })
         .await?;
+        self.mutate(|s, _| {
+            let incomplete: HashSet<_> = s.annotations.iter().filter(|a| a.r#type != AnnotationType::Text && a.assets.is_empty()).map(|a| a.batch_id.clone()).collect();
+            for task in &mut s.tasks {
+                if incomplete.contains(&task.batch_id) && task.thread_id.is_none() && !task.status.terminal() {
+                    task.status = TaskStatus::Failed;
+                    task.error = Some("Aufnahme durch Neustart unterbrochen. Annotation prüfen und neu aufnehmen.".into());
+                }
+            }
+            Ok(())
+        }).await?;
         let connection = self.0.t3.discover_capabilities().await;
         self.mutate(move |s, _| {
             match connection {
@@ -290,7 +323,30 @@ impl Daemon {
         .await?;
         for s in self.snapshot().await?.sessions {
             if s.state == BrowserSessionState::Running {
-                let _ = self.0.browser.start_session(s).await;
+                let id = s.id.clone();
+                match self.0.browser.start_session(s).await {
+                    Ok(updated) => {
+                        self.mutate(move |s, _| {
+                            if let Some(session) =
+                                s.sessions.iter_mut().find(|s| s.id == updated.id)
+                            {
+                                *session = updated;
+                            }
+                            Ok(())
+                        })
+                        .await?;
+                    }
+                    Err(error) => {
+                        tracing::warn!(error=%error, "session restart failed");
+                        self.mutate(move |s, _| {
+                            if let Some(session) = s.sessions.iter_mut().find(|s| s.id == id) {
+                                session.state = BrowserSessionState::Crashed;
+                            }
+                            Ok(())
+                        })
+                        .await?;
+                    }
+                }
             }
         }
         let snapshot = self.snapshot().await?;
@@ -772,7 +828,15 @@ impl Daemon {
                 })
                 .await?;
             }
-            "comment.text" | "panel.toggle" | "app.open" | "batch.send_to_thread" => {
+            "app.open" => {
+                tokio::process::Command::new(std::env::current_exe().map_err(StoreError::from)?)
+                    .arg("open")
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .map_err(StoreError::from)?;
+            }
+            "comment.text" | "panel.toggle" | "batch.send_to_thread" => {
                 let a: ActionId = serde_json::from_value(json!(action))?;
                 self.mutate(move |s, _| {
                     s.status.pending_action = Some(a);
@@ -817,6 +881,12 @@ impl Daemon {
         .await
     }
     async fn session_control(&self, id: Id, r: ControlRequest) -> Result<Value> {
+        if r.action == ControlRequestAction::Revoke
+            && let Some(runtime) = self.0.real.get()
+            && let Some(access) = runtime.access.lock().await.remove(&id)
+        {
+            access.revoke();
+        }
         let control = self.0.browser.control(id.clone(), r).await?;
         self.mutate(move |s, _| {
             let session = s
@@ -983,6 +1053,7 @@ fn origin_ok(headers: &HeaderMap) -> bool {
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("");
             origin == format!("http://{host}")
+                || origin == real::extension_origin()
                 || std::env::var("ZURUF_EXTENSION_ORIGIN").is_ok_and(|allowed| allowed == origin)
         })
     })
@@ -1007,8 +1078,12 @@ async fn stream_snapshot(app: &Daemon) -> Result<(Snapshot, broadcast::Receiver<
 async fn event_socket(app: Daemon, mut socket: axum::extract::ws::WebSocket) {
     let auth = tokio::time::timeout(Duration::from_secs(5), socket.recv()).await;
     let accepted = match auth {
-        Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<Value>(&text)
-            .is_ok_and(|v| v["type"] == "auth" && v["token"].as_str() == Some(&app.0.token)),
+        Ok(Some(Ok(Message::Text(text)))) => match serde_json::from_str::<Value>(&text) {
+            Ok(v) if v["type"] == "auth" => {
+                real::authorized(&app, v["token"].as_str().unwrap_or("")).await
+            }
+            _ => false,
+        },
         _ => false,
     };
     if !accepted {
@@ -1043,6 +1118,7 @@ async fn event_socket(app: Daemon, mut socket: axum::extract::ws::WebSocket) {
                 event["seq"]=json!(seq);
                 if socket.send(Message::Text(event.to_string().into())).await.is_err(){break;}
             }
+            _=app.stopped()=>break,
             frame=socket.recv()=>{
                 match frame{
                     Some(Ok(Message::Ping(bytes)))=>{
@@ -1105,7 +1181,12 @@ async fn api(
         return Ok(axum::Json(json!({"token":app.0.token})).into_response());
     }
     let auth = headers.get("authorization").and_then(|h| h.to_str().ok());
-    if auth != Some(&format!("Bearer {}", app.0.token)) {
+    if !real::authorized(
+        &app,
+        auth.and_then(|a| a.strip_prefix("Bearer ")).unwrap_or(""),
+    )
+    .await
+    {
         return Err(Error::Api(
             StatusCode::UNAUTHORIZED,
             "bearer required".into(),
@@ -1116,6 +1197,10 @@ async fn api(
     let key = parts.get(1).copied().unwrap_or("").to_string();
     let operation = parts.get(2).copied().unwrap_or("");
     let result = match (method.as_str(), entity, key.as_str(), operation) {
+        ("POST", "shutdown", _, _) => {
+            app.0.stop.notify_one();
+            json!({"ok":true})
+        }
         ("GET", "state", _, _) => val(app.snapshot().await?)?,
         ("POST", "auth", "code", _) => json!({"code":app.mint_code().await?}),
         ("POST", "actions", _, _) => app.action(&key).await?,
@@ -1173,6 +1258,14 @@ async fn api(
             );
             if !issues.is_empty() {
                 return Ok((StatusCode::UNPROCESSABLE_ENTITY,axum::Json(json!({"error":{"code":"bindings.invalid","message":"Ungültige Tastenbelegung","issues":issues}}))).into_response());
+            }
+            if let Some(runtime) = app.0.real.get() {
+                *runtime
+                    .speech
+                    .settings
+                    .write()
+                    .map_err(|_| Error::Join("speech settings lock".into()))? =
+                    settings.speech.clone();
             }
             app.0.hotkeys.apply(settings.bindings.clone()).await?;
             app.0
@@ -1567,7 +1660,7 @@ async fn api(
         ("POST", "sessions", _, "control") => {
             app.session_control(key, serde_json::from_value(v)?).await?
         }
-        ("POST", "sessions", _, "start" | "stop" | "duplicate" | "tabs") => {
+        ("POST", "sessions", _, "start" | "stop" | "restart" | "duplicate" | "tabs") => {
             let s = app
                 .snapshot()
                 .await?
@@ -1577,6 +1670,10 @@ async fn api(
                 .ok_or_else(missing)?;
             let updated = match operation {
                 "start" => app.0.browser.start_session(s).await?,
+                "restart" => {
+                    app.0.browser.stop_session(key.clone()).await?;
+                    app.0.browser.start_session(s).await?
+                }
                 "stop" => {
                     app.0.browser.stop_session(key.clone()).await?;
                     BrowserSession {

@@ -2367,6 +2367,8 @@ dependencies = [
  "axum",
  "clap",
  "futures-util",
+ "hyper",
+ "hyper-util",
  "png",
  "reqwest",
  "rust-embed",
@@ -2379,8 +2381,12 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tracing",
  "tracing-subscriber",
+ "zuruf-browser",
  "zuruf-core",
+ "zuruf-hypr",
+ "zuruf-speech",
  "zuruf-store",
+ "zuruf-t3",
 ]
 
 [[package]]

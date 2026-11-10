@@ -39,18 +39,36 @@ pub struct RemoteStatus {
     pub last_assistant_message: Option<String>,
     pub pending_request: Option<String>,
     pub approval: bool,
+    pub error: Option<String>,
 }
 pub trait T3Adapter: Send + Sync {
     fn discover_capabilities(&self) -> AdapterFuture<'_, T3Connection>;
     fn list_projects(&self) -> AdapterFuture<'_, Vec<T3ProjectRef>>;
     fn catalog(&self, search: Option<String>) -> AdapterFuture<'_, T3Catalog>;
     fn create_thread(&self, input: CreateThreadRequest) -> AdapterFuture<'_, ThreadReceipt>;
+    /// Marked image bytes loaded from this batch's committed assets.
+    fn create_thread_with_assets(
+        &self,
+        input: CreateThreadRequest,
+        _assets: Vec<(String, Vec<u8>)>,
+    ) -> AdapterFuture<'_, ThreadReceipt> {
+        self.create_thread(input)
+    }
     fn send_message(
         &self,
         thread: String,
         client_request_id: String,
         prompt: String,
     ) -> AdapterFuture<'_, ThreadReceipt>;
+    fn send_message_with_assets(
+        &self,
+        thread: String,
+        client_request_id: String,
+        prompt: String,
+        _assets: Vec<(String, Vec<u8>)>,
+    ) -> AdapterFuture<'_, ThreadReceipt> {
+        self.send_message(thread, client_request_id, prompt)
+    }
     /// An empty run is used only after explicit adopt_thread resolution: resolve
     /// the thread's active/latest run and return its actual ID. Otherwise return
     /// messages and pending requests strictly for the requested run.
