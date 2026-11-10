@@ -46,7 +46,9 @@ export async function loadBootstrap(): Promise<Bootstrap | null> {
   const fragment = new URLSearchParams(location.hash.slice(1));
   const code = fragment.get("code");
   if (code) {
-    history.replaceState(null, "", location.pathname + location.search);
+    // Drop the code from the address bar; an optional view (#code=…&view=tasks) becomes the plain hash.
+    const view = fragment.get("view");
+    history.replaceState(null, "", location.pathname + location.search + (view ? `#${view}` : ""));
     const response = await fetch("/api/v1/auth/exchange", {
       method: "POST",
       headers: { "content-type": "application/json" },
