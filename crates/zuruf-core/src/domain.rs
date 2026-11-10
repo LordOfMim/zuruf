@@ -1,0 +1,490 @@
+use crate::protocol::*;
+use serde_json::{Value, json};
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("illegal state transition")]
+    Transition,
+    #[error("manifest path must be absolute and asset paths relative")]
+    Path,
+}
+impl BatchState {
+    pub fn transition(self, next: Self) -> Result<Self, DomainError> {
+        if self == Self::Draft && matches!(next, Self::Sealed | Self::Discarded) {
+            Ok(next)
+        } else {
+            Err(DomainError::Transition)
+        }
+    }
+}
+impl TaskStatus {
+    pub fn terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+    pub fn transition(self, next: Self) -> Result<Self, DomainError> {
+        use TaskStatus::*;
+        let legal = match self {
+            FinalizingTranscript => matches!(next, Queued | Failed | Cancelled),
+            Queued => matches!(next, Dispatching | Cancelled | Failed),
+            Dispatching => matches!(
+                next,
+                Queued
+                    | Running
+                    | NeedsApproval
+                    | NeedsReview
+                    | Completed
+                    | Failed
+                    | Cancelled
+                    | UnknownRemoteState
+            ),
+            Running | NeedsApproval | NeedsReview => matches!(
+                next,
+                Queued
+                    | Running
+                    | NeedsApproval
+                    | NeedsReview
+                    | Completed
+                    | Failed
+                    | Cancelled
+                    | UnknownRemoteState
+            ),
+            Failed | Cancelled | Completed => matches!(next, Queued | Running | UnknownRemoteState),
+            UnknownRemoteState => matches!(next, Queued | Running | Cancelled),
+        };
+        if legal && self != next {
+            Ok(next)
+        } else {
+            Err(DomainError::Transition)
+        }
+    }
+}
+pub fn map_remote_status(remote: &str, approval: bool, pending: bool) -> TaskStatus {
+    use TaskStatus::*;
+    if pending {
+        return if approval { NeedsApproval } else { NeedsReview };
+    }
+    match remote {
+        "preparing" | "queued" => Queued,
+        "starting" | "running" => Running,
+        "waiting" if approval => NeedsApproval,
+        "waiting" | "rolled_back" | "idle" => NeedsReview,
+        "completed" => Completed,
+        "failed" => Failed,
+        "cancelled" | "interrupted" => Cancelled,
+        _ => UnknownRemoteState,
+    }
+}
+impl ControlState {
+    pub fn take_over(&mut self, in_flight: bool) {
+        self.owner = ControlStateOwner::Human;
+        self.agent_id = None;
+        self.lease_expires_at = None;
+        self.settling = in_flight;
+    }
+    pub fn release(&mut self) {
+        self.owner = ControlStateOwner::None;
+        self.agent_id = None;
+        self.lease_expires_at = None;
+        self.settling = false;
+    }
+    pub fn grant(&mut self, agent: String, expires: Timestamp) -> Result<(), DomainError> {
+        if self.owner != ControlStateOwner::None || self.settling {
+            return Err(DomainError::Transition);
+        }
+        self.owner = ControlStateOwner::Agent;
+        self.agent_id = Some(agent);
+        self.lease_expires_at = Some(expires);
+        Ok(())
+    }
+    pub fn settle(&mut self) {
+        self.settling = false;
+    }
+    /// RFC3339 UTC timestamps with the same precision compare chronologically.
+    pub fn expire(&mut self, now: &str) {
+        if self.owner == ControlStateOwner::Agent
+            && self.lease_expires_at.as_deref().is_some_and(|t| t <= now)
+        {
+            self.release();
+        }
+    }
+}
+pub fn validate_bindings(bindings: &[Binding]) -> Vec<BindingIssue> {
+    let mut issues = Vec::new();
+    for (index, b) in bindings.iter().enumerate() {
+        let Some(c) = &b.chord else { continue };
+        let scope = match b.scope {
+            BindingScope::Page => BindingIssueScope::Page,
+            BindingScope::Global => BindingIssueScope::Global,
+        };
+        let mut add = |kind| {
+            issues.push(BindingIssue {
+                action: b.action,
+                scope,
+                kind,
+                detail: None,
+            })
+        };
+        if b.scope == BindingScope::Global && c.mods.is_empty() {
+            add(BindingIssueKind::NeedsModifier);
+        }
+        let supported = (c.code.starts_with("Key")
+            && c.code.len() == 4
+            && c.code.as_bytes()[3].is_ascii_uppercase())
+            || (c.code.starts_with("Digit")
+                && c.code.len() == 6
+                && c.code.as_bytes()[5].is_ascii_digit())
+            || matches!(
+                c.code.as_str(),
+                "Escape"
+                    | "Space"
+                    | "Enter"
+                    | "Tab"
+                    | "Backspace"
+                    | "ArrowUp"
+                    | "ArrowDown"
+                    | "ArrowLeft"
+                    | "ArrowRight"
+            )
+            || (c
+                .code
+                .strip_prefix('F')
+                .and_then(|v| v.parse::<u8>().ok())
+                .is_some_and(|n| (1..=24).contains(&n)));
+        if !supported {
+            add(BindingIssueKind::UnsupportedKey);
+        }
+        let mut mods = c.mods.iter().map(|m| format!("{m:?}")).collect::<Vec<_>>();
+        mods.sort();
+        if mods.windows(2).any(|p| p[0] == p[1]) {
+            add(BindingIssueKind::UnsupportedKey);
+        }
+        if bindings[..index].iter().any(|other| {
+            other.scope == b.scope
+                && other.chord.as_ref().is_some_and(|x| {
+                    x.code == c.code && {
+                        let mut m = x.mods.iter().map(|m| format!("{m:?}")).collect::<Vec<_>>();
+                        m.sort();
+                        m == mods
+                    }
+                })
+        }) {
+            add(BindingIssueKind::Duplicate);
+        }
+    }
+    issues
+}
+pub fn redact_url(raw: &str, settings: &SettingsRedaction) -> String {
+    let Ok(mut u) = url::Url::parse(raw) else {
+        return String::new();
+    };
+    let _ = u.set_username("");
+    let _ = u.set_password(None);
+    u.set_fragment(None);
+    if settings.strip_query {
+        u.set_query(None);
+    } else {
+        let pairs = u
+            .query_pairs()
+            .filter(|(k, _)| !sensitive(k, &settings.patterns))
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect::<Vec<_>>();
+        u.set_query(None);
+        if !pairs.is_empty() {
+            u.query_pairs_mut().extend_pairs(pairs);
+        }
+    }
+    u.to_string()
+}
+pub fn sensitive(key: &str, patterns: &[String]) -> bool {
+    let k = key.to_lowercase();
+    [
+        "token",
+        "cookie",
+        "secret",
+        "password",
+        "authorization",
+        "session",
+        "credential",
+    ]
+    .iter()
+    .any(|p| k.contains(p))
+        || patterns.iter().any(|p| k.contains(&p.to_lowercase()))
+}
+pub fn build_manifest(
+    batch: &Batch,
+    project: &Project,
+    profile: &AgentProfile,
+    annotations: &[Annotation],
+    settings: &SettingsRedaction,
+) -> Result<Value, DomainError> {
+    let mut entries = Vec::new();
+    for a in annotations {
+        if a.assets.iter().any(|a| {
+            a.path.starts_with('/')
+                || a.path.split('/').any(|p| p == ".." || p.is_empty())
+                || a.path.contains('\\')
+        }) {
+            return Err(DomainError::Path);
+        }
+        let mut dom = a.dom.clone();
+        if let Some(d) = &mut dom {
+            d.attributes.retain(|k, _| {
+                matches!(
+                    k.as_str(),
+                    "id" | "class"
+                        | "role"
+                        | "data-testid"
+                        | "aria-label"
+                        | "aria-labelledby"
+                        | "type"
+                ) && !sensitive(k, &settings.patterns)
+            });
+        }
+        entries.push(json!({"id":a.id,"type":a.r#type,"transcript":a.transcript,"note":a.note,"captureTime":a.created_at,"url":a.url.as_deref().map(|u|redact_url(u,settings)),"screenshot":a.assets.first().map(|a|&a.path),"assets":a.assets.iter().map(|a|&a.path).collect::<Vec<_>>(),"dom":dom,"boundingBox":a.rect,"sessionId":a.session_id,"tabId":a.tab_id,"viewport":a.viewport}));
+    }
+    Ok(
+        json!({"schemaVersion":"1.0","batchId":batch.id,"note":batch.note,"project":{"name":project.name,"repositoryPath":project.repository_path,"baseUrl":redact_url(&project.base_url,settings)},"browserContext":annotations.first().map(|a| json!({"sessionId":a.session_id,"tabId":a.tab_id,"url":a.url.as_deref().map(|u|redact_url(u,settings)),"title":a.page_title,"viewport":a.viewport})),"annotations":entries,"task":{"goal":"Implementiere die annotierten Änderungen.","workspaceStrategy":profile.workspace_strategy,"verifyInBrowser":true}}),
+    )
+}
+pub fn build_prompt(absolute_manifest_path: &str) -> Result<String, DomainError> {
+    if !absolute_manifest_path.starts_with('/') {
+        return Err(DomainError::Path);
+    }
+    Ok(format!(
+        "Analysiere und bearbeite die Review-Annotationen. Das vollständige Manifest liegt unter {absolute_manifest_path}; Screenshots sind relativ zu diesem Verzeichnis referenziert. Prüfe die DOM-Kontexte und implementiere die dokumentierten Änderungen im zugewiesenen Projekt-Workspace. Füge keine nicht dokumentierten Anforderungen hinzu. Prüfe die Änderungen im Browser, falls eine passende Session freigegeben ist. Melde Ergebnis, betroffene Dateien und offene Punkte je Annotation zurück."
+    ))
+}
+impl Default for Settings {
+    fn default() -> Self {
+        let mut bindings = vec![];
+        for (action, code, mods, scope) in [
+            (
+                ActionId::CaptureViewport,
+                "KeyW",
+                vec![],
+                BindingScope::Page,
+            ),
+            (ActionId::CaptureRegion, "KeyS", vec![], BindingScope::Page),
+            (ActionId::CaptureDom, "KeyD", vec![], BindingScope::Page),
+            (ActionId::CommentText, "KeyE", vec![], BindingScope::Page),
+            (ActionId::SpeechToggle, "KeyR", vec![], BindingScope::Page),
+            (
+                ActionId::BatchDispatch,
+                "KeyN",
+                vec![Modifier::Shift],
+                BindingScope::Page,
+            ),
+            (ActionId::ActionCancel, "Escape", vec![], BindingScope::Page),
+            (
+                ActionId::ReviewToggle,
+                "KeyR",
+                vec![Modifier::Super, Modifier::Shift],
+                BindingScope::Global,
+            ),
+            (
+                ActionId::ControlTakeover,
+                "Escape",
+                vec![Modifier::Super, Modifier::Shift],
+                BindingScope::Global,
+            ),
+            (
+                ActionId::AppOpen,
+                "KeyZ",
+                vec![Modifier::Super, Modifier::Shift],
+                BindingScope::Global,
+            ),
+        ] {
+            bindings.push(Binding {
+                action,
+                scope,
+                chord: Some(Chord {
+                    code: code.into(),
+                    mods,
+                }),
+            });
+        }
+        Self {
+            bindings,
+            capture: SettingsCapture {
+                ring_color: "#ff4d4d".into(),
+                ring_radius: 24.,
+                keep_raw_screenshot: true,
+                mode: SettingsCaptureMode::NewEntry,
+            },
+            speech: SettingsSpeech {
+                enabled: false,
+                backend: SettingsSpeechBackend::Daemon,
+                model: None,
+                language: Some("de".into()),
+                attach: SettingsSpeechAttach::After,
+                keep_audio: false,
+                voxtype_path: "voxtype".into(),
+            },
+            redaction: SettingsRedaction {
+                strip_query: true,
+                patterns: vec![],
+            },
+            t3: SettingsT3 {
+                cli_path: "t3".into(),
+                poll_seconds: 2.,
+            },
+            ui: SettingsUi {
+                theme: SettingsUiTheme::System,
+                language: SettingsUiLanguage::De,
+                open_panel_on_review_start: true,
+            },
+            data_dir: String::new(),
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn batches_exhaustive() {
+        for a in [BatchState::Draft, BatchState::Sealed, BatchState::Discarded] {
+            for b in [BatchState::Draft, BatchState::Sealed, BatchState::Discarded] {
+                assert_eq!(
+                    a.transition(b).is_ok(),
+                    a == BatchState::Draft && b != BatchState::Draft
+                );
+            }
+        }
+    }
+    #[test]
+    fn tasks_exhaustive() {
+        use TaskStatus::*;
+        let all = [
+            FinalizingTranscript,
+            Queued,
+            Dispatching,
+            Running,
+            Completed,
+            NeedsReview,
+            NeedsApproval,
+            Failed,
+            Cancelled,
+            UnknownRemoteState,
+        ];
+        let expected = [
+            vec![Queued, Failed, Cancelled],
+            vec![Dispatching, Cancelled, Failed],
+            vec![
+                Queued,
+                Running,
+                NeedsApproval,
+                NeedsReview,
+                Completed,
+                Failed,
+                Cancelled,
+                UnknownRemoteState,
+            ],
+            vec![
+                Queued,
+                NeedsApproval,
+                NeedsReview,
+                Completed,
+                Failed,
+                Cancelled,
+                UnknownRemoteState,
+            ],
+            vec![Queued, Running, UnknownRemoteState],
+            vec![
+                Queued,
+                Running,
+                NeedsApproval,
+                Completed,
+                Failed,
+                Cancelled,
+                UnknownRemoteState,
+            ],
+            vec![
+                Queued,
+                Running,
+                NeedsReview,
+                Completed,
+                Failed,
+                Cancelled,
+                UnknownRemoteState,
+            ],
+            vec![Queued, Running, UnknownRemoteState],
+            vec![Queued, Running, UnknownRemoteState],
+            vec![Queued, Running, Cancelled],
+        ];
+        for (i, a) in all.iter().enumerate() {
+            for b in all {
+                assert_eq!(
+                    a.transition(b).is_ok(),
+                    expected[i].contains(&b),
+                    "{a:?}->{b:?}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn control_lease_and_takeover() {
+        let mut c = ControlState {
+            owner: ControlStateOwner::None,
+            agent_id: None,
+            lease_expires_at: None,
+            settling: false,
+        };
+        c.grant("a".into(), "2026-11-11T00:00:00Z".into()).unwrap();
+        c.take_over(true);
+        assert!(c.grant("b".into(), "x".into()).is_err());
+        c.settle();
+        c.release();
+        c.grant("b".into(), "2026-11-11T00:00:00Z".into()).unwrap();
+        c.expire("2026-11-12T00:00:00Z");
+        assert_eq!(c.owner, ControlStateOwner::None);
+    }
+    #[test]
+    fn bindings() {
+        let mut b = Settings::default().bindings;
+        assert!(validate_bindings(&b).is_empty());
+        b.push(b[0].clone());
+        assert_eq!(validate_bindings(&b)[0].kind, BindingIssueKind::Duplicate);
+        b[0].scope = BindingScope::Global;
+        b[0].chord.as_mut().unwrap().code = "bad".into();
+        let i = validate_bindings(&b);
+        assert!(i.iter().any(|i| i.kind == BindingIssueKind::NeedsModifier));
+        assert!(i.iter().any(|i| i.kind == BindingIssueKind::UnsupportedKey));
+    }
+    #[test]
+    fn redaction() {
+        assert_eq!(
+            redact_url(
+                "https://user:pw@host/path?token=bad&ok=1#secret",
+                &SettingsRedaction {
+                    strip_query: false,
+                    patterns: vec![]
+                }
+            ),
+            "https://host/path?ok=1"
+        );
+        assert!(redact_url("invalid", &Settings::default().redaction).is_empty());
+    }
+    #[test]
+    fn statuses() {
+        assert_eq!(
+            map_remote_status("waiting", false, false),
+            TaskStatus::NeedsReview
+        );
+        assert_eq!(
+            map_remote_status("waiting", true, true),
+            TaskStatus::NeedsApproval
+        );
+        assert_eq!(
+            map_remote_status("novel", false, false),
+            TaskStatus::UnknownRemoteState
+        );
+    }
+    #[test]
+    fn prompt() {
+        assert!(build_prompt("relative").is_err());
+        assert!(
+            build_prompt("/safe/batch.json")
+                .unwrap()
+                .contains("je Annotation")
+        );
+    }
+}
