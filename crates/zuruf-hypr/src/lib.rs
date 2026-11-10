@@ -205,8 +205,8 @@ pub fn prepare(
                 key,
                 mask,
                 chord: names.join(" + "),
-                command,
-                description: format!("zuruf:{}", b.action),
+                command: command.clone(),
+                description: format!("zuruf:{}:{:016x}", b.action, command_fingerprint(&command)),
             })
         })();
         let issue = match result {
@@ -243,10 +243,21 @@ pub fn prepare(
     }
     (desired, issues)
 }
+// Stable command stamp: Lua bind listings expose a callback ID instead of exec text.
+fn command_fingerprint(command: &str) -> u64 {
+    command.bytes().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ byte as u64).wrapping_mul(0x100000001b3)
+    })
+}
 fn is_owned(e: &ExistingBind) -> bool {
-    e.description
-        .strip_prefix("zuruf:")
-        .is_some_and(|a| ACTIONS.contains(&a))
+    e.description.strip_prefix("zuruf:").is_some_and(|tag| {
+        let mut parts = tag.split(':');
+        parts.next().is_some_and(|a| ACTIONS.contains(&a))
+            && parts
+                .next()
+                .is_some_and(|hash| hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+            && parts.next().is_none()
+    })
 }
 pub fn diff(
     current: &[ExistingBind],
@@ -256,8 +267,7 @@ pub fn diff(
         e.modmask == w.mask
             && e.key.eq_ignore_ascii_case(&w.key)
             && e.description == w.description
-            && e.dispatcher == "exec"
-            && e.arg == w.command
+            && (e.dispatcher == "__lua" || (e.dispatcher == "exec" && e.arg == w.command))
     };
     let remove = current
         .iter()
@@ -409,6 +419,13 @@ impl Hyprland {
             let stream = UnixStream::connect(event_socket()?).await;
             match stream {
                 Ok(stream) => {
+                    let issues = self.apply(self.wanted.clone()).await?;
+                    if !issues.is_empty() {
+                        tracing::warn!(
+                            count = issues.len(),
+                            "Shortcuts conflict after socket reconnect"
+                        );
+                    }
                     let mut lines = BufReader::new(stream).lines();
                     loop {
                         tokio::select! {_=stop.changed()=>return self.shutdown().await,line=lines.next_line()=>{match line?{Some(line) if line.starts_with("configreloaded>>")=>{let issues=self.apply(self.wanted.clone()).await?;if !issues.is_empty(){tracing::warn!(count=issues.len(),"Shortcuts conflict after reload");}},Some(_)=>(),None=>break}}}
@@ -553,21 +570,40 @@ mod tests {
         assert!(!before.iter().any(|b| b.modmask == 77 && b.key == "F24"));
         let result = h.apply(vec![binding()]).await;
         let listed = binds().await;
+        let repeated = h.apply(vec![binding()]).await;
+        let second = binds().await;
         let cleanup = h.shutdown().await;
         assert!(cleanup.is_ok());
+        assert!(repeated.unwrap().is_empty());
+        let first = listed
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|b| b.description.starts_with("zuruf:app.open:"))
+            .unwrap();
+        let after = second
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|b| b.description == first.description)
+            .unwrap();
+        assert_eq!(
+            first.arg, after.arg,
+            "idempotent apply must retain the Lua callback ID"
+        );
         assert!(result.unwrap().is_empty());
         assert!(
             listed
                 .unwrap()
                 .iter()
-                .any(|b| b.description == "zuruf:app.open")
+                .any(|b| b.description.starts_with("zuruf:app.open:"))
         );
         assert!(
             !binds()
                 .await
                 .unwrap()
                 .iter()
-                .any(|b| b.description == "zuruf:app.open")
+                .any(|b| b.description.starts_with("zuruf:app.open:"))
         );
     }
 }
