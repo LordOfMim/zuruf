@@ -369,7 +369,7 @@ impl Daemon {
                         build_prompt(&path).map_err(|e| invalid(&e.to_string()))?,
                         batch.note
                     );
-                    let title = (task.title == DEFAULT_TITLE)
+                    let title = placeholder_title(&task.title)
                         .then(|| title_from(&annotations))
                         .flatten();
                     Ok((path, prompt, title))
@@ -509,6 +509,12 @@ impl Daemon {
 
 /// Placeholder a draft batch starts with; replaced by the user's own words on dispatch.
 pub(crate) const DEFAULT_TITLE: &str = "Aufgabe 1";
+/// "Aufgabe 1", "Aufgabe 7": the numbered name a batch gets before anyone has said anything.
+fn placeholder_title(title: &str) -> bool {
+    title
+        .strip_prefix("Aufgabe ")
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
 
 /// First thing the user said or typed in the batch, cut at a word boundary.
 fn title_from(annotations: &[Annotation]) -> Option<String> {
