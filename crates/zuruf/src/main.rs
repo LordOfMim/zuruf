@@ -63,6 +63,30 @@ async fn run() -> Result<(), Error> {
         command: T3Command::Pair { origin },
     } = &args.command
     {
+        let client = reqwest::Client::new();
+        if let Ok(token) = tokio::fs::read_to_string(paths.state.join("token")).await {
+            match client
+                .post(format!("{base}/api/v1/t3/pair"))
+                .bearer_auth(token.trim())
+                .json(&serde_json::json!({"origin":origin}))
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if !response.status().is_success() {
+                        return Err(Error::Join("T3-Paarung im Daemon fehlgeschlagen.".into()));
+                    }
+                    println!("T3 live verbunden; Zugangsdaten privat gespeichert.");
+                    return Ok(());
+                }
+                Err(error) if error.is_connect() => (),
+                Err(_) => {
+                    return Err(Error::Join(
+                        "Daemon nicht erreichbar; Paarungszustand prüfen.".into(),
+                    ));
+                }
+            }
+        }
         let setup = paths.clone();
         tokio::task::spawn_blocking(move || zuruf_store::Store::open(setup))
             .await

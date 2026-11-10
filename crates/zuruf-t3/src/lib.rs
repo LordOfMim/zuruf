@@ -422,6 +422,8 @@ impl T3Adapter {
     }
     async fn connect_inner(&mut self, origin: &str) -> Result<()> {
         self.connection.state = "connecting".into();
+        self.connection.version = None;
+        self.connection.error = None;
         let origin = validate_origin(origin)?;
         if let Ok(metadata) = tokio::fs::symlink_metadata(&self.credentials_path).await
             && (!metadata.is_file() || metadata.permissions().mode() & 0o077 != 0)
@@ -430,6 +432,7 @@ impl T3Adapter {
                 "Credential file must be a private regular file (0600)".into(),
             ));
         }
+        self.credentials = None;
         if let Ok(bytes) = tokio::fs::read(&self.credentials_path).await {
             self.credentials = serde_json::from_slice::<Option<Credentials>>(&bytes)?;
         }

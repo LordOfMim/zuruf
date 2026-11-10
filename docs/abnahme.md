@@ -118,3 +118,30 @@ Alle Builds/Tests/Server/Browser speicherbegrenzt, Cargo mit zwei Jobs. Bestande
 Der Installationsrundlauf startet das installierte Binary als kurzlebigen Daemon mit Argument `daemon`, öffnet die App aus dem Wegwerfpräfix, prüft PID-Wiederverwendung/Fokus und Doctor und entfernt anschließend Installation/Daten nach ausdrücklicher Test-Purgebestätigung. `doctor`: Chromium 155, Voxtype 1.1.1, T3 0.1.7, Loopbackport und Hyprland-/PipeWire-Sockets vorhanden; deutscher Modellhinweis bleibt. Keine reale Benutzer-Unit aktiviert.
 
 Abschließende Bereinigung: eigene Daemons/Browser/Fixtureprozesse beendet, keine Zuruf-Unit aktiv, keine Zuruf-Fenster, keine Zuruf-Runtimebinds. Beide erstellten T3-Threads ohne aktiven Run; neu erzeugte temporäre Laborprofile und private Wiring-Testzustände entfernt; bestehende App-Smoke-Testverzeichnisse bleiben als Testdaten erhalten. Keine Änderungen an T3, Voxtype oder `~/.config/hypr`; kein Push/PR.
+
+
+## Erststartpfad – 10.11.2026 (`feat/firstrun`)
+
+Zwei echte Läufe von `tests/e2e/firstrun.mjs` mit leeren temporären Daten-, Zustands- und Konfigurationsverzeichnissen waren erfolgreich. Kein Fakeflag, kein Seed, keine Übernahme installierter Credentials. Der zweite Lauf enthält zusätzlich die CLI-Livepaarung. Geprüfte Folge:
+
+1. `/state`: T3 `disconnected`, keine Version, kein Fehler, keine Projekte.
+2. `/t3/pair` ohne Origin erkennt das dokumentierte lokale T3 anhand der OAuth-Metadaten und verbindet sofort mit echter Version `0.1.7`. Wiederholtes Pairing erzeugt keine weitere Identität. `/t3/reconnect` und CLI-Pairing gegen den laufenden Testdaemon funktionieren live.
+3. `/t3/catalog` und `/t3/projects` liefern reale Daten. Projektanlage für den registrierten Zuruf-Root löst `t3ProjectId` auf und aktiviert automatisch Review und leeren Draft.
+4. Erstes Profil aus dem Livekatalog ergänzt Projektstandard und bereits offenen Draft.
+5. Sessionanlage und Start öffnen die lokale Fixture-Basis-URL im eigenen Chromium-Profil. Review an und ein W-Keyevent erzeugen persistiertes markiertes Bild.
+6. Dispatch erzeugt genau einen echten Thread mit `zuruf-test-firstrun-`-Titel und ausdrücklichem Dateiänderungsverbot. Sofortiger Interrupt; beide Threads anschließend über die externe Thread-Leseschnittstelle als `interrupted`, ohne aktiven Run bestätigt. Keine Providerfertigstellung oder menschliche Approvalabnahme behauptet.
+7. Zweites Projekt schaltet Review aus; Wechsel zurück stellt Projekt-Draft und zuletzt verwendete Sitzung wieder her. Wechsel zur zweiten Sitzungsauswahl bleibt leer. Browserstop und Daemonshutdown erfolgreich.
+
+Behoben: eingefrorener Origin im realen Adapter, CLI-Pairing ohne Livewirkung, fehlende HTTP-Paarung, Fakeversion und Fehlerzustand vor Erstpaarung, unvollständige Projektaktivierung, fehlende erste Profilzuweisung, unzulässiger leerer Reviewstart und pauschale Löschblockade durch vorhandene Reviews. Zusätzlich werden Origins und Credentials beim Reconnect neu gelesen, verlorene Credentialdateien nicht aus dem Adaptercache ersetzt, unbekannte Versionen gelöscht und fehlende Credentials beim normalen Start nicht automatisch neu gepaart. Projektpfade werden kanonisiert und auf Duplikate geprüft; Basis-URLs müssen HTTP/HTTPS verwenden. Zulässiges Projektlöschen entfernt zugehörige Snapshot-Einträge, erhält Dateien und Browserprofile auf Platte. Laufende Sitzungen und nichtterminale Tasks verhindern das Löschen.
+
+Fake-HTTP-Regressionen prüfen ungültige Pfade/URLs, Duplikate, erste Profildefaults, Review ohne Sitzung, Projektaktivierung und Rückwechsel, Löschverweigerung bei laufender Sitzung sowie laufendem Task und aktive Auswahl nach Löschung. Workspace-Tests, Clippy mit `-D warnings`, Formatprüfung, Extension check/lint/build und unveränderter UI-Build bestehen unter Speicherlimits (Cargo mit zwei Jobs).
+
+Erzeugte Testartefakte in T3:
+
+- <t3-thread://v2/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp:launch:3ca4a760501b343568b170e525ddd2370abc99f05d50ac29303688a2735874b3>
+- <t3-thread://v2/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp:launch:9c4799b1287b1afce71839cdc55275cc8ab239cdbd306d5d3f926c5df7b42e1b>
+- Zusätzliche OAuth-Sessions `c98935fa-6bd4-4135-b1a3-76b09b4f83ab` und `3ae8e365-edec-47e1-bde1-7578e28403d4`: beide erfolgreich über `t3 auth session revoke` widerrufen. Keine Tokens protokolliert.
+
+Alle Testverzeichnisse wurden entfernt. Nachprüfung: keine Zuruf-Runtimebindungen, keine Zuruf-Units, keine Testdaemon-/Browserprozesse oder Testfenster. Installiertes `zuruf.service` unverändert inaktiv (`MainPID=0`, kein Startzeitstempel); installierte Dateien und Daten wurden nicht verwendet oder verändert. Keine Änderungen an T3, Voxtype, Hyprland-Konfiguration, UI-Quellcode oder Overlay-CSS. Kein Push, kein PR.
+
+Offen bleibt die parallele Setup-/Projektoberfläche des Projektleiters; dieser Nachweis betrifft den öffentlichen API-Pfad. Sprache/Modelleinrichtung, Installation selbst und andere bestehende Abnahmegrenzen dieses Dokuments werden durch diesen isolierten Erststartlauf nicht erneut abgenommen.

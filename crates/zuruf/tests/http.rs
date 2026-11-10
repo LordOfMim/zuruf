@@ -14,6 +14,9 @@ struct Harness {
 }
 impl Harness {
     async fn new() -> Self {
+        Self::with_seed(true).await
+    }
+    async fn with_seed(seed: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths {
             data: dir.path().join("data"),
@@ -30,7 +33,9 @@ impl Harness {
         )
         .await
         .unwrap();
-        app.seed_demo().await.unwrap();
+        if seed {
+            app.seed_demo().await.unwrap();
+        }
         app.recover().await.unwrap();
         let token = std::fs::read_to_string(paths.state.join("token")).unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -632,4 +637,135 @@ async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
         .await;
     assert!(!credential.exists());
     assert!(h.app.mcp_agent_scope(secret).is_none());
+}
+
+#[tokio::test]
+async fn first_run_projects_profiles_and_switching() {
+    let h = Harness::with_seed(false).await;
+    let first = h._dir.path().join("first");
+    let second = h._dir.path().join("second");
+    std::fs::create_dir(&first).unwrap();
+    std::fs::create_dir(&second).unwrap();
+    let project = |path: &std::path::Path| json!({"name":"First run","repositoryPath":path,"baseUrl":"http://127.0.0.1:1234"});
+    let a = h.call("POST", "/projects", project(&first)).await;
+    let initial = h.state().await;
+    assert!(initial["status"]["activeReviewId"].is_string());
+    assert!(initial["status"]["activeBatchId"].is_string());
+    for body in [
+        project(&first),
+        project(&first.join("missing")),
+        json!({"name":"Invalid","repositoryPath":second,"baseUrl":"file:///tmp"}),
+    ] {
+        let response = reqwest::Client::new()
+            .post(format!("{}/api/v1/projects", h.base))
+            .bearer_auth(&h.token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400);
+    }
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/v1/review-mode", h.base))
+        .bearer_auth(&h.token)
+        .json(&json!({"on":true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+    let profile = h.call("POST", "/profiles", json!({"name":"First","providerInstanceId":"fake-codex","model":"fake","options":{},"workspaceStrategy":"shared_root"})).await;
+    let s = h.state().await;
+    assert_eq!(s["projects"][0]["defaultProfileId"], profile["id"]);
+    assert_eq!(s["batches"][0]["profileId"], profile["id"]);
+    let session = h
+        .call(
+            "POST",
+            "/sessions",
+            json!({"projectId":a["id"],"name":"Browser","mode":"isolated","agentAccess":false}),
+        )
+        .await;
+    let sid = session["id"].as_str().unwrap();
+    h.call("POST", &format!("/sessions/{sid}/start"), json!({}))
+        .await;
+    h.call(
+        "POST",
+        "/sessions",
+        json!({"projectId":a["id"],"name":"Later","mode":"isolated","agentAccess":false}),
+    )
+    .await;
+    h.call("POST", "/active", json!({"sessionId":session["id"]}))
+        .await;
+    h.call("POST", "/review-mode", json!({"on":true})).await;
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/v1/projects", h.base))
+        .bearer_auth(&h.token)
+        .json(&project(&first))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+    assert_eq!(h.state().await["status"]["reviewMode"], true);
+
+    let response = reqwest::Client::new()
+        .delete(format!(
+            "{}/api/v1/projects/{}",
+            h.base,
+            a["id"].as_str().unwrap()
+        ))
+        .bearer_auth(&h.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+    let b = h.call("POST", "/projects", project(&second)).await;
+    let s = h.state().await;
+    assert_eq!(s["status"]["reviewMode"], false);
+    assert!(s["status"]["activeSessionId"].is_null());
+    h.call("POST", "/active", json!({"projectId":a["id"]}))
+        .await;
+    let s = h.state().await;
+    assert_eq!(s["status"]["activeSessionId"], session["id"]);
+    assert_eq!(
+        s["status"]["activeReviewId"],
+        initial["status"]["activeReviewId"]
+    );
+    h.call("POST", &format!("/sessions/{sid}/stop"), json!({}))
+        .await;
+    h.call(
+        "POST",
+        "/annotations",
+        json!({"batchId":s["status"]["activeBatchId"],"type":"text","note":"Read only test"}),
+    )
+    .await;
+    let dispatched = h.dispatch().await;
+    let task = dispatched["task"]["id"].as_str().unwrap();
+    h.wait(task, "running").await;
+    let response = reqwest::Client::new()
+        .delete(format!(
+            "{}/api/v1/projects/{}",
+            h.base,
+            a["id"].as_str().unwrap()
+        ))
+        .bearer_auth(&h.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+    h.call("POST", &format!("/tasks/{task}/cancel"), json!({}))
+        .await;
+    h.call(
+        "DELETE",
+        &format!("/projects/{}", a["id"].as_str().unwrap()),
+        json!({}),
+    )
+    .await;
+    assert_eq!(h.state().await["status"]["activeProjectId"], b["id"]);
+    h.call(
+        "DELETE",
+        &format!("/projects/{}", b["id"].as_str().unwrap()),
+        json!({}),
+    )
+    .await;
+    assert!(h.state().await["status"]["activeProjectId"].is_null());
+    h.app.close().await.unwrap();
 }

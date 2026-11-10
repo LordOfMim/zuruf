@@ -15,5 +15,6 @@ run headed-browser target/debug/examples/lab --check
 run captures env ZURUF_E2E_BINARY="$PWD/target/release/zuruf" T3_URL=http://127.0.0.1:3773 node tests/e2e/wiring.mjs --capture-only
 run app node tests/e2e/app-smoke.mjs
 run install bash tests/install-roundtrip.sh
+if [[ ${ZURUF_E2E_FIRSTRUN:-0} == 1 ]]; then run firstrun node tests/e2e/firstrun.mjs; fi
 printf 'Summary: %d failed; real agent MCP requires user approval (manual); follow-up is a separate explicit scenario.\n' "$failed"
 (( failed == 0 ))

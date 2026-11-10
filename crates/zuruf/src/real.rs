@@ -30,9 +30,72 @@ fn receipt(r: zuruf_t3::ThreadReceipt) -> ThreadReceipt {
 }
 pub struct T3 {
     inner: AsyncMutex<zuruf_t3::T3Adapter>,
-    origin: Option<String>,
+    origin_path: PathBuf,
+    credentials_path: PathBuf,
 }
 impl T3 {
+    async fn stored_origin(&self) -> Option<String> {
+        tokio::fs::read_to_string(&self.origin_path)
+            .await
+            .ok()
+            .or_else(|| std::env::var("T3_URL").ok())
+            .or(tokio::fs::read(&self.credentials_path)
+                .await
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .and_then(|value| value["origin"].as_str().map(str::to_owned)))
+    }
+    async fn connect_live(
+        &self,
+        origin: Option<String>,
+        probe: bool,
+    ) -> std::result::Result<T3Connection, AdapterError> {
+        if !probe && std::env::var("ZURUF_T3_TRANSPORT").as_deref() == Ok("cli") {
+            let mut adapter = self.inner.lock().await;
+            adapter.connect_cli().await.map_err(t3_error)?;
+            return convert(&adapter.connection);
+        }
+        if !probe && !self.credentials_path.is_file() {
+            self.inner.lock().await.connection = convert(disconnected_connection())?;
+            return Ok(disconnected_connection());
+        }
+        let origin = match origin.or(self.stored_origin().await) {
+            Some(origin) => origin,
+            None if probe => {
+                let origin = "http://127.0.0.1:3773";
+                let response = reqwest::Client::new()
+                    .get(format!("{origin}/.well-known/oauth-authorization-server"))
+                    .timeout(Duration::from_secs(3))
+                    .send()
+                    .await;
+                let valid = match response {
+                    Ok(response) if response.status().is_success() => {
+                        response.json::<Value>().await.ok().is_some_and(|v| {
+                            v["issuer"].as_str() == Some(origin)
+                                && v["registration_endpoint"].as_str()
+                                    == Some("http://127.0.0.1:3773/oauth/mcp/register")
+                        })
+                    }
+                    _ => false,
+                };
+                if !valid {
+                    return Err(AdapterError::Rejected(
+                        "T3-Adresse erforderlich. Bitte den lokalen T3-Origin angeben.".into(),
+                    ));
+                }
+                origin.into()
+            }
+            None => return Ok(disconnected_connection()),
+        };
+        let mut adapter = self.inner.lock().await;
+        adapter.connect(&origin).await.map_err(|_| {
+            AdapterError::Rejected(
+                "T3-Verbindung fehlgeschlagen. Adresse und Paarung prüfen.".into(),
+            )
+        })?;
+        zuruf_store::atomic_write(&self.origin_path, origin.as_bytes()).map_err(io)?;
+        convert(&adapter.connection)
+    }
     async fn connected(
         &self,
     ) -> std::result::Result<tokio::sync::MutexGuard<'_, zuruf_t3::T3Adapter>, AdapterError> {
@@ -40,8 +103,12 @@ impl T3 {
         if a.connection.state != "connected" {
             if std::env::var("ZURUF_T3_TRANSPORT").as_deref() == Ok("cli") {
                 a.connect_cli().await.map_err(t3_error)?;
-            } else if let Some(origin) = &self.origin {
-                a.connect(origin).await.map_err(t3_error)?;
+            } else if !self.credentials_path.is_file() {
+                return Err(AdapterError::Unavailable(
+                    "T3 ist noch nicht verbunden. Bitte zuerst verbinden.".into(),
+                ));
+            } else if let Some(origin) = self.stored_origin().await {
+                a.connect(&origin).await.map_err(t3_error)?;
             } else {
                 return Err(AdapterError::Unavailable(
                     "T3_URL fehlt; zuruf t3 pair --origin http://127.0.0.1:<port> ausführen".into(),
@@ -149,8 +216,21 @@ impl T3Adapter for T3 {
         })
     }
 
+    fn pair(&self, origin: Option<String>) -> AdapterFuture<'_, T3Connection> {
+        Box::pin(async move { self.connect_live(origin, true).await })
+    }
+    fn reconnect(&self) -> AdapterFuture<'_, T3Connection> {
+        Box::pin(async move { self.connect_live(None, false).await })
+    }
     fn discover_capabilities(&self) -> AdapterFuture<'_, T3Connection> {
-        Box::pin(async move { convert(&self.connected().await?.connection) })
+        Box::pin(async move {
+            if !self.credentials_path.is_file()
+                && std::env::var("ZURUF_T3_TRANSPORT").as_deref() != Ok("cli")
+            {
+                return Ok(disconnected_connection());
+            }
+            convert(&self.connected().await?.connection)
+        })
     }
     fn list_projects(&self) -> AdapterFuture<'_, Vec<T3ProjectRef>> {
         Box::pin(async move {
@@ -990,11 +1070,8 @@ impl Daemon {
                 )
                 .map_err(io)?,
             ),
-            origin: std::env::var("T3_URL").ok().or(tokio::fs::read_to_string(
-                paths.state.join("t3-origin"),
-            )
-            .await
-            .ok()),
+            origin_path: paths.state.join("t3-origin"),
+            credentials_path: paths.state.join("t3-credentials.json"),
         };
         let speech = Arc::new(Speech {
             app: std::sync::OnceLock::new(),

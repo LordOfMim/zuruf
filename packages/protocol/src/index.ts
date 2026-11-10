@@ -464,6 +464,17 @@ export interface ApiError {
   error: { code: string; message: string; issues?: BindingIssue[] };
 }
 
+export interface T3PairRequest {
+  origin?: string;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  repositoryPath: string;
+  baseUrl: string;
+  t3ProjectId?: string;
+}
+
 export interface DispatchRequest {
   /** Override the batch's profile for this dispatch. */
   profileId?: Id | null;
@@ -507,10 +518,13 @@ export interface ControlRequest {
  * POST   /review-mode          { on: boolean }    → AppStatus
  * POST   /active               { projectId?, reviewId?, sessionId? } → AppStatus
  *
- * GET|POST /projects, PATCH|DELETE /projects/:id  → Project
+ * GET    /projects                              → Project[]
+ * POST   /projects            CreateProjectRequest → Project
+ * PATCH|DELETE /projects/:id                      → Project
  * GET|POST /profiles, PATCH|DELETE /profiles/:id  → AgentProfile
  * GET    /t3/catalog?search=&refresh=             → T3Catalog
  * GET    /t3/projects                             → T3ProjectRef[]
+ * POST   /t3/pair              T3PairRequest      → T3Connection
  * POST   /t3/reconnect                            → T3Connection
  *
  * POST   /sessions             { projectId, name, mode, agentAccess } → BrowserSession

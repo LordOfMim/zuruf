@@ -935,3 +935,17 @@ pub enum StringOrBool {
 pub struct AppOpenRequested {
     pub view: String,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct T3PairRequest {
+    pub origin: Option<String>,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectRequest {
+    pub name: String,
+    pub repository_path: String,
+    pub base_url: String,
+    pub t3_project_id: Option<String>,
+}

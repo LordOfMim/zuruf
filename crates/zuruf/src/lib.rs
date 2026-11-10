@@ -33,6 +33,8 @@ pub enum Error {
     Adapter(#[from] AdapterError),
     #[error("{1}")]
     Api(StatusCode, String),
+    #[error("{1}")]
+    Coded(&'static str, String),
     #[error("background store failure: {0}")]
     Join(String),
 }
@@ -49,6 +51,7 @@ impl IntoResponse for Error {
                 },
                 *s,
             ),
+            Self::Coded(code, _) => (*code, StatusCode::BAD_REQUEST),
             Self::Store(StoreError::Invalid(_)) => ("invalid_state", StatusCode::CONFLICT),
             Self::Json(_) => ("invalid_request", StatusCode::UNPROCESSABLE_ENTITY),
             Self::Adapter(_) => ("adapter.failed", StatusCode::BAD_GATEWAY),
@@ -336,6 +339,7 @@ impl Daemon {
             match connection {
                 Ok(c) => s.status.t3 = c,
                 Err(e) => {
+                    s.status.t3 = disconnected_connection();
                     s.status.t3.state = T3ConnectionState::Error;
                     s.status.t3.error = Some(e.to_string());
                 }
@@ -968,9 +972,27 @@ impl Daemon {
         Ok(json!({"ok":true}))
     }
     async fn set_review(&self, on: bool) -> Result<Value> {
+        if on {
+            let s = self.snapshot().await?;
+            if s.status.active_project_id.is_none() {
+                return Err(invalid("Bitte zuerst ein Projekt anlegen oder auswählen."));
+            }
+            if !s.sessions.iter().any(|session| {
+                Some(&session.id) == s.status.active_session_id.as_ref()
+                    && Some(&session.project_id) == s.status.active_project_id.as_ref()
+                    && session.state == BrowserSessionState::Running
+            }) {
+                return Err(invalid(
+                    "Bitte zuerst eine Browser-Sitzung für dieses Projekt starten.",
+                ));
+            }
+        }
         self.0.browser.set_review_mode(on).await?;
         self.mutate(move |s, _| {
             s.status.review_mode = on;
+            if !on {
+                s.status.pending_action = None;
+            }
             val(&s.status)
         })
         .await
@@ -996,6 +1018,22 @@ impl Daemon {
         .await
     }
 }
+fn disconnected_connection() -> T3Connection {
+    T3Connection {
+        state: T3ConnectionState::Disconnected,
+        version: None,
+        transport: None,
+        capabilities: T3ConnectionCapabilities {
+            model_options: false,
+            existing_worktree: false,
+            idempotent_launch: false,
+            interrupt: false,
+            attachments: false,
+            push: false,
+        },
+        error: None,
+    }
+}
 fn empty_snapshot(settings: Settings) -> Snapshot {
     Snapshot {
         status: AppStatus {
@@ -1013,10 +1051,7 @@ fn empty_snapshot(settings: Settings) -> Snapshot {
                 last_gap_ms: None,
                 error: None,
             },
-            t3: T3Connection {
-                state: T3ConnectionState::Disconnected,
-                ..fakes::connection()
-            },
+            t3: disconnected_connection(),
         },
         projects: vec![],
         profiles: vec![],
@@ -1028,6 +1063,50 @@ fn empty_snapshot(settings: Settings) -> Snapshot {
         tasks: vec![],
         settings,
     }
+}
+fn activate_project(s: &mut Snapshot, project: Option<Id>) -> Result<()> {
+    if s.status.active_project_id != project {
+        s.status.review_mode = false;
+    }
+    s.status.active_project_id = project.clone();
+    s.status.active_review_id = None;
+    s.status.active_batch_id = None;
+    s.status.active_session_id = None;
+    if let Some(project) = project {
+        if !s.projects.iter().any(|p| p.id == project) {
+            return Err(missing());
+        }
+        let review = match s.reviews.iter().find(|r| r.project_id == project).cloned() {
+            Some(r) => r,
+            None => {
+                let r = Review {
+                    id: id(),
+                    project_id: project.clone(),
+                    name: "Review".into(),
+                    created_at: now(),
+                };
+                s.reviews.push(r.clone());
+                r
+            }
+        };
+        s.status.active_review_id = Some(review.id.clone());
+        if let Some(batch) = s
+            .batches
+            .iter()
+            .find(|b| b.review_id == review.id && b.state == BatchState::Draft)
+        {
+            s.status.active_batch_id = Some(batch.id.clone());
+        } else {
+            create_draft(s, &review);
+        }
+        s.status.active_session_id = s
+            .sessions
+            .iter()
+            .rev()
+            .find(|session| session.project_id == project)
+            .map(|session| session.id.clone());
+    }
+    Ok(())
 }
 fn create_draft(s: &mut Snapshot, r: &Review) {
     let b = Batch {
@@ -1305,7 +1384,24 @@ async fn api(
                 .await?
         }
         ("POST", "active", _, _) => {
+            if let Some(project) = v["projectId"].as_str() {
+                if !app
+                    .snapshot()
+                    .await?
+                    .projects
+                    .iter()
+                    .any(|p| p.id == project)
+                {
+                    return Err(missing());
+                }
+                if app.snapshot().await?.status.active_project_id.as_deref() != Some(project) {
+                    app.set_review(false).await?;
+                }
+            }
             app.mutate(move |s, _| {
+                if let Some(project) = v["projectId"].as_str() {
+                    activate_project(s, Some(project.into()))?;
+                }
                 for (field, target) in [
                     ("projectId", &mut s.status.active_project_id),
                     ("reviewId", &mut s.status.active_review_id),
@@ -1314,6 +1410,18 @@ async fn api(
                     if let Some(value) = v.get(field) {
                         *target = value.as_str().map(str::to_string);
                     }
+                }
+                if let Some(session) = s.status.active_session_id.clone() {
+                    let index = s
+                        .sessions
+                        .iter()
+                        .position(|item| {
+                            item.id == session
+                                && Some(&item.project_id) == s.status.active_project_id.as_ref()
+                        })
+                        .ok_or_else(|| invalid("Sitzung gehört nicht zum aktiven Projekt."))?;
+                    let session = s.sessions.remove(index);
+                    s.sessions.push(session);
                 }
                 if let Some(review) = &s.status.active_review_id {
                     s.status.active_batch_id = s
@@ -1328,8 +1436,39 @@ async fn api(
         }
         ("GET", "t3", "catalog", _) => val(app.0.t3.catalog(query.get("search").cloned()).await?)?,
         ("GET", "t3", "projects", _) => val(app.0.t3.list_projects().await?)?,
-        ("POST", "t3", "reconnect", _) => {
-            let c = app.0.t3.discover_capabilities().await?;
+        ("POST", "t3", "pair" | "reconnect", _) => {
+            let connection = if key == "pair" {
+                let request: T3PairRequest = serde_json::from_value(v)?;
+                app.0.t3.pair(request.origin).await
+            } else {
+                app.0.t3.reconnect().await
+            };
+            let c = match connection {
+                Ok(connection) => connection,
+                Err(error) => {
+                    let origin_required = error.to_string().contains("T3-Adresse erforderlich");
+                    let message = if origin_required {
+                        "T3-Adresse erforderlich. Bitte den lokalen T3-Origin angeben."
+                    } else {
+                        "T3-Verbindung fehlgeschlagen. Adresse und Paarung prüfen."
+                    };
+                    app.mutate(move |s, _| {
+                        s.status.t3.state = T3ConnectionState::Error;
+                        s.status.t3.version = None;
+                        s.status.t3.error = Some(message.into());
+                        Ok(())
+                    })
+                    .await?;
+                    return Err(Error::Coded(
+                        if origin_required {
+                            "t3.origin_required"
+                        } else {
+                            "t3.connection_failed"
+                        },
+                        message.into(),
+                    ));
+                }
+            };
             app.mutate(move |s, _| {
                 s.status.t3 = c;
                 val(&s.status.t3)
@@ -1842,6 +1981,44 @@ async fn api(
             s[entity].clone()
         }
         ("POST", "projects" | "profiles" | "sessions", _, _) => {
+            let mut v = v;
+            if entity == "projects" {
+                let request: CreateProjectRequest = serde_json::from_value(v.clone())?;
+                let path = std::fs::canonicalize(&request.repository_path)
+                    .map_err(|_| invalid("Repository-Pfad existiert nicht."))?;
+                if !path.is_dir() {
+                    return Err(invalid("Repository-Pfad muss ein Verzeichnis sein."));
+                }
+                let url = reqwest::Url::parse(&request.base_url)
+                    .map_err(|_| invalid("Basis-URL muss HTTP oder HTTPS verwenden."))?;
+                if !matches!(url.scheme(), "http" | "https") {
+                    return Err(invalid("Basis-URL muss HTTP oder HTTPS verwenden."));
+                }
+                if app.snapshot().await?.projects.iter().any(|project| {
+                    std::fs::canonicalize(&project.repository_path)
+                        .ok()
+                        .as_ref()
+                        == Some(&path)
+                }) {
+                    return Err(invalid(
+                        "Für diesen Repository-Pfad existiert bereits ein Projekt.",
+                    ));
+                }
+                v["repositoryPath"] = json!(path.to_string_lossy());
+                if request.t3_project_id.is_none()
+                    && app.snapshot().await?.status.t3.state == T3ConnectionState::Connected
+                {
+                    let projects = app.0.t3.list_projects().await?;
+                    v["t3ProjectId"] = json!(
+                        projects
+                            .iter()
+                            .find(|p| std::fs::canonicalize(&p.workspace_root).ok().as_ref()
+                                == Some(&path))
+                            .map(|p| &p.id)
+                    );
+                }
+                app.set_review(false).await?;
+            }
             let entity = entity.to_string();
             app.mutate(move |s, _| {
                 let mut item = v;
@@ -1850,11 +2027,33 @@ async fn api(
                     item["createdAt"] = json!(now());
                     item["updatedAt"] = json!(now());
                     let p: Project = serde_json::from_value(item)?;
-                    s.status.active_project_id = Some(p.id.clone());
+                    if s.projects
+                        .iter()
+                        .any(|other| other.repository_path == p.repository_path)
+                    {
+                        return Err(invalid(
+                            "Für diesen Repository-Pfad existiert bereits ein Projekt.",
+                        ));
+                    }
+                    let mut p = p;
+                    p.default_profile_id = s.profiles.first().map(|profile| profile.id.clone());
                     s.projects.push(p.clone());
+                    activate_project(s, Some(p.id.clone()))?;
                     val(p)
                 } else if entity == "profiles" {
                     let p: AgentProfile = serde_json::from_value(item)?;
+                    if s.profiles.is_empty() {
+                        for project in &mut s.projects {
+                            if project.default_profile_id.is_none() {
+                                project.default_profile_id = Some(p.id.clone());
+                            }
+                        }
+                        for batch in &mut s.batches {
+                            if batch.state == BatchState::Draft && batch.profile_id.is_none() {
+                                batch.profile_id = Some(p.id.clone());
+                            }
+                        }
+                    }
                     s.profiles.push(p.clone());
                     val(p)
                 } else {
@@ -1930,6 +2129,21 @@ async fn api(
             .await?
         }
         ("DELETE", "projects" | "profiles" | "sessions", _, _) => {
+            if entity == "projects" {
+                let snapshot = app.snapshot().await?;
+                if snapshot.status.active_project_id.as_ref() == Some(&key)
+                    && !snapshot
+                        .sessions
+                        .iter()
+                        .any(|r| r.project_id == key && r.state != BrowserSessionState::Stopped)
+                    && !snapshot
+                        .tasks
+                        .iter()
+                        .any(|t| t.project_id == key && !t.status.terminal())
+                {
+                    app.set_review(false).await?;
+                }
+            }
             if entity == "sessions" {
                 app.0.browser.stop_session(key.clone()).await?;
             }
@@ -1937,10 +2151,9 @@ async fn api(
             app.mutate(move |s, _| {
                 let removed = match entity.as_str() {
                     "projects" => {
-                        if s.reviews.iter().any(|r| r.project_id == key)
-                            || s.sessions.iter().any(|r| r.project_id == key)
-                        {
-                            return Err(invalid("project still referenced"));
+                        if s.sessions.iter().any(|r| r.project_id == key && r.state != BrowserSessionState::Stopped)
+                            || s.tasks.iter().any(|t| t.project_id == key && !t.status.terminal()) {
+                            return Err(invalid("Projekt hat laufende Sitzungen oder nicht abgeschlossene Aufgaben."));
                         }
                         let p = s
                             .projects
@@ -1949,6 +2162,17 @@ async fn api(
                             .cloned()
                             .ok_or_else(missing)?;
                         s.projects.retain(|p| p.id != key);
+                        let batches: HashSet<_> = s.batches.iter().filter(|b| b.project_id == key).map(|b| b.id.clone()).collect();
+                        s.sessions.retain(|session| session.project_id != key);
+                        s.reviews.retain(|review| review.project_id != key);
+                        s.batches.retain(|batch| batch.project_id != key);
+                        s.annotations.retain(|a| !batches.contains(&a.batch_id));
+                        s.segments.retain(|segment| !batches.contains(&segment.batch_id));
+                        s.tasks.retain(|task| task.project_id != key);
+                        if s.status.active_project_id.as_ref() == Some(&key) {
+                            let next = s.projects.first().map(|p| p.id.clone());
+                            activate_project(s, next)?;
+                        }
                         val(p)?
                     }
                     "profiles" => {

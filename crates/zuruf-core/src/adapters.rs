@@ -42,6 +42,12 @@ pub struct RemoteStatus {
     pub error: Option<String>,
 }
 pub trait T3Adapter: Send + Sync {
+    fn pair(&self, _origin: Option<String>) -> AdapterFuture<'_, T3Connection> {
+        self.discover_capabilities()
+    }
+    fn reconnect(&self) -> AdapterFuture<'_, T3Connection> {
+        self.discover_capabilities()
+    }
     fn discover_capabilities(&self) -> AdapterFuture<'_, T3Connection>;
     fn list_projects(&self) -> AdapterFuture<'_, Vec<T3ProjectRef>>;
     fn catalog(&self, search: Option<String>) -> AdapterFuture<'_, T3Catalog>;
