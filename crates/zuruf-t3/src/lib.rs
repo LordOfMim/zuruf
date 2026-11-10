@@ -251,6 +251,7 @@ impl T3Adapter {
             cli,
             credentials_path,
             http: reqwest::Client::builder()
+                .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(65))
                 .build()?,

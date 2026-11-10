@@ -907,6 +907,72 @@ mod tests {
         assert_eq!(pending.resolve().await.state, SegmentState::Cancelled);
         assert!(c.boundary(None, None).is_err());
     }
+    struct Counted {
+        active: Arc<std::sync::atomic::AtomicUsize>,
+        peak: Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl Transcriber for Counted {
+        fn transcribe(&self, _samples: Vec<i16>) -> AsyncResult<'_, String> {
+            Box::pin(async move {
+                use std::sync::atomic::Ordering::SeqCst;
+                let active = self.active.fetch_add(1, SeqCst) + 1;
+                self.peak.fetch_max(active, SeqCst);
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                self.active.fetch_sub(1, SeqCst);
+                Ok("original".into())
+            })
+        }
+    }
+    #[tokio::test]
+    async fn bounded_workers_and_empty_boundaries() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let active = Arc::default();
+        let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut c = Continuous::new(
+            Counted {
+                active,
+                peak: peak.clone(),
+            },
+            2,
+        );
+        c.begin_fake("epoch".into());
+        let empty = c.boundary(None, None).unwrap();
+        assert_eq!(empty.resolve().await.state, SegmentState::Empty);
+        let mut handles = Vec::new();
+        for index in 0..12 {
+            c.ingest(&[index; 17]).unwrap();
+            handles.push(c.boundary(None, None).unwrap());
+        }
+        assert_eq!(c.state().pending_segments, 12);
+        for (index, handle) in handles.into_iter().enumerate() {
+            let s = handle.resolve().await;
+            assert_eq!(s.start_sample, index as u64 * 17);
+            assert_eq!(s.end_sample, (index + 1) as u64 * 17);
+            assert_eq!(s.original_text, "original");
+        }
+        assert_eq!(peak.load(SeqCst), 2);
+        assert_eq!(c.state().pending_segments, 0);
+    }
+    #[tokio::test]
+    async fn foreign_daemon_is_never_signalled() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = std::env::temp_dir().join(format!("zuruf-fake-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir(&directory).await.unwrap();
+        let executable = directory.join("voxtype");
+        tokio::fs::write(&executable,b"#!/bin/sh\nif [ \"$1\" = status ]; then printf '%s\\n' '{\"class\":\"recording\"}'; else exit 92; fi\n").await.unwrap();
+        tokio::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700))
+            .await
+            .unwrap();
+        let mut daemon = DaemonIo::new(executable, directory.clone());
+        assert!(matches!(
+            daemon.start("foreign".into()).await,
+            Err(Error::BusyExternal)
+        ));
+        assert_eq!(daemon.state().state, "busy_external");
+        daemon.cancel().await.unwrap();
+        assert!(!daemon.owned);
+        tokio::fs::remove_dir_all(directory).await.unwrap();
+    }
     #[tokio::test]
     #[ignore = "records 2 seconds of ambient microphone audio"]
     async fn live_continuous() {
