@@ -308,6 +308,9 @@ impl Daemon {
         })
         .await?;
         self.mutate(|s, _| {
+            // No recording survives a restart; a stale "on" would make the next toggle a no-op.
+            s.settings.speech.enabled = false;
+            s.status.speech.state = SpeechStateState::Idle;
             for segment in &mut s.segments {
                 if matches!(
                     segment.state,
