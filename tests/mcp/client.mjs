@@ -52,6 +52,10 @@ try {
  await tool('request_browser_control');await tool('get_cdp_endpoint');
  await tool('renew_browser_control',{},true); // Explicit contract gap; no unsafe release/regrant.
  await tool('release_browser_control');await tool('get_cdp_endpoint',{},true);
+ await tool('request_browser_control',{leaseSeconds:1});
+ await new Promise(r=>setTimeout(r,1200));
+ await tool('get_cdp_endpoint',{},true);
+ await api(`sessions/${sid}/control`,{action:'release'});
  await tool('request_browser_control');
  await api(`sessions/${sid}/control`,{action:'takeover'});
  await tool('get_cdp_endpoint',{},true);await tool('request_browser_control',{},true);

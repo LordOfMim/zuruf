@@ -40,6 +40,8 @@ Die elf Werkzeuge aus Spec §9 bleiben erhalten; Taskmeldungen, Lease-Erneuerung
 
 `BrowserController::control` kennt nur grant/release/takeover/revoke, keine atomare Verlängerung. Ein Release mit anschließendem Grant könnte ein menschliches Takeover überholen. Deshalb schlägt Erneuern geschlossen fehl. Die Browser-Verdrahtung muss eine atomare Renew-Operation ergänzen; andere Crates wurden hier nicht geändert. Die Tests prüfen diese ehrliche Fehlermeldung, keine erfolgreiche Verlängerung.
 
+Die Daemon-Übergabe akzeptiert aktuell nur Batches, deren sessiongebundene Annotationen derselben Session zugeordnet sind. Reine Textnotizen ohne Session-ID bleiben im Task sichtbar. Gemischte Batches mit mehreren Sessions werden sicherheitshalber abgewiesen; eine Übergabe mit mehreren Session-Scopes fehlt noch.
+
 `get_session_context` liefert vorhandene Tabs und Kontrolle; der Browservertrag besitzt keinen aktuellen Viewport außerhalb der gespeicherten Annotationen. Der liegt im Batch-Kontext. Fortschrittsstatus kann von der bestehenden Remote-Statusverfolgung wieder aktualisiert werden. Das Beenden laufender CDP-Kommandos und deren unmittelbare Sperre nach Takeover bleiben Aufgabe des CDP-Proxys.
 
 ## Reproduzieren
@@ -52,7 +54,7 @@ systemd-run --user --wait --collect --pipe --working-directory="$PWD/tests/mcp" 
 systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=3G -p MemorySwapMax=1G -- node tests/mcp/client.mjs
 ```
 
-Der offizielle TS-SDK-Client startet das echte Fake-Daemon-Binary mit Seed, separaten Verzeichnissen und Port 48673. Er prüft alle 15 Werkzeuge, MCP-Bildinhalt, Auth/Origin, gegenseitige Task-Abgrenzung, Widerruf, Lease/Freigabe und Takeover. Prozess und temporäre Daten werden im finally-Block entfernt. Ein bestehender Dienst auf dem Testport ist vor dem Test auszuschließen. Reale Chromium-/T3-/Audio-Abnahme wird damit nicht behauptet.
+Der offizielle TS-SDK-Client startet das echte Fake-Daemon-Binary mit Seed, separaten Verzeichnissen und Port 48673. Er prüft alle 15 Werkzeuge, MCP-Bildinhalt, Auth/Origin, gegenseitige Task-Abgrenzung, Widerruf, Lease/Freigabe, Ablauf einer Ein-Sekunden-Lease und Takeover. Prozess und temporäre Daten werden im finally-Block entfernt. Ein bestehender Dienst auf dem Testport ist vor dem Test auszuschließen. Reale Chromium-/T3-/Audio-Abnahme wird damit nicht behauptet.
 
 ## Stand der lokalen Prüfung
 
