@@ -1,0 +1,24 @@
+{
+  "instanceId": "example",
+  "displayName": "example",
+  "enabled": true,
+  "constraints": [
+    "example"
+  ],
+  "models": [
+    {
+      "id": "example",
+      "label": "example",
+      "options": [
+        {
+          "id": "example",
+          "values": [
+            "example"
+          ],
+          "default": "example"
+        }
+      ]
+    }
+  ],
+  "omittedModels": 1.0
+}

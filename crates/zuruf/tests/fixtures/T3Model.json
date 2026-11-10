@@ -1,0 +1,13 @@
+{
+  "id": "example",
+  "label": "example",
+  "options": [
+    {
+      "id": "example",
+      "values": [
+        "example"
+      ],
+      "default": "example"
+    }
+  ]
+}
