@@ -1,0 +1,190 @@
+
+$ voxtype --version
+voxtype 1.1.1
+
+$ voxtype record start --help
+Start recording (send SIGUSR1 to daemon)
+
+Usage: voxtype record start [OPTIONS]
+
+Options:
+      --type
+          Override output mode to simulate keyboard typing
+
+      --clipboard
+          Override output mode to clipboard only
+
+      --paste
+          Override output mode to paste (clipboard + Ctrl+V)
+
+      --file [<FILE>]
+          Write transcription to a file Use --file alone to use file_path from config, or --file=path.txt for explicit path
+
+      --model <MODEL>
+          Use a specific model for this transcription (e.g., large-v3-turbo)
+          
+          Any engine's model works, not just the configured engine's: the daemon loads it alongside the default model and keeps it loaded for the next override (unless on_demand_loading is set). Names are the ones `voxtype info models` shows; an unknown or undownloaded model fails immediately.
+
+      --profile <NAME>
+          Use a named profile for post-processing (e.g., --profile slack) Profiles are defined in config.toml under [profiles.name]
+
+      --auto-submit
+          Auto-submit (press Enter) after this transcription
+
+      --no-auto-submit
+          Disable auto-submit for this transcription (overrides config)
+
+      --shift-enter-newlines
+          Use Shift+Enter for newlines in this transcription
+
+      --no-shift-enter-newlines
+          Disable Shift+Enter newlines for this transcription (overrides config)
+
+      --no-osd
+          Suppress the on-screen display for this recording only
+          
+          Leaves `osd.enabled` in config.toml untouched. Intended for external tools that draw their own dictation UI and do not want voxtype's overlay on top of it.
+
+      --smart-auto-submit
+          Enable smart auto-submit for this recording (say "submit" to press Enter)
+
+      --no-smart-auto-submit
+          Disable smart auto-submit for this recording
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+$ voxtype record stop --help
+Stop recording and transcribe (send SIGUSR2 to daemon)
+
+Usage: voxtype record stop [OPTIONS]
+
+Options:
+      --type
+          Override output mode to simulate keyboard typing
+
+      --clipboard
+          Override output mode to clipboard only
+
+      --paste
+          Override output mode to paste (clipboard + Ctrl+V)
+
+      --wait
+          Block until the transcription is final instead of returning as soon as the daemon has been signalled
+          
+          Requires the recording to be writing to a file (started with --file, or output.mode = "file"). Exit code reports the outcome: 0 transcribed, 3 nothing to transcribe, 4 timed out, 1 failed.
+
+      --json
+          With --wait, print one JSON object describing the outcome
+
+      --timeout <SECS>
+          With --wait, give up after this many seconds
+          
+          [default: 120]
+
+      --wait-file <FILE>
+          With --wait, the transcript path to wait on
+          
+          Defaults to the path the pending recording is already writing to, so a caller that passed --file to `record start` need not repeat it.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+$ voxtype record cancel --help
+Cancel current recording or transcription (discard without output)
+
+Usage: voxtype record cancel
+
+Options:
+  -h, --help  Print help
+
+$ voxtype status --help
+Show daemon status (for Waybar/polybar integration)
+
+Usage: voxtype status [OPTIONS]
+
+Options:
+      --follow              Continuously output status changes as JSON (for Waybar exec)
+      --format <FORMAT>     Output format: "text" (default) or "json" (for Waybar) [default: text]
+      --extended            Include extended info in JSON (model, device, backend)
+      --icon-theme <THEME>  Icon theme for JSON output (emoji, nerd-font, material, phosphor, codicons, omarchy, minimal, dots, arrows, text, or path to custom theme)
+  -h, --help                Print help
+
+$ voxtype meeting --help
+Meeting transcription mode
+
+Continuous meeting transcription with chunked processing, speaker attribution, and export capabilities.
+
+Usage: voxtype meeting <COMMAND>
+
+Commands:
+  start      Start a new meeting transcription
+  stop       Stop the current meeting
+  pause      Pause the current meeting
+  resume     Resume a paused meeting
+  status     Show meeting status
+  list       List past meetings
+  export     Export a meeting transcript
+  show       Show meeting details
+  delete     Delete a meeting
+  label      Label a speaker in a meeting transcript
+  summarize  Generate an AI summary of a meeting
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+$ voxtype meeting start --help
+Start a new meeting transcription
+
+Usage: voxtype meeting start [OPTIONS]
+
+Options:
+  -t, --title <TITLE>
+          Meeting title (optional)
+
+      --diarization <DIARIZATION>
+          Diarization backend override for this meeting only.
+          
+          `simple` attributes by audio source (You vs Remote) — best for 1:1 calls. `ml` uses ONNX speaker embeddings for multi-speaker meetings (requires the `ml-diarization` feature and the ECAPA-TDNN model).
+          
+          When omitted, falls back to `[meeting.diarization].backend` in config.
+          
+          [env: VOXTYPE_MEETING_DIARIZATION=]
+          [possible values: simple, ml]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+$ voxtype meeting export --help
+Export a meeting transcript
+
+Usage: voxtype meeting export [OPTIONS] <MEETING_ID>
+
+Arguments:
+  <MEETING_ID>  Meeting ID (or "latest" for most recent)
+
+Options:
+  -f, --format <FORMAT>  Output format: text, markdown, json [default: markdown]
+  -o, --output <OUTPUT>  Output file path (default: stdout)
+      --timestamps       Include timestamps in output
+      --speakers         Include speaker labels in output
+      --metadata         Include metadata header in output
+  -h, --help             Print help
+
+$ voxtype transcribe --help
+Transcribe an audio file (WAV, 16kHz, mono)
+
+Usage: voxtype transcribe [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>
+          Path to audio file
+
+Options:
+      --engine <ENGINE>
+          Override transcription engine: whisper, parakeet, moonshine, sensevoice, paraformer, dolphin, omnilingual, cohere, openvino, soniox
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -1,0 +1,2973 @@
+[
+  {
+    "path": "/api/projects",
+    "status": 200,
+    "data": {
+      "projects": [
+        {
+          "id": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+          "title": "Zuruf",
+          "workspaceRoot": "/home/mika/Projects/Humaify/zuruf/main",
+          "repositoryIdentity": null,
+          "faviconPath": null,
+          "projectIcon": null,
+          "defaultModelSelection": null,
+          "defaultThreadEnvMode": null,
+          "autoPull": false,
+          "scripts": [],
+          "pinnedAt": null,
+          "archivedAt": null,
+          "createdAt": "2026-11-10T16:37:02.837Z",
+          "updatedAt": "2026-11-10T16:37:02.837Z",
+          "deletedAt": null
+        }
+      ]
+    }
+  },
+  {
+    "path": "/api/orchestration/threads/mcp%3Aec5a0341-c7ed-432c-b1b4-53bedf73b46f",
+    "status": 200,
+    "data": {
+      "keys": [
+        "snapshotSequence",
+        "projection"
+      ]
+    }
+  },
+  {
+    "providers": [
+      {
+        "instanceId": "codex",
+        "enabled": true,
+        "models": [
+          {
+            "slug": "gpt-6.1-sol",
+            "name": "GPT-6.1-Sol",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "low"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "2x speed, increased usage",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-6-astra",
+            "name": "GPT-6-Astra",
+            "isCustom": false,
+            "isDefault": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "medium"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "2x speed, increased usage",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-6.1-terra",
+            "name": "GPT-6.1 Terra",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "low"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-6-sol",
+            "name": "GPT-6-Sol",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "medium"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-6-luna",
+            "name": "GPT-6-Luna",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ],
+                  "currentValue": "medium"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-5.6-sol",
+            "name": "GPT-5.6-Sol",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "low"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed, increased usage",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-5.6-terra",
+            "name": "GPT-5.6-Terra",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultra",
+                      "label": "Ultra"
+                    }
+                  ],
+                  "currentValue": "medium"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed, increased usage",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "gpt-5.6-luna",
+            "name": "GPT-5.6-Luna",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "reasoningEffort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ],
+                  "currentValue": "medium"
+                },
+                {
+                  "id": "serviceTier",
+                  "label": "Service Tier",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "default",
+                      "label": "Standard"
+                    },
+                    {
+                      "id": "priority",
+                      "label": "Fast",
+                      "description": "1.5x speed, increased usage",
+                      "isDefault": true
+                    }
+                  ],
+                  "currentValue": "priority"
+                }
+              ]
+            }
+          }
+        ],
+        "status": "ready"
+      },
+      {
+        "instanceId": "claudeAgent",
+        "enabled": true,
+        "models": [
+          {
+            "slug": "claude-opus-5-5",
+            "name": "Claude Opus 5.5",
+            "aliases": [
+              "opus",
+              "opus-5.5",
+              "claude-opus-5.5"
+            ],
+            "isCustom": false,
+            "isDefault": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5-5",
+            "name": "Claude Sonnet 5.5",
+            "aliases": [
+              "sonnet",
+              "sonnet-5.5",
+              "claude-sonnet-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-2",
+            "name": "Claude Fable 5.2",
+            "aliases": [
+              "fable",
+              "fable-5.2",
+              "claude-fable-5.2"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-1",
+            "name": "Claude Fable 5.1",
+            "aliases": [
+              "fable-5.1",
+              "claude-fable-5.1"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5",
+            "name": "Claude Fable 5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "aliases": [
+              "opus-5",
+              "claude-opus-5.0",
+              "claude-opus-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "aliases": [
+              "opus-4.8",
+              "claude-opus-4.8"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "aliases": [
+              "opus-4.7",
+              "claude-opus-4.7"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-6",
+            "name": "Claude Opus 4.6",
+            "aliases": [
+              "opus-4.6",
+              "claude-opus-4.6",
+              "claude-opus-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k"
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M",
+                      "isDefault": true
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-5",
+            "name": "Claude Opus 4.5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5",
+            "name": "Claude Sonnet 5",
+            "aliases": [
+              "sonnet-5",
+              "claude-sonnet-5.0",
+              "claude-sonnet-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "aliases": [
+              "sonnet-4.6",
+              "claude-sonnet-4.6",
+              "claude-sonnet-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-5-5",
+            "name": "Claude Haiku 5.5",
+            "aliases": [
+              "haiku",
+              "haiku-5.5",
+              "claude-haiku-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "name": "Claude Haiku 4.5",
+            "aliases": [
+              "haiku-4.5",
+              "claude-haiku-4.5",
+              "claude-haiku-4-5-20251001"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "thinking",
+                  "label": "Thinking",
+                  "type": "boolean",
+                  "currentValue": true
+                }
+              ]
+            }
+          }
+        ],
+        "status": "ready"
+      },
+      {
+        "instanceId": "claudeAgent_2",
+        "enabled": false,
+        "models": [
+          {
+            "slug": "claude-opus-5-5",
+            "name": "Claude Opus 5.5",
+            "aliases": [
+              "opus",
+              "opus-5.5",
+              "claude-opus-5.5"
+            ],
+            "isCustom": false,
+            "isDefault": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5-5",
+            "name": "Claude Sonnet 5.5",
+            "aliases": [
+              "sonnet",
+              "sonnet-5.5",
+              "claude-sonnet-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-2",
+            "name": "Claude Fable 5.2",
+            "aliases": [
+              "fable",
+              "fable-5.2",
+              "claude-fable-5.2"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-1",
+            "name": "Claude Fable 5.1",
+            "aliases": [
+              "fable-5.1",
+              "claude-fable-5.1"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5",
+            "name": "Claude Fable 5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "aliases": [
+              "opus-5",
+              "claude-opus-5.0",
+              "claude-opus-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "aliases": [
+              "opus-4.8",
+              "claude-opus-4.8"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "aliases": [
+              "opus-4.7",
+              "claude-opus-4.7"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-6",
+            "name": "Claude Opus 4.6",
+            "aliases": [
+              "opus-4.6",
+              "claude-opus-4.6",
+              "claude-opus-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k"
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M",
+                      "isDefault": true
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-5",
+            "name": "Claude Opus 4.5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5",
+            "name": "Claude Sonnet 5",
+            "aliases": [
+              "sonnet-5",
+              "claude-sonnet-5.0",
+              "claude-sonnet-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "aliases": [
+              "sonnet-4.6",
+              "claude-sonnet-4.6",
+              "claude-sonnet-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-5-5",
+            "name": "Claude Haiku 5.5",
+            "aliases": [
+              "haiku",
+              "haiku-5.5",
+              "claude-haiku-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "name": "Claude Haiku 4.5",
+            "aliases": [
+              "haiku-4.5",
+              "claude-haiku-4.5",
+              "claude-haiku-4-5-20251001"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "thinking",
+                  "label": "Thinking",
+                  "type": "boolean",
+                  "currentValue": true
+                }
+              ]
+            }
+          }
+        ],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "claude_openrouter",
+        "enabled": true,
+        "models": [
+          {
+            "slug": "claude-opus-5-5",
+            "name": "Claude Opus 5.5",
+            "aliases": [
+              "opus",
+              "opus-5.5",
+              "claude-opus-5.5"
+            ],
+            "isCustom": false,
+            "isDefault": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5-5",
+            "name": "Claude Sonnet 5.5",
+            "aliases": [
+              "sonnet",
+              "sonnet-5.5",
+              "claude-sonnet-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-2",
+            "name": "Claude Fable 5.2",
+            "aliases": [
+              "fable",
+              "fable-5.2",
+              "claude-fable-5.2"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5-1",
+            "name": "Claude Fable 5.1",
+            "aliases": [
+              "fable-5.1",
+              "claude-fable-5.1"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-fable-5",
+            "name": "Claude Fable 5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "aliases": [
+              "opus-5",
+              "claude-opus-5.0",
+              "claude-opus-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "aliases": [
+              "opus-4.8",
+              "claude-opus-4.8"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "aliases": [
+              "opus-4.7",
+              "claude-opus-4.7"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-6",
+            "name": "Claude Opus 4.6",
+            "aliases": [
+              "opus-4.6",
+              "claude-opus-4.6",
+              "claude-opus-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k"
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M",
+                      "isDefault": true
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-opus-4-5",
+            "name": "Claude Opus 4.5",
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ]
+                },
+                {
+                  "id": "fastMode",
+                  "label": "Fast Mode",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-5",
+            "name": "Claude Sonnet 5",
+            "aliases": [
+              "sonnet-5",
+              "claude-sonnet-5.0",
+              "claude-sonnet-5-0"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "aliases": [
+              "sonnet-4.6",
+              "claude-sonnet-4.6",
+              "claude-sonnet-4-6-20251117"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                },
+                {
+                  "id": "contextWindow",
+                  "label": "Context Window",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "200k",
+                      "label": "200k",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "1m",
+                      "label": "1M"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-5-5",
+            "name": "Claude Haiku 5.5",
+            "aliases": [
+              "haiku",
+              "haiku-5.5",
+              "claude-haiku-5.5"
+            ],
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    },
+                    {
+                      "id": "ultracode",
+                      "label": "Ultracode",
+                      "description": "xhigh effort plus multi-agent workflow orchestration"
+                    },
+                    {
+                      "id": "ultrathink",
+                      "label": "Ultrathink"
+                    }
+                  ],
+                  "promptInjectedValues": [
+                    "ultrathink"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "name": "Claude Haiku 4.5",
+            "aliases": [
+              "haiku-4.5",
+              "claude-haiku-4.5",
+              "claude-haiku-4-5-20251001"
+            ],
+            "isCustom": false,
+            "isLegacy": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "thinking",
+                  "label": "Thinking",
+                  "type": "boolean",
+                  "currentValue": true
+                }
+              ]
+            }
+          },
+          {
+            "slug": "z-ai/glm-5.3-flash",
+            "name": "GLM 5.3 Flash",
+            "isCustom": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ],
+                  "currentValue": "high"
+                },
+                {
+                  "id": "thinking",
+                  "label": "Thinking",
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          {
+            "slug": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "name": "NVIDIA Nemotron (free)",
+            "isCustom": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Reasoning",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium"
+                    },
+                    {
+                      "id": "high",
+                      "label": "High",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ],
+                  "currentValue": "high"
+                },
+                {
+                  "id": "thinking",
+                  "label": "Thinking",
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        ],
+        "status": "ready"
+      },
+      {
+        "instanceId": "cursor",
+        "enabled": false,
+        "models": [],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "grok",
+        "enabled": false,
+        "models": [
+          {
+            "slug": "grok-build",
+            "name": "Grok Build",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": []
+            }
+          }
+        ],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "opencode",
+        "enabled": false,
+        "models": [],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "antigravity",
+        "enabled": false,
+        "models": [],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "fx",
+        "enabled": false,
+        "models": [
+          {
+            "slug": "default",
+            "name": "Default",
+            "isCustom": false,
+            "isDefault": true,
+            "capabilities": {
+              "optionDescriptors": [
+                {
+                  "id": "effort",
+                  "label": "Effort",
+                  "type": "select",
+                  "options": [
+                    {
+                      "id": "auto",
+                      "label": "Auto"
+                    },
+                    {
+                      "id": "low",
+                      "label": "Low"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium",
+                      "isDefault": true
+                    },
+                    {
+                      "id": "high",
+                      "label": "High"
+                    },
+                    {
+                      "id": "xhigh",
+                      "label": "Extra High"
+                    },
+                    {
+                      "id": "max",
+                      "label": "Max"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "kiro",
+        "enabled": false,
+        "models": [
+          {
+            "slug": "default",
+            "name": "Kiro default",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": []
+            }
+          }
+        ],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "muse",
+        "enabled": false,
+        "models": [],
+        "status": "disabled"
+      },
+      {
+        "instanceId": "pi",
+        "enabled": false,
+        "models": [
+          {
+            "slug": "default",
+            "name": "Pi default",
+            "isCustom": false,
+            "capabilities": {
+              "optionDescriptors": []
+            }
+          }
+        ],
+        "status": "disabled"
+      }
+    ]
+  },
+  {
+    "frameTag": "Exit",
+    "keys": [
+      "_tag",
+      "requestId",
+      "exit"
+    ],
+    "bytes": 565635
+  }
+]

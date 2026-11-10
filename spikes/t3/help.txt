@@ -1,0 +1,224 @@
+
+$ t3 --version
+t3 v0.1.7
+
+$ t3 thread start --help
+DESCRIPTION
+  Start a thread in a project and print its id.
+
+USAGE
+  t3 thread start [flags] <project> <message>
+
+ARGUMENTS
+  project string    Project id or a path inside the project, such as .
+  message string    Message for the agent, or - to read it from stdin.
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --title string       Thread title. Defaults to the message's first line.
+  --provider string    Provider instance id. Pass with --model.
+  --model string       Model slug. Defaults to the project's default model.
+  --worktree string    Run in a new git worktree based on this branch, tag, or commit, instead of the project folder.
+  --branch string      Branch name for the new worktree.
+  --wait               Wait for the agent to finish and print its reply. Exits 1 if the run fails and 2 if it waits for an answer.
+  --json               Print JSON instead of text.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 thread send --help
+DESCRIPTION
+  Send a message to a thread. A busy thread gets it as its next turn; nothing is interrupted.
+
+USAGE
+  t3 thread send [flags] <thread> <message>
+
+ARGUMENTS
+  thread string     Thread id.
+  message string    Message for the agent, or - to read it from stdin.
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --wait               Wait for the agent to finish and print its reply. Exits 1 if the run fails and 2 if it waits for an answer.
+  --json               Print JSON instead of text.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 thread show --help
+DESCRIPTION
+  Show a thread's state and its latest messages.
+
+USAGE
+  t3 thread show [flags] <thread>
+
+ARGUMENTS
+  thread string    Thread id.
+
+FLAGS
+  --base-dir string     Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --messages integer    How many of the latest messages to print.
+  --json                Print JSON instead of text.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 thread list --help
+DESCRIPTION
+  List a project's threads, newest first.
+
+USAGE
+  t3 thread list [flags]
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --project string     Project id or a path inside the project. Defaults to this directory.
+  --json               Print JSON instead of text.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 project --help
+DESCRIPTION
+  Manage projects.
+
+USAGE
+  t3 project <subcommand> [flags]
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+SUBCOMMANDS
+  add       Add a project.
+  remove    Remove a project.
+  rename    Rename a project.
+
+$ t3 project add --help
+DESCRIPTION
+  Add a project.
+
+USAGE
+  t3 project add [flags] <path>
+
+ARGUMENTS
+  path string    Workspace root to add as a project.
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --title string       Optional project title.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 project remove --help
+DESCRIPTION
+  Remove a project.
+
+USAGE
+  t3 project remove [flags] <project>
+
+ARGUMENTS
+  project string    Project id or workspace root to remove.
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --force              Delete the project and all of its threads.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 project rename --help
+DESCRIPTION
+  Rename a project.
+
+USAGE
+  t3 project rename [flags] <project> <title>
+
+ARGUMENTS
+  project string    Project id or workspace root to rename.
+  title string      New project title.
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 auth session issue --help
+DESCRIPTION
+  Issue a scoped bearer access token for headless or remote clients.
+
+USAGE
+  t3 auth session issue [flags]
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --dev-url string     Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL).
+  --scope choice       Authorization scope to grant. Repeat for multiple scopes; replaces the default set: orchestration:read, orchestration:operate, settings:write, providers:manage, environment:maintain, preview:operate, diagnostics:read, terminal:read, terminal:operate, source-control:write, filesystem:read, filesystem:write, relay:read, access:read, access:write, relay:write. (choices: orchestration:read, orchestration:operate, settings:write, providers:manage, environment:maintain, preview:operate, diagnostics:read, terminal:read, terminal:operate, filesystem:read, filesystem:write, source-control:write, access:read, access:write, relay:read, relay:write)
+  --ttl string         TTL, for example `5m`, `1h`, `30d`, or `15 minutes`.
+  --label string       Optional human-readable label.
+  --subject string     Optional session subject.
+  --token-only         Print only the issued bearer token.
+  --json               Emit JSON instead of human-readable output.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+$ t3 auth pairing create --help
+DESCRIPTION
+  Issue a new client pairing token.
+
+USAGE
+  t3 auth pairing create [flags]
+
+FLAGS
+  --base-dir string    Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).
+  --dev-url string     Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL).
+  --scope choice       Authorization scope to grant. Repeat for multiple scopes; replaces the default set: orchestration:read, orchestration:operate, settings:write, providers:manage, environment:maintain, preview:operate, diagnostics:read, terminal:read, terminal:operate, source-control:write, filesystem:read, filesystem:write, relay:read, access:read, access:write, relay:write. (choices: orchestration:read, orchestration:operate, settings:write, providers:manage, environment:maintain, preview:operate, diagnostics:read, terminal:read, terminal:operate, filesystem:read, filesystem:write, source-control:write, access:read, access:write, relay:read, relay:write)
+  --ttl string         TTL, for example `5m`, `1h`, `30d`, or `15 minutes`.
+  --label string       Optional human-readable label.
+  --base-url string    Optional public base URL used to print a ready `/pair#token=...` link.
+  --json               Emit JSON instead of human-readable output.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
