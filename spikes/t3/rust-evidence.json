@@ -1,0 +1,16 @@
+{
+  "threadId": "mcp:launch:70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44",
+  "title": "zuruf-test-rust [791b9cee-12c6-42b6-bfad-307bdfa19080]",
+  "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44",
+  "status": "completed",
+  "latestRunId": "run:thread:mcp%3Alaunch%3A70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44:ordinal:2",
+  "worktreePath": null,
+  "branch": null,
+  "messages": [
+    {
+      "role": "assistant",
+      "runId": "run:thread:mcp%3Alaunch%3A70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44:ordinal:2",
+      "text": "OK"
+    }
+  ]
+}

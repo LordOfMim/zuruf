@@ -1,0 +1,3691 @@
+{
+  "pairingFields": [
+    "id",
+    "credential",
+    "label",
+    "scopes",
+    "expiresAt"
+  ],
+  "tokenFields": [
+    "access_token",
+    "token_type",
+    "expires_in",
+    "scope"
+  ],
+  "scope": "orchestration:read orchestration:operate",
+  "tools": {
+    "tools": [
+      {
+        "name": "orchestrator_capabilities",
+        "title": "Get orchestration capabilities",
+        "description": "List providers, models, options, and runtime modes for `delegate_task`. Short list. `search` finds others. Any catalog model works.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "search": {
+              "type": "string"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "parentThreadId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "inheritedProviderInstanceId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "inheritedModel": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "inheritedOptions": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "boolean"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "value"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runtimeMode": {
+              "type": "string",
+              "enum": [
+                "approval-required",
+                "auto-accept-edits",
+                "auto",
+                "full-access"
+              ]
+            },
+            "interactionMode": {
+              "type": "string",
+              "enum": [
+                "default",
+                "plan"
+              ]
+            },
+            "providers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "providerInstanceId": {
+                    "type": "string"
+                  },
+                  "driverKind": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "models": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "options": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "values": {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "default": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "boolean"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "values"
+                                ],
+                                "additionalProperties": true
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": true
+                    }
+                  },
+                  "omittedModels": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runtimeModes": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "approval-required",
+                            "auto-accept-edits",
+                            "auto",
+                            "full-access"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "canRunChildTask": {
+                    "type": "boolean"
+                  },
+                  "canRunCrossProviderChildTask": {
+                    "type": "boolean"
+                  },
+                  "constraints": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "providerInstanceId",
+                  "driverKind",
+                  "displayName",
+                  "models",
+                  "canRunChildTask",
+                  "canRunCrossProviderChildTask",
+                  "constraints"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "features": {
+              "type": "object",
+              "properties": {
+                "appOwnedSubagents": {
+                  "type": "boolean"
+                },
+                "asyncPolling": {
+                  "type": "boolean"
+                },
+                "cancellation": {
+                  "type": "boolean"
+                },
+                "batchThreadCreation": {
+                  "type": "boolean"
+                },
+                "threadManagement": {
+                  "type": "boolean"
+                },
+                "incrementalThreadRead": {
+                  "type": "boolean"
+                },
+                "scheduledTasks": {
+                  "type": "boolean"
+                },
+                "maxBatchThreads": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "Infinity",
+                        "-Infinity",
+                        "NaN"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "appOwnedSubagents",
+                "asyncPolling",
+                "cancellation",
+                "batchThreadCreation",
+                "threadManagement",
+                "incrementalThreadRead",
+                "scheduledTasks",
+                "maxBatchThreads"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "parentThreadId",
+            "inheritedProviderInstanceId",
+            "inheritedModel",
+            "runtimeMode",
+            "interactionMode",
+            "providers",
+            "features"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Get orchestration capabilities",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_list",
+        "title": "List T3 threads",
+        "description": "List threads newest first, in one project or with `allProjects`. Page with `cursor`.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "allProjects": {
+              "type": "boolean"
+            },
+            "statuses": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "preparing",
+                  "queued",
+                  "starting",
+                  "running",
+                  "waiting",
+                  "completed",
+                  "interrupted",
+                  "failed",
+                  "cancelled",
+                  "rolled_back"
+                ]
+              },
+              "maxItems": 10
+            },
+            "titleContains": {
+              "type": "string"
+            },
+            "settled": {
+              "type": "boolean"
+            },
+            "snoozed": {
+              "type": "boolean"
+            },
+            "includeSubagents": {
+              "type": "boolean"
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "currentThreadId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "threads": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "threadId": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "link": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdBy": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "agent",
+                      "system"
+                    ]
+                  },
+                  "creationSource": {
+                    "type": "string",
+                    "enum": [
+                      "web",
+                      "mobile",
+                      "mcp",
+                      "provider",
+                      "server"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "idle",
+                      "preparing",
+                      "queued",
+                      "starting",
+                      "running",
+                      "waiting",
+                      "completed",
+                      "interrupted",
+                      "failed",
+                      "cancelled",
+                      "rolled_back"
+                    ]
+                  },
+                  "latestRunId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "providerInstanceId": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "runtimeMode": {
+                    "type": "string",
+                    "enum": [
+                      "approval-required",
+                      "auto-accept-edits",
+                      "auto",
+                      "full-access"
+                    ]
+                  },
+                  "interactionMode": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "plan"
+                    ]
+                  },
+                  "linkedPullRequest": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "repository": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "projectId",
+                          "repository",
+                          "number",
+                          "url"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pullRequests": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "host": {
+                              "type": "string"
+                            },
+                            "repository": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            },
+                            "url": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "manual",
+                                "created",
+                                "agent",
+                                "stack",
+                                "stack-dismissed"
+                              ]
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "open",
+                                    "closed",
+                                    "merged"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "host",
+                            "repository",
+                            "number",
+                            "url",
+                            "source",
+                            "state"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "settled": {
+                    "type": "boolean"
+                  },
+                  "settledAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "snoozed": {
+                    "type": "boolean"
+                  },
+                  "snoozedUntil": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "parentThreadId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "relationshipToParent": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "fork",
+                          "subagent"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "itemCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "threadId",
+                  "projectId",
+                  "title",
+                  "createdBy",
+                  "creationSource",
+                  "status",
+                  "latestRunId",
+                  "providerInstanceId",
+                  "model",
+                  "runtimeMode",
+                  "interactionMode",
+                  "linkedPullRequest",
+                  "settled",
+                  "settledAt",
+                  "snoozed",
+                  "snoozedUntil",
+                  "parentThreadId",
+                  "relationshipToParent",
+                  "itemCount",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "projectId",
+            "currentThreadId",
+            "threads",
+            "nextCursor",
+            "total"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "List T3 threads",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_read",
+        "title": "Read a T3 thread",
+        "description": "Read any thread by id. `messages` (default): user and assistant messages and plans. `activity`: all timeline items. Keep reads small: low `limit` and `maxCharsPerItem`. Page with `afterPosition=nextPosition`. Cut-off text: `itemId` with `textOffset=nextTextOffset`. Reading a child's final result marks it delivered. In your reply, name it as its `link` verbatim.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "textOffset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "messages",
+                "activity"
+              ]
+            },
+            "afterPosition": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Max items, 1 to 100."
+            },
+            "runLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Max recent runs, 1 to 50."
+            },
+            "maxCharsPerItem": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Max chars per item, 1 to 50000."
+            }
+          },
+          "required": [
+            "threadId"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "thread": {
+              "type": "object",
+              "properties": {
+                "threadId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "link": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdBy": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "agent",
+                    "system"
+                  ]
+                },
+                "creationSource": {
+                  "type": "string",
+                  "enum": [
+                    "web",
+                    "mobile",
+                    "mcp",
+                    "provider",
+                    "server"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "idle",
+                    "preparing",
+                    "queued",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "interrupted",
+                    "failed",
+                    "cancelled",
+                    "rolled_back"
+                  ]
+                },
+                "latestRunId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "activeRunId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "providerInstanceId": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "runtimeMode": {
+                  "type": "string",
+                  "enum": [
+                    "approval-required",
+                    "auto-accept-edits",
+                    "auto",
+                    "full-access"
+                  ]
+                },
+                "interactionMode": {
+                  "type": "string",
+                  "enum": [
+                    "default",
+                    "plan"
+                  ]
+                },
+                "linkedPullRequest": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "projectId": {
+                          "type": "string"
+                        },
+                        "repository": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "projectId",
+                        "repository",
+                        "number",
+                        "url"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pullRequests": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string"
+                          },
+                          "repository": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "created",
+                              "agent",
+                              "stack",
+                              "stack-dismissed"
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "closed",
+                                  "merged"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "host",
+                          "repository",
+                          "number",
+                          "url",
+                          "source",
+                          "state"
+                        ],
+                        "additionalProperties": true
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "titleRegeneration": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "requestId": {
+                          "type": "string"
+                        },
+                        "startedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "requestId",
+                        "startedAt"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "branch": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "worktreePath": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentThreadId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "relationshipToParent": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "fork",
+                        "subagent"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "runCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "itemCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pendingRequestCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "archived": {
+                  "type": "boolean"
+                },
+                "settled": {
+                  "type": "boolean"
+                },
+                "settledAt": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "snoozed": {
+                  "type": "boolean"
+                },
+                "snoozedUntil": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "threadId",
+                "projectId",
+                "title",
+                "createdBy",
+                "creationSource",
+                "status",
+                "latestRunId",
+                "activeRunId",
+                "providerInstanceId",
+                "model",
+                "runtimeMode",
+                "interactionMode",
+                "linkedPullRequest",
+                "titleRegeneration",
+                "branch",
+                "worktreePath",
+                "parentThreadId",
+                "relationshipToParent",
+                "runCount",
+                "itemCount",
+                "pendingRequestCount",
+                "archived",
+                "settled",
+                "settledAt",
+                "snoozed",
+                "snoozedUntil",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": true
+            },
+            "recentRuns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  },
+                  "ordinal": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "preparing",
+                      "queued",
+                      "starting",
+                      "running",
+                      "waiting",
+                      "completed",
+                      "interrupted",
+                      "failed",
+                      "cancelled",
+                      "rolled_back"
+                    ]
+                  },
+                  "providerInstanceId": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "type": "string"
+                  },
+                  "startedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "completedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "runId",
+                  "ordinal",
+                  "status",
+                  "providerInstanceId",
+                  "model",
+                  "requestedAt",
+                  "startedAt",
+                  "completedAt"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "inherited",
+                      "synthetic"
+                    ]
+                  },
+                  "sourceThreadId": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "subagentId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "messageId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdBy": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "agent",
+                          "system"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "creationSource": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "web",
+                          "mobile",
+                          "mcp",
+                          "provider",
+                          "server"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "senderThreadId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "idle",
+                      "pending",
+                      "running",
+                      "waiting",
+                      "completed",
+                      "failed",
+                      "cancelled",
+                      "interrupted"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "textTruncated": {
+                    "type": "boolean"
+                  },
+                  "nextTextOffset": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "position",
+                  "visibility",
+                  "sourceThreadId",
+                  "itemId",
+                  "runId",
+                  "messageId",
+                  "createdBy",
+                  "creationSource",
+                  "type",
+                  "status",
+                  "title",
+                  "text",
+                  "textTruncated",
+                  "updatedAt"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "nextPosition": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "hasMore": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "thread",
+            "recentRuns",
+            "items",
+            "nextPosition",
+            "hasMore"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Read a T3 thread",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_update",
+        "title": "Update T3 thread metadata",
+        "description": "Rename a thread (`action:'rename'` with `title`) or regenerate its title. Omit `threadId` for this thread. Workspace and branch cannot change here.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "rename",
+                "regenerate_title"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "clientRequestId": {
+              "type": "string"
+            },
+            "environmentId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "rename",
+                "regenerate_title"
+              ]
+            },
+            "commandId": {
+              "type": "string"
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "type": "string"
+            },
+            "titleRegeneration": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "startedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "requestId",
+                    "startedAt"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "linkedPullRequest": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "repository": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "repository",
+                    "number",
+                    "url"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "updatedAt": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "action",
+            "commandId",
+            "sequence",
+            "title",
+            "titleRegeneration",
+            "linkedPullRequest",
+            "updatedAt"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Update T3 thread metadata",
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_send",
+        "title": "Send to a T3 thread",
+        "description": "Send a message to any thread. The target cannot run with broader modes than yours. `mode:'auto'` starts an idle thread, steers a running turn, or queues. `queue`: new turn. `steer`: mid-turn update. `restart`: interrupt and restart. A send to a finished child thread starts a fresh task and returns its `taskId`. In your reply, name it as its `link` verbatim.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "queue",
+                "steer",
+                "restart"
+              ]
+            },
+            "clientRequestId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "message"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "messageId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "taskId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "preparing",
+                "queued",
+                "starting",
+                "running",
+                "waiting",
+                "completed",
+                "interrupted",
+                "failed",
+                "cancelled",
+                "rolled_back"
+              ]
+            },
+            "delivery": {
+              "type": "string",
+              "enum": [
+                "started",
+                "queued",
+                "steered",
+                "restarted"
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "messageId",
+            "runId",
+            "status",
+            "delivery"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Send to a T3 thread",
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_wait",
+        "title": "Wait for a T3 thread",
+        "description": "Wait for a thread's run to finish. No `runId`: latest. Idle: at once. On timeout, with `next` end your turn; without, call again.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "number"
+            },
+            "untilDelegatedWorkSettled": {
+              "type": "boolean",
+              "description": "Also wait for its delegated and background tasks and their completions to settle. `resultRun` then names the run with its final answer."
+            }
+          },
+          "required": [
+            "threadId"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "runId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "preparing",
+                "queued",
+                "starting",
+                "running",
+                "waiting",
+                "completed",
+                "interrupted",
+                "failed",
+                "cancelled",
+                "rolled_back"
+              ]
+            },
+            "timedOut": {
+              "type": "boolean"
+            },
+            "next": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "Completion wakes this thread, so end your turn. Do not wait on it or poll it."
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "resultRun": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparing",
+                        "queued",
+                        "starting",
+                        "running",
+                        "waiting",
+                        "completed",
+                        "interrupted",
+                        "failed",
+                        "cancelled",
+                        "rolled_back"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "status"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "runId",
+            "status",
+            "timedOut"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Wait for a T3 thread",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_interrupt",
+        "title": "Interrupt a T3 thread",
+        "description": "Interrupt a top-level thread's running turn. No `runId`: newest running turn. No effect when idle. For a delegate, use `task_cancel`.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "stop": {
+              "type": "boolean"
+            },
+            "clientRequestId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "runId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "interrupt_requested",
+                "no_active_run",
+                "completed",
+                "failed",
+                "cancelled",
+                "interrupted",
+                "rolled_back"
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "runId",
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "title": "Interrupt a T3 thread",
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_search",
+        "description": "Search active threads by title, branch, PR, project, then message text. Skips subagent threads. `projectId`: one project, else yours, else all outside a thread. Not exhaustive.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "projectId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "threadId": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "link": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "title",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "snippet": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 240
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "messageCreatedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "threadId",
+                  "projectId",
+                  "title",
+                  "source"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": [
+            "matches"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_configure",
+        "description": "Read a thread's provider, model, and modes, or set its provider, model, and options with `modelSelection`. Omit `threadId` for this thread. Permission modes stay. Values from `orchestrator_capabilities`.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "modelSelection": {
+              "type": "object",
+              "properties": {
+                "provider": {},
+                "instanceId": {},
+                "model": {},
+                "options": {}
+              },
+              "required": [
+                "model"
+              ]
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_transfer",
+        "description": "Move context between threads. Omit `threadId` for this thread. fork: copy it from `sourcePoint` (default latest stable run) into a new thread with the same setup; no turn runs yet. merge_back: merge it from `sourcePoint` into a related `targetThreadId` in the same project. status: its context transfers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "fork",
+                "merge_back",
+                "status"
+              ]
+            },
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "sourcePoint": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "latest_stable",
+                    "run",
+                    "checkpoint"
+                  ]
+                },
+                "runId": {
+                  "type": "string"
+                },
+                "checkpointId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "targetThreadId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_organize",
+        "title": "Organize a thread",
+        "description": "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "pin",
+                "unpin",
+                "snooze",
+                "unsnooze",
+                "settle",
+                "unsettle",
+                "archive",
+                "unarchive",
+                "mark_unread"
+              ]
+            },
+            "snoozedUntil": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        "annotations": {
+          "title": "Organize a thread",
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_pending_request",
+        "description": "Pending user questions in a thread. Omit `threadId` for this thread. list: their ids; approvals are not listed. read: one by `requestId`. respond: answer one with `answers`; this cannot approve a permission request.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "list",
+                "read",
+                "respond"
+              ]
+            },
+            "environmentId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "answers": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_attachment_prepare_upload",
+        "description": "Get an upload URL. POST the file's exact bytes to `relativeUrl` on this MCP server's HTTP origin, then send via `t3_thread_send_attachments` with the returned `attachmentId`.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "image",
+                    "file"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "mimeType": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "image/gif",
+                        "image/jpeg",
+                        "image/png",
+                        "image/webp"
+                      ]
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "sizeBytes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10485760
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 52428800
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "name",
+                "mimeType",
+                "sizeBytes"
+              ]
+            }
+          },
+          "required": [
+            "upload"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            },
+            "relativeUrl": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "Infinity",
+                    "-Infinity",
+                    "NaN"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "attachmentId",
+            "relativeUrl",
+            "expiresAt"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_attachment_discard",
+        "description": "Discard a pending upload (not a sent attachment).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "attachmentId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attachmentId"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_send_attachments",
+        "description": "Send uploaded attachments as a new message to a thread. No retry key. Target modes cannot exceed yours. Success does not mean the provider read them or finished.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 120000
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "file"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10485760
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 52428800
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "_tag": {
+                        "type": "string",
+                        "enum": [
+                          "pasted-text"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "_tag"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "id",
+                  "name",
+                  "mimeType",
+                  "sizeBytes"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 8
+            }
+          },
+          "required": [
+            "attachments"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "messageId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "preparing",
+                "queued",
+                "starting",
+                "running",
+                "waiting",
+                "completed",
+                "interrupted",
+                "failed",
+                "cancelled",
+                "rolled_back"
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "messageId",
+            "runId",
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_thread_launch",
+        "description": "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. After an error or lost reply, retry with the same `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "scratch": {
+              "type": "boolean",
+              "description": "No project: a new Scratch folder. Not with `projectId` or `workspaceStrategy`."
+            },
+            "title": {
+              "type": "string"
+            },
+            "modelSelection": {
+              "type": "object",
+              "properties": {
+                "provider": {},
+                "instanceId": {},
+                "model": {},
+                "options": {}
+              },
+              "required": [
+                "model"
+              ]
+            },
+            "runtimeMode": {
+              "type": "string",
+              "enum": [
+                "approval-required",
+                "auto-accept-edits",
+                "auto",
+                "full-access"
+              ]
+            },
+            "interactionMode": {
+              "type": "string",
+              "enum": [
+                "default",
+                "plan"
+              ]
+            },
+            "workspaceStrategy": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "root",
+                    "existing_worktree",
+                    "worktree"
+                  ]
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "worktreePath": {
+                  "type": "string"
+                },
+                "baseRef": {
+                  "type": "string"
+                },
+                "startFromOrigin": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "description": "'worktree': new checkout from `baseRef`. 'existing_worktree': bind `worktreePath`, a project worktree. 'root': project checkout, the default, not your worktree. Stack: parent branch as `baseRef`, `startFromOrigin: false`. Uncommitted edits are not copied."
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 120000,
+              "description": "First prompt. Omit it and `attachments` for idle."
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "file"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10485760
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 52428800
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "_tag": {
+                        "type": "string",
+                        "enum": [
+                          "pasted-text"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "_tag"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "id",
+                  "name",
+                  "mimeType",
+                  "sizeBytes"
+                ]
+              },
+              "maxItems": 8
+            },
+            "clientRequestId": {
+              "type": "string"
+            },
+            "delegatedFrom": {
+              "type": "object",
+              "properties": {
+                "environmentId": {
+                  "type": "string"
+                },
+                "threadId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "environmentId",
+                "threadId",
+                "title"
+              ]
+            }
+          },
+          "required": [
+            "title"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "threadId": {
+              "type": "string"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "modelSelection": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "anyOf": [
+                    {},
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "instanceId": {
+                  "anyOf": [
+                    {},
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "model": {},
+                "options": {
+                  "anyOf": [
+                    {},
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "additionalProperties": true
+            },
+            "runId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "preparing",
+                    "queued",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "interrupted",
+                    "failed",
+                    "cancelled",
+                    "rolled_back"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "projectId",
+            "modelSelection",
+            "runId",
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "t3_project_list",
+        "description": "List projects. Pages can shift.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "environmentId": {
+              "type": "string"
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "workspaceRoot": {
+                    "type": "string"
+                  },
+                  "repositoryIdentity": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "canonicalKey": {
+                            "type": "string"
+                          },
+                          "locator": {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "git-remote"
+                                ]
+                              },
+                              "remoteName": {
+                                "type": "string"
+                              },
+                              "remoteUrl": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "remoteName",
+                              "remoteUrl"
+                            ],
+                            "additionalProperties": true
+                          },
+                          "webUrl": {
+                            "type": "string"
+                          },
+                          "rootPath": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "object",
+                            "properties": {
+                              "canonicalKey": {
+                                "type": "string"
+                              },
+                              "remoteUrl": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "canonicalKey"
+                            ],
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "canonicalKey",
+                          "locator"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "faviconPath": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "projectIcon": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "lucide"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string",
+                            "enum": [
+                              "gray",
+                              "red",
+                              "orange",
+                              "amber",
+                              "yellow",
+                              "lime",
+                              "green",
+                              "emerald",
+                              "teal",
+                              "cyan",
+                              "sky",
+                              "blue",
+                              "indigo",
+                              "violet",
+                              "purple",
+                              "fuchsia",
+                              "pink",
+                              "rose"
+                            ]
+                          },
+                          "monogramText": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monogram": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "name",
+                          "color"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "emoji"
+                            ]
+                          },
+                          "emoji": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "emoji"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "monogram"
+                            ]
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string",
+                            "enum": [
+                              "gray",
+                              "red",
+                              "orange",
+                              "amber",
+                              "yellow",
+                              "lime",
+                              "green",
+                              "emerald",
+                              "teal",
+                              "cyan",
+                              "sky",
+                              "blue",
+                              "indigo",
+                              "violet",
+                              "purple",
+                              "fuchsia",
+                              "pink",
+                              "rose"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "text",
+                          "color"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "defaultModelSelection": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "anyOf": [
+                              {},
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "instanceId": {
+                            "anyOf": [
+                              {},
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "model": {},
+                          "options": {
+                            "anyOf": [
+                              {},
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "model"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "defaultThreadEnvMode": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "local",
+                          "worktree"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "autoPull": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "scripts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "string",
+                          "enum": [
+                            "play",
+                            "test",
+                            "lint",
+                            "configure",
+                            "build",
+                            "debug"
+                          ]
+                        },
+                        "runOnWorktreeCreate": {
+                          "type": "boolean"
+                        },
+                        "runOnSettle": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "async": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "previewUrl": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "autoOpenPreview": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "command",
+                        "icon",
+                        "runOnWorktreeCreate"
+                      ],
+                      "additionalProperties": true
+                    }
+                  },
+                  "pinnedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "archivedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "deletedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "workspaceRoot",
+                  "defaultModelSelection",
+                  "scripts",
+                  "createdAt",
+                  "updatedAt",
+                  "deletedAt"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projects",
+            "nextCursor"
+          ],
+          "additionalProperties": true
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      }
+    ]
+  },
+  "projects": {
+    "projects": [
+      {
+        "id": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+        "title": "Zuruf",
+        "workspaceRoot": "/home/mika/Projects/Humaify/zuruf/main",
+        "repositoryIdentity": null,
+        "faviconPath": null,
+        "projectIcon": null,
+        "defaultModelSelection": null,
+        "defaultThreadEnvMode": null,
+        "autoPull": false,
+        "scripts": [],
+        "pinnedAt": null,
+        "archivedAt": null,
+        "createdAt": "2026-11-10T16:37:02.837Z",
+        "updatedAt": "2026-11-10T16:37:02.837Z",
+        "deletedAt": null
+      }
+    ],
+    "nextCursor": null
+  },
+  "root": {
+    "threadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+    "status": "preparing"
+  },
+  "replaySame": {
+    "threadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+    "status": "starting"
+  },
+  "replayReconnect": {
+    "threadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+    "status": "starting"
+  },
+  "replayNewCredential": {
+    "threadId": "mcp:launch:6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+    "status": "preparing"
+  },
+  "existing": {
+    "threadId": "mcp:launch:9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+    "status": "preparing"
+  },
+  "new": {
+    "threadId": "mcp:launch:a02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+    "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+    "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+    "modelSelection": {
+      "instanceId": "codex",
+      "model": "gpt-6-luna",
+      "options": [
+        {
+          "id": "reasoningEffort",
+          "value": "low"
+        }
+      ]
+    },
+    "runId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+    "status": "preparing"
+  },
+  "rootRead": {
+    "thread": {
+      "threadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+      "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+      "title": "zuruf-test-root-1794330125378",
+      "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+      "createdBy": "agent",
+      "creationSource": "mcp",
+      "status": "running",
+      "latestRunId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+      "activeRunId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+      "providerInstanceId": "codex",
+      "model": "gpt-6-luna",
+      "runtimeMode": "approval-required",
+      "interactionMode": "default",
+      "linkedPullRequest": null,
+      "pullRequests": [],
+      "titleRegeneration": null,
+      "branch": null,
+      "worktreePath": null,
+      "parentThreadId": null,
+      "relationshipToParent": null,
+      "runCount": 1,
+      "itemCount": 2,
+      "pendingRequestCount": 0,
+      "archived": false,
+      "settled": false,
+      "settledAt": null,
+      "snoozed": false,
+      "snoozedUntil": null,
+      "createdAt": "2026-11-10T17:02:05.382Z",
+      "updatedAt": "2026-11-10T17:02:05.640Z"
+    },
+    "recentRuns": [
+      {
+        "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+        "ordinal": 1,
+        "status": "running",
+        "providerInstanceId": "codex",
+        "model": "gpt-6-luna",
+        "requestedAt": "2026-11-10T17:02:05.388Z",
+        "startedAt": "2026-11-10T17:02:05.468Z",
+        "completedAt": null
+      }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+        "itemId": "turn-item:message:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+        "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+        "messageId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "Reply exactly OK. Do not use any tools or modify any files.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:05.388Z"
+      },
+      {
+        "position": 1,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe",
+        "itemId": "turn-item:provider:codex:native-item:workspace-preparation%3Arun%3Athread%3Amcp%253Alaunch%253A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe%3Aordinal%3A1",
+        "runId": "run:thread:mcp%3Alaunch%3A00e0448970a8adda31d61523d1fdacbd89dbda02bf755472b19833db237e7dbe:ordinal:1",
+        "messageId": null,
+        "createdBy": null,
+        "creationSource": null,
+        "type": "command_execution",
+        "status": "completed",
+        "title": "Workspace ready",
+        "text": "$ Preparing workspace\nWorkspace preparation completed.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:05.406Z"
+      }
+    ],
+    "nextPosition": 1,
+    "hasMore": false
+  },
+  "replayNewCredentialRead": {
+    "thread": {
+      "threadId": "mcp:launch:6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+      "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+      "title": "zuruf-test-root-1794330125378",
+      "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+      "createdBy": "agent",
+      "creationSource": "mcp",
+      "status": "running",
+      "latestRunId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+      "activeRunId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+      "providerInstanceId": "codex",
+      "model": "gpt-6-luna",
+      "runtimeMode": "approval-required",
+      "interactionMode": "default",
+      "linkedPullRequest": null,
+      "pullRequests": [],
+      "titleRegeneration": null,
+      "branch": null,
+      "worktreePath": null,
+      "parentThreadId": null,
+      "relationshipToParent": null,
+      "runCount": 1,
+      "itemCount": 2,
+      "pendingRequestCount": 0,
+      "archived": false,
+      "settled": false,
+      "settledAt": null,
+      "snoozed": false,
+      "snoozedUntil": null,
+      "createdAt": "2026-11-10T17:02:05.980Z",
+      "updatedAt": "2026-11-10T17:02:06.418Z"
+    },
+    "recentRuns": [
+      {
+        "runId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+        "ordinal": 1,
+        "status": "running",
+        "providerInstanceId": "codex",
+        "model": "gpt-6-luna",
+        "requestedAt": "2026-11-10T17:02:05.984Z",
+        "startedAt": "2026-11-10T17:02:06.107Z",
+        "completedAt": null
+      }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+        "itemId": "turn-item:message:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+        "runId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+        "messageId": "mcp:launch:6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "Reply exactly OK. Do not use any tools or modify any files.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:05.984Z"
+      },
+      {
+        "position": 1,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71",
+        "itemId": "turn-item:provider:codex:native-item:workspace-preparation%3Arun%3Athread%3Amcp%253Alaunch%253A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71%3Aordinal%3A1",
+        "runId": "run:thread:mcp%3Alaunch%3A6a0ef14a350d8d696d0c0e612092eb9add412ccf01a94bae2f7adaa2ae61ad71:ordinal:1",
+        "messageId": null,
+        "createdBy": null,
+        "creationSource": null,
+        "type": "command_execution",
+        "status": "completed",
+        "title": "Workspace ready",
+        "text": "$ Preparing workspace\nWorkspace preparation completed.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:05.997Z"
+      }
+    ],
+    "nextPosition": 1,
+    "hasMore": false
+  },
+  "existingRead": {
+    "thread": {
+      "threadId": "mcp:launch:9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+      "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+      "title": "zuruf-test-existing-1794330125378",
+      "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+      "createdBy": "agent",
+      "creationSource": "mcp",
+      "status": "running",
+      "latestRunId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+      "activeRunId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+      "providerInstanceId": "codex",
+      "model": "gpt-6-luna",
+      "runtimeMode": "approval-required",
+      "interactionMode": "default",
+      "linkedPullRequest": null,
+      "pullRequests": [],
+      "titleRegeneration": null,
+      "branch": null,
+      "worktreePath": "/home/mika/Projects/Humaify/zuruf/worktrees/adapters",
+      "parentThreadId": null,
+      "relationshipToParent": null,
+      "runCount": 1,
+      "itemCount": 2,
+      "pendingRequestCount": 0,
+      "archived": false,
+      "settled": false,
+      "settledAt": null,
+      "snoozed": false,
+      "snoozedUntil": null,
+      "createdAt": "2026-11-10T17:02:06.015Z",
+      "updatedAt": "2026-11-10T17:02:06.329Z"
+    },
+    "recentRuns": [
+      {
+        "runId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+        "ordinal": 1,
+        "status": "running",
+        "providerInstanceId": "codex",
+        "model": "gpt-6-luna",
+        "requestedAt": "2026-11-10T17:02:06.022Z",
+        "startedAt": "2026-11-10T17:02:06.329Z",
+        "completedAt": null
+      }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+        "itemId": "turn-item:message:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+        "runId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+        "messageId": "mcp:launch:9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "Reply exactly OK. Do not use any tools or modify any files.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:06.022Z"
+      },
+      {
+        "position": 1,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec",
+        "itemId": "turn-item:provider:codex:native-item:workspace-preparation%3Arun%3Athread%3Amcp%253Alaunch%253A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec%3Aordinal%3A1",
+        "runId": "run:thread:mcp%3Alaunch%3A9d891948efd57b29cdcf6e8e187c2c50d0ab8a1a361bd619795e6d144e1f33ec:ordinal:1",
+        "messageId": null,
+        "createdBy": null,
+        "creationSource": null,
+        "type": "command_execution",
+        "status": "completed",
+        "title": "Workspace ready",
+        "text": "$ Preparing workspace\nWorkspace preparation completed.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:06.053Z"
+      }
+    ],
+    "nextPosition": 1,
+    "hasMore": false
+  },
+  "newRead": {
+    "thread": {
+      "threadId": "mcp:launch:a02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+      "projectId": "mcp:54cd96c7-4e02-4096-a57d-dd0a10441b9c",
+      "title": "zuruf-test-new-1794330125378",
+      "link": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+      "createdBy": "agent",
+      "creationSource": "mcp",
+      "status": "starting",
+      "latestRunId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+      "activeRunId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+      "providerInstanceId": "codex",
+      "model": "gpt-6-luna",
+      "runtimeMode": "approval-required",
+      "interactionMode": "default",
+      "linkedPullRequest": null,
+      "pullRequests": [],
+      "titleRegeneration": null,
+      "branch": "zuruf-test-1794330125378",
+      "worktreePath": "/home/mika/.t3/worktrees/main/zuruf-test-1794330125378",
+      "parentThreadId": null,
+      "relationshipToParent": null,
+      "runCount": 1,
+      "itemCount": 2,
+      "pendingRequestCount": 0,
+      "archived": false,
+      "settled": false,
+      "settledAt": null,
+      "snoozed": false,
+      "snoozedUntil": null,
+      "createdAt": "2026-11-10T17:02:06.059Z",
+      "updatedAt": "2026-11-10T17:02:06.568Z"
+    },
+    "recentRuns": [
+      {
+        "runId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+        "ordinal": 1,
+        "status": "starting",
+        "providerInstanceId": "codex",
+        "model": "gpt-6-luna",
+        "requestedAt": "2026-11-10T17:02:06.305Z",
+        "startedAt": null,
+        "completedAt": null
+      }
+    ],
+    "items": [
+      {
+        "position": 0,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:a02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+        "itemId": "turn-item:message:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+        "runId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+        "messageId": "mcp:launch:a02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+        "createdBy": "agent",
+        "creationSource": "mcp",
+        "type": "user_message",
+        "status": "completed",
+        "title": null,
+        "text": "Reply exactly OK. Do not use any tools or modify any files.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:06.305Z"
+      },
+      {
+        "position": 1,
+        "visibility": "local",
+        "sourceThreadId": "mcp:launch:a02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46",
+        "itemId": "turn-item:provider:codex:native-item:workspace-preparation%3Arun%3Athread%3Amcp%253Alaunch%253Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46%3Aordinal%3A1",
+        "runId": "run:thread:mcp%3Alaunch%3Aa02ad1995224c815e5a5ae4f3693e66ed86c59f9a9c542c54ba6333b5ce45c46:ordinal:1",
+        "messageId": null,
+        "createdBy": null,
+        "creationSource": null,
+        "type": "command_execution",
+        "status": "completed",
+        "title": "Workspace ready",
+        "text": "$ Preparing workspace\nWorkspace preparation completed.",
+        "textTruncated": false,
+        "nextTextOffset": null,
+        "updatedAt": "2026-11-10T17:02:06.568Z"
+      }
+    ],
+    "nextPosition": 1,
+    "hasMore": false
+  },
+  "interruptSchema": {
+    "name": "t3_thread_interrupt",
+    "title": "Interrupt a T3 thread",
+    "description": "Interrupt a top-level thread's running turn. No `runId`: newest running turn. No effect when idle. For a delegate, use `task_cancel`.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "environmentId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "stop": {
+          "type": "boolean"
+        },
+        "clientRequestId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "interrupt_requested",
+            "no_active_run",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "rolled_back"
+          ]
+        }
+      },
+      "required": [
+        "threadId",
+        "runId",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "annotations": {
+      "title": "Interrupt a T3 thread",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  "revokedSessionCount": 2
+}
