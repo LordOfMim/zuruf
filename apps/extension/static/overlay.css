@@ -1,44 +1,139 @@
+/*
+ * Zuruf overlay, drawn over the reviewed page inside a closed shadow root.
+ * It must stay legible on any page and never compete with it: one outline,
+ * one small pill. Values mirror apps/ui/src/styles/tokens.css.
+ */
 :host {
-  --zuruf-accent: #e6522c;
-  --zuruf-background: #202020;
-  --zuruf-text: #fff;
-  --zuruf-radius: 4px;
-  --zuruf-stroke: 2px;
+  --zuruf-signal: #ff5a36;
+  --zuruf-agent: #8fa8ff;
+  --zuruf-danger: #f0655a;
+  --zuruf-surface: rgba(21, 22, 24, 0.92);
+  --zuruf-text: #e8e7e3;
+  --zuruf-muted: #9b9c98;
+  --zuruf-line: rgba(255, 255, 255, 0.13);
+  --zuruf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   all: initial;
   pointer-events: none;
 }
+
 .overlay {
   position: fixed;
   inset: 0;
-  pointer-events: none;
   z-index: 2147483647;
-  font: 12px system-ui;
+  pointer-events: none;
+  font:
+    500 12px/1 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
 }
+
 .overlay[hidden],
 .outline[hidden],
 .confirmation[hidden],
 .status[hidden] {
   display: none !important;
 }
+
+/* Target outline: vermilion hairline with a dark halo so it reads on light and dark pages alike. */
 .outline {
   position: fixed;
   box-sizing: border-box;
-  border: var(--zuruf-stroke) solid var(--zuruf-accent);
   left: var(--zuruf-x);
   top: var(--zuruf-y);
   width: var(--zuruf-width);
   height: var(--zuruf-height);
+  border: 1.5px solid var(--zuruf-signal);
+  border-radius: 3px;
+  background: rgba(255, 90, 54, 0.06);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
+
 .status,
 .confirmation {
   position: fixed;
-  bottom: 12px;
-  right: 12px;
-  padding: 6px 10px;
-  border-radius: var(--zuruf-radius);
-  background: var(--zuruf-background);
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 11px 0 9px;
+  border-radius: 13px;
+  background: var(--zuruf-surface);
+  color: var(--zuruf-muted);
+  box-shadow:
+    0 0 0 1px var(--zuruf-line),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+}
+
+.status::before,
+.confirmation::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.status[data-recording="true"] {
   color: var(--zuruf-text);
 }
+
+.status[data-recording="true"]::before {
+  background: var(--zuruf-signal);
+  opacity: 1;
+  box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.22);
+}
+
+.status[data-owner="agent"] {
+  color: var(--zuruf-text);
+}
+
+.status[data-owner="agent"]::before {
+  background: var(--zuruf-agent);
+  opacity: 1;
+  box-shadow: 0 0 0 3px rgba(143, 168, 255, 0.22);
+}
+
+/* Capture feedback sits just above the status pill and leaves on its own. */
 .confirmation {
-  bottom: 44px;
+  bottom: 48px;
+  color: var(--zuruf-text);
+  animation: zuruf-in 160ms var(--zuruf-ease);
+}
+
+.confirmation::before {
+  background: #56c58f;
+  opacity: 1;
+}
+
+.confirmation[data-kind="error"] {
+  max-width: min(420px, 70vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.confirmation[data-kind="error"]::before {
+  background: var(--zuruf-danger);
+}
+
+@keyframes zuruf-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirmation {
+    animation: none;
+  }
 }
