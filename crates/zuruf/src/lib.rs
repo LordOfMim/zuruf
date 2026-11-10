@@ -1788,6 +1788,7 @@ async fn api(
             let target = key.clone();
             let result = app
                 .mutate(move |s, store| {
+                    let profiles = s.profiles.clone();
                     let t = s
                         .tasks
                         .iter_mut()
@@ -1802,6 +1803,10 @@ async fn api(
                     store.clear_receipt(&t.id)?;
                     t.status = TaskStatus::Queued;
                     t.error = None;
+                    // A retry follows a correction: use the profile as it is now.
+                    if let Some(profile) = profiles.iter().find(|p| p.id == t.profile.id) {
+                        t.profile = profile.clone();
+                    }
                     val(t)
                 })
                 .await?;
