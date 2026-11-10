@@ -379,7 +379,7 @@ impl Default for Settings {
                 backend: SettingsSpeechBackend::Continuous,
                 model: None,
                 language: Some("de".into()),
-                attach: SettingsSpeechAttach::After,
+                attach: SettingsSpeechAttach::Before,
                 keep_audio: false,
                 voxtype_path: "voxtype".into(),
             },

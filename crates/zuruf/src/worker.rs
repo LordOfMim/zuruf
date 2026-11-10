@@ -128,6 +128,40 @@ impl Daemon {
                         .iter()
                         .any(|asset| asset.kind == AssetKind::ScreenshotMarked)
             }) {
+                // A capture that never produced a picture must not hold the task back: keep
+                // its words as a plain entry, drop it when there are none.
+                if finalize_started.elapsed() > Duration::from_secs(5)
+                    && s.annotations.iter().any(|a| {
+                        a.batch_id == task.batch_id
+                            && a.r#type != AnnotationType::Text
+                            && a.assets.is_empty()
+                    })
+                {
+                    let batch = task.batch_id.clone();
+                    self.mutate(move |s, _| {
+                        for a in s.annotations.iter_mut().filter(|a| {
+                            a.batch_id == batch
+                                && a.r#type != AnnotationType::Text
+                                && a.assets.is_empty()
+                        }) {
+                            a.r#type = AnnotationType::Text;
+                            let words = std::mem::take(&mut a.transcript);
+                            a.note = [a.note.trim(), words.trim()]
+                                .into_iter()
+                                .filter(|part| !part.is_empty())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                        }
+                        s.annotations.retain(|a| {
+                            a.batch_id != batch
+                                || a.r#type != AnnotationType::Text
+                                || !a.note.trim().is_empty()
+                        });
+                        Ok(())
+                    })
+                    .await?;
+                    continue;
+                }
                 if finalize_started.elapsed() > Duration::from_secs(120) {
                     self.task_status(
                         id,

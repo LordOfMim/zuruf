@@ -311,6 +311,58 @@ impl Browser {
             .await?;
         Ok(value["targetId"].as_str().unwrap_or_default().into())
     }
+    /// Opens the extension's side panel next to the page unless it is already open.
+    /// Returns false while the extension's worker is not up yet.
+    pub async fn open_panel(&self) -> Result<bool> {
+        let targets = self
+            .cdp
+            .call("Target.getTargets", json!({"filter":[{}]}), None)
+            .await?;
+        let targets: Vec<&serde_json::Value> = targets["targetInfos"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .collect();
+        let url = |t: &serde_json::Value| t["url"].as_str().unwrap_or_default().to_owned();
+        let Some(extension) = targets
+            .iter()
+            .find(|t| {
+                t["type"] == "service_worker"
+                    && url(t)
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(|f| f.starts_with("worker") && f.ends_with(".js"))
+            })
+            .and_then(|t| {
+                url(t)
+                    .strip_prefix("chrome-extension://")
+                    .map(str::to_owned)
+            })
+            .and_then(|rest| rest.split('/').next().map(str::to_owned))
+        else {
+            return Ok(false);
+        };
+        if targets.iter().any(|t| url(t).contains("/panel/panel.html")) {
+            return Ok(true);
+        }
+        let Some(tab) = targets
+            .iter()
+            .find(|t| t["type"] == "tab" && !url(t).starts_with("chrome-extension://"))
+            .and_then(|t| t["targetId"].as_str())
+        else {
+            return Ok(false);
+        };
+        // The toolbar action opens the panel (openPanelOnActionClick); the side panel API
+        // itself refuses to open without a user gesture.
+        self.cdp
+            .call(
+                "Extensions.triggerAction",
+                json!({"id":extension,"targetId":tab}),
+                None,
+            )
+            .await?;
+        Ok(true)
+    }
     pub async fn set_review_mode(&self, on: bool, bindings: Vec<Binding>) -> Result<()> {
         self.extension.configure(on, bindings).await
     }

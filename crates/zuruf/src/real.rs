@@ -792,6 +792,16 @@ impl BrowserController for BrowserAdapter {
                 .await
                 .map_err(io)?;
             let rx = browser.events();
+            // The panel belongs next to the page from the start; the worker needs a moment.
+            let opener = browser.clone();
+            tokio::spawn(async move {
+                for _ in 0..40 {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    if matches!(opener.open_panel().await, Ok(true) | Err(_)) {
+                        break;
+                    }
+                }
+            });
             self.sessions.lock().await.insert(s.id.clone(), browser);
             s.state = BrowserSessionState::Running;
             s.control = ControlState {

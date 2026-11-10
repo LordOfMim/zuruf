@@ -240,6 +240,18 @@ impl Daemon {
             let before = p.snapshot.clone();
             let mut candidate = before.clone();
             let result = f(&mut candidate, &mut p.store)?;
+            // A removed entry must not leave speech pointing at it (the store rejects that);
+            // such speech becomes an entry of its own once written.
+            let known: HashSet<Id> = candidate.annotations.iter().map(|a| a.id.clone()).collect();
+            for segment in &mut candidate.segments {
+                if segment
+                    .annotation_id
+                    .as_ref()
+                    .is_some_and(|a| !known.contains(a))
+                {
+                    segment.annotation_id = None;
+                }
+            }
             candidate.status.speech.pending_segments = candidate
                 .segments
                 .iter()
@@ -299,6 +311,9 @@ impl Daemon {
         .await
     }
     pub async fn recover(&self) -> Result<()> {
+        // The page side starts switched off; bring it in line with what the app shows.
+        let review = self.snapshot().await?.status.review_mode;
+        self.0.browser.set_review_mode(review).await?;
         self.access(|p| {
             let directory = p.store.paths.state.join("agents");
             if directory.exists() {
@@ -334,8 +349,15 @@ impl Daemon {
         })
         .await?;
         self.mutate(|s, _| {
+            // An entry that never got a picture and has no words is nothing to keep.
+            s.annotations.retain(|a| {
+                a.r#type == AnnotationType::Text
+                    || !a.assets.is_empty()
+                    || !a.note.trim().is_empty()
+                    || !a.transcript.trim().is_empty()
+            });
             for annotation in &mut s.annotations {
-                if annotation.r#type != AnnotationType::Text && !annotation.assets.iter().any(|asset| asset.kind == AssetKind::ScreenshotMarked) {
+                if annotation.r#type != AnnotationType::Text && !annotation.assets.iter().any(|asset| asset.kind == AssetKind::ScreenshotMarked) && !annotation.note.contains("Aufnahme durch Neustart unterbrochen") {
                     annotation.note.push_str("\nAufnahme durch Neustart unterbrochen; vorhandenes Rohbild prüfen oder neu aufnehmen.");
                 }
             }
@@ -817,13 +839,16 @@ impl Daemon {
                     .await?;
                 if s.settings.speech.enabled {
                     let _gate = self.0.speech_gate.lock().await;
+                    // "before": what was said up to this capture describes it, and what
+                    // follows belongs to the next capture or stands alone.
+                    let before = s.settings.speech.attach == SettingsSpeechAttach::Before;
                     let boundary = SpeechBoundary {
                         batch_id: placeholder.batch_id.clone(),
-                        annotation_id: Some(placeholder.id.clone()),
+                        annotation_id: (!before).then(|| placeholder.id.clone()),
                         at: now(),
                     };
                     let mut handles = self.0.speech.mark(boundary).await?;
-                    if s.settings.speech.attach == SettingsSpeechAttach::Before {
+                    if before {
                         for handle in &mut handles {
                             if handle.segment.batch_id == placeholder.batch_id {
                                 handle.segment.annotation_id = Some(placeholder.id.clone());
