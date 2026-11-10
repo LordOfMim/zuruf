@@ -1,0 +1,106 @@
+use zuruf_core::*;
+use zuruf_store::*;
+fn setup() -> (tempfile::TempDir, Paths, Snapshot) {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths {
+        data: dir.path().join("data"),
+        state: dir.path().join("state"),
+        config: dir.path().join("config"),
+    };
+    let mut s: Snapshot = serde_json::from_str(include_str!("fixtures/snapshot.json")).unwrap();
+    s.tasks.clear();
+    s.segments.clear();
+    s.batches[0].state = BatchState::Draft;
+    s.batches[0].task_id = None;
+    s.status.active_batch_id = Some(s.batches[0].id.clone());
+    (dir, paths, s)
+}
+#[test]
+fn seal_freezes_profile_and_reopens_atomically() {
+    let (_dir, paths, mut s) = setup();
+    let batch = s.batches[0].id.clone();
+    let original = s.profiles[0].clone();
+    let mut db = Store::open(paths.clone()).unwrap();
+    db.save(&s).unwrap();
+    let response = db.seal(&mut s, &batch, None).unwrap();
+    assert_eq!(response.sealed_batch.state, BatchState::Sealed);
+    assert_eq!(response.task.profile, original);
+    assert_eq!(
+        s.batches
+            .iter()
+            .filter(|b| b.state == BatchState::Draft)
+            .count(),
+        1
+    );
+    s.profiles[0].model = "changed".into();
+    db.save(&s).unwrap();
+    drop(db);
+    let db = Store::open(paths).unwrap();
+    let loaded = db.load().unwrap().unwrap();
+    assert_eq!(loaded, s);
+    assert_eq!(loaded.tasks[0].profile.model, original.model);
+    assert_eq!(
+        loaded.status.active_batch_id,
+        Some(response.active_batch.id)
+    );
+}
+#[test]
+fn failed_seal_changes_nothing() {
+    let (_dir, paths, mut s) = setup();
+    let mut db = Store::open(paths).unwrap();
+    db.save(&s).unwrap();
+    let before = s.clone();
+    let batch = s.batches[0].id.clone();
+    assert!(db.seal(&mut s, &batch, Some("missing-profile")).is_err());
+    assert_eq!(s, before);
+    assert_eq!(db.load().unwrap().unwrap(), before);
+}
+#[test]
+fn foreign_key_failure_rolls_back_snapshot() {
+    let (_dir, paths, s) = setup();
+    let mut db = Store::open(paths).unwrap();
+    db.save(&s).unwrap();
+    let mut invalid = s.clone();
+    invalid.annotations[0].batch_id = "missing-batch".into();
+    assert!(db.save(&invalid).is_err());
+    assert_eq!(db.load().unwrap().unwrap(), s);
+}
+#[test]
+fn crash_mid_dispatch_retains_receipt_and_assets() {
+    let (_dir, paths, mut s) = setup();
+    let batch = s.batches[0].id.clone();
+    let mut db = Store::open(paths.clone()).unwrap();
+    let r = db.seal(&mut s, &batch, None).unwrap();
+    s.tasks[0].status = TaskStatus::Dispatching;
+    db.save(&s).unwrap();
+    let receipt = ThreadReceipt {
+        thread_id: "remote-thread".into(),
+        thread_url: None,
+        run_id: "tracked-run".into(),
+        workspace_path: Some("/tmp/project".into()),
+        branch: None,
+    };
+    db.save_receipt(&r.task.id, &receipt).unwrap();
+    db.write_asset(&r.sealed_batch, "assets/example.png", b"image")
+        .unwrap();
+    drop(db);
+    let db = Store::open(paths).unwrap();
+    assert_eq!(
+        db.load().unwrap().unwrap().tasks[0].status,
+        TaskStatus::Dispatching
+    );
+    assert_eq!(
+        db.receipt(&r.task.id).unwrap().unwrap().run_id,
+        "tracked-run"
+    );
+    assert_eq!(
+        std::fs::read(
+            db.paths
+                .batch_dir(&r.sealed_batch)
+                .unwrap()
+                .join("assets/example.png")
+        )
+        .unwrap(),
+        b"image"
+    );
+}

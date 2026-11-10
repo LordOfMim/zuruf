@@ -1,0 +1,13 @@
+{
+  "id": "example",
+  "name": "example",
+  "providerInstanceId": "example",
+  "model": "example",
+  "options": {},
+  "runtimeMode": "example",
+  "interactionMode": "example",
+  "workspaceStrategy": "new_worktree",
+  "baseRef": "example",
+  "worktreePath": "example",
+  "slot": 1.0
+}

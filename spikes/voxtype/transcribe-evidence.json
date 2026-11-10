@@ -1,0 +1,18 @@
+[
+  {
+    "samples": 48000,
+    "seconds": 0.162,
+    "code": 1,
+    "stdout": "Loading audio file: \"/tmp/zuruf-audio-fucyzvlh/ambient.wav\"\nAudio format: 16000 Hz, 1 channel(s), Int\nProcessing 48000 samples (3.00s)...\n",
+    "stderr": "Error: Remote server error: Server returned 401: {\"error\":{\"message\":\"Invalid API Key\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}\n\n",
+    "peakChildRssKiB": 14956
+  },
+  {
+    "samples": 48000,
+    "seconds": 0.181,
+    "code": 1,
+    "stdout": "Loading audio file: \"/tmp/zuruf-audio-fucyzvlh/ambient.wav\"\nAudio format: 16000 Hz, 1 channel(s), Int\nProcessing 48000 samples (3.00s)...\n",
+    "stderr": "Error: Remote server error: Server returned 401: {\"error\":{\"message\":\"Invalid API Key\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}\n\n",
+    "peakChildRssKiB": 15148
+  }
+]

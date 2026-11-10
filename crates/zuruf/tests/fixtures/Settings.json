@@ -1,0 +1,45 @@
+{
+  "bindings": [
+    {
+      "action": "review.toggle",
+      "scope": "page",
+      "chord": {
+        "mods": [
+          "ctrl"
+        ],
+        "code": "example"
+      }
+    }
+  ],
+  "capture": {
+    "ringColor": "example",
+    "ringRadius": 1.0,
+    "keepRawScreenshot": true,
+    "mode": "new_entry"
+  },
+  "speech": {
+    "enabled": true,
+    "backend": "continuous",
+    "model": "example",
+    "language": "example",
+    "attach": "after",
+    "keepAudio": true,
+    "voxtypePath": "example"
+  },
+  "redaction": {
+    "stripQuery": true,
+    "patterns": [
+      "example"
+    ]
+  },
+  "t3": {
+    "cliPath": "example",
+    "pollSeconds": 1.0
+  },
+  "ui": {
+    "theme": "system",
+    "language": "de",
+    "openPanelOnReviewStart": true
+  },
+  "dataDir": "example"
+}

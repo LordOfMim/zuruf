@@ -1,0 +1,30 @@
+{
+  "protocolVersion": 1.0,
+  "daemonVersion": "example",
+  "reviewMode": true,
+  "activeProjectId": "example",
+  "activeReviewId": "example",
+  "activeBatchId": "example",
+  "activeSessionId": "example",
+  "pendingAction": "review.toggle",
+  "speech": {
+    "state": "unavailable",
+    "pendingSegments": 1.0,
+    "lastGapMs": 1.0,
+    "error": "example"
+  },
+  "t3": {
+    "state": "disconnected",
+    "version": "example",
+    "transport": "mcp",
+    "capabilities": {
+      "modelOptions": true,
+      "existingWorktree": true,
+      "idempotentLaunch": true,
+      "interrupt": true,
+      "attachments": true,
+      "push": true
+    },
+    "error": "example"
+  }
+}

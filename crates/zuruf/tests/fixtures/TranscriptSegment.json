@@ -1,0 +1,9 @@
+{
+  "id": "example",
+  "batchId": "example",
+  "annotationId": "example",
+  "startedAt": "example",
+  "endedAt": "example",
+  "state": "recording",
+  "originalText": "example"
+}

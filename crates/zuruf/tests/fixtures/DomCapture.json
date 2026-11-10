@@ -1,0 +1,32 @@
+{
+  "locators": [
+    {
+      "kind": "testid",
+      "value": "example",
+      "playwright": "example",
+      "stable": true,
+      "reason": "example"
+    }
+  ],
+  "tag": "example",
+  "role": "example",
+  "name": "example",
+  "text": "example",
+  "attributes": {},
+  "boundingBox": {
+    "x": 1.0,
+    "y": 1.0,
+    "width": 1.0,
+    "height": 1.0
+  },
+  "framePath": [
+    "example"
+  ],
+  "shadowPath": [
+    "example"
+  ],
+  "parent": "example",
+  "children": [
+    "example"
+  ]
+}

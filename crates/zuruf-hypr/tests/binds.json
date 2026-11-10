@@ -1,0 +1,34 @@
+[
+  {
+    "modmask": 0,
+    "key": "XF86AudioRaiseVolume",
+    "description": "Volume up",
+    "dispatcher": "__lua",
+    "arg": "12",
+    "submap": ""
+  },
+  {
+    "modmask": 0,
+    "key": "XF86AudioLowerVolume",
+    "description": "Volume down",
+    "dispatcher": "__lua",
+    "arg": "14",
+    "submap": ""
+  },
+  {
+    "modmask": 0,
+    "key": "XF86AudioMute",
+    "description": "Mute",
+    "dispatcher": "__lua",
+    "arg": "16",
+    "submap": ""
+  },
+  {
+    "modmask": 77,
+    "key": "F24",
+    "description": "Foreign test fixture",
+    "dispatcher": "exec",
+    "arg": "/usr/bin/true",
+    "submap": ""
+  }
+]

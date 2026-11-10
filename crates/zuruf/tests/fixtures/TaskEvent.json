@@ -1,0 +1,8 @@
+{
+  "id": "example",
+  "taskId": "example",
+  "at": "example",
+  "kind": "status",
+  "status": "finalizing_transcript",
+  "text": "example"
+}
