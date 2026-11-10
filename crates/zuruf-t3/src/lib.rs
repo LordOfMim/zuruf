@@ -327,7 +327,8 @@ impl T3Adapter {
             )
             .await?;
         let verifier = format!(
-            "{}{}",
+            "{}{}{}",
+            uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         );
@@ -521,6 +522,9 @@ impl T3Adapter {
         parse_rpc(&response.text().await?)
     }
     pub async fn call(&mut self, name: &str, arguments: Value) -> Result<Value> {
+        if self.connection.transport.as_deref() == Some("cli") {
+            return Err(Error::Unsupported(format!("MCP-only tool: {name}")));
+        }
         let response = self
             .rpc("tools/call", json!({"name":name,"arguments":arguments}))
             .await;
@@ -1042,6 +1046,85 @@ mod tests {
     #[test]
     fn loopback() {
         assert!(validate_origin("http://example.com").is_err());
+    }
+    #[tokio::test]
+    #[ignore = "creates one zuruf-test thread and sends one trivial follow-up"]
+    async fn live_mutations() {
+        let path = std::env::temp_dir().join(format!("zuruf-{}.json", uuid::Uuid::new_v4()));
+        let mut adapter = T3Adapter::new("t3".into(), path).unwrap();
+        adapter
+            .connect(&std::env::var("T3_URL").unwrap_or("http://127.0.0.1:3773".into()))
+            .await
+            .unwrap();
+        let result = async {
+            let id = uuid::Uuid::new_v4().to_string();
+            let profile = AgentProfile {
+                id: id.clone(),
+                name: "test".into(),
+                provider_instance_id: "codex".into(),
+                model: "gpt-6-luna".into(),
+                options: BTreeMap::from([("reasoningEffort".into(), json!("low"))]),
+                runtime_mode: Some("approval-required".into()),
+                interaction_mode: Some("default".into()),
+                workspace_strategy: WorkspaceStrategy::SharedRoot,
+                base_ref: None,
+                worktree_path: None,
+                slot: None,
+            };
+            let receipt = adapter
+                .create_thread(
+                    "/home/mika/Projects/Humaify/zuruf/main",
+                    "zuruf-test-rust",
+                    "Reply exactly OK. Do not use tools or change files.",
+                    &profile,
+                    &id,
+                )
+                .await?;
+            println!("LIVE_RECEIPT {}", serde_json::to_string(&receipt)?);
+            let run = receipt
+                .run_id
+                .as_deref()
+                .ok_or_else(|| Error::Protocol("Missing run".into()))?;
+            adapter
+                .call(
+                    "t3_thread_wait",
+                    json!({"threadId":receipt.thread_id,"runId":run,"timeoutMs":15000}),
+                )
+                .await?;
+            let status = adapter.thread_status(&receipt.thread_id, run).await?;
+            if status.status != TaskStatus::Completed {
+                return Err(Error::Protocol(format!(
+                    "Unexpected live status {:?}",
+                    status.status
+                )));
+            }
+            let follow = adapter
+                .send_message(
+                    &receipt.thread_id,
+                    "Reply exactly OK. Do not use tools or change files.",
+                    &uuid::Uuid::new_v4().to_string(),
+                )
+                .await?;
+            let run = follow
+                .run_id
+                .as_deref()
+                .ok_or_else(|| Error::Protocol("Missing follow-up run".into()))?;
+            adapter
+                .call(
+                    "t3_thread_wait",
+                    json!({"threadId":receipt.thread_id,"runId":run,"timeoutMs":15000}),
+                )
+                .await?;
+            let status = adapter.thread_status(&receipt.thread_id, run).await?;
+            if status.last_message.as_deref() != Some("OK") {
+                return Err(Error::Protocol("Missing target-run OK".into()));
+            }
+            Ok::<_, Error>(())
+        }
+        .await;
+        let disconnect = adapter.disconnect().await;
+        result.unwrap();
+        disconnect.unwrap();
     }
     #[tokio::test]
     #[ignore = "requires local T3 and creates/revokes an OAuth session"]

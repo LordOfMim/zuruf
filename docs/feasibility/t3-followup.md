@@ -15,7 +15,7 @@ Stand 10.11.2026. Implementierung ausschließlich im Branch `feat/adapters`, kei
 9. **Push:** früherer WS-Snapshot ist weiterhin belegt, Sequenz-Replay nach Reconnect weiterhin nicht. Deshalb push=false. Ein dauerhafter reqwest-Client/MCP-Session pollt viele Threads mit konfigurierbarem Intervall und Backoff, keine CLI-Prozesse pro Watchabfrage. Activity wird pro Statusaufruf paginiert gelesen; der Watch hält derzeit keine persistenten inkrementellen Cursor über Polls. Das ist eine Effizienzgrenze bei langen Threads.
 10. **Origin:** kein unterstützter Originwert in `t3 status --json` oder Pairingantwort; expliziter Loopback-Seed erforderlich. OAuth-Routen werden über die öffentliche Well-known-Route validiert. Keine internen Runtime-Dateien gelesen, kein Portscanner.
 
-Reproduzierbare Probes: `node spikes/t3/followup.mjs` erzeugt vier Threads (inkl. absichtlichem Credential-Replayduplikat), `followup-states.mjs` benutzt deren gespeicherte IDs und erzeugt einen Fehlerthread, `followup-attachment.mjs` benutzt einen bestehenden Thread. Diese Skripte sind absichtliche Liveprüfungen, keine normalen Tests. Sie widerrufen eigene OAuth-Sessions im finally. Nicht unbedacht wiederholen; Artefaktbereinigung von Testworktrees ist separat nötig. In dieser Durchführung insgesamt **fünf** neue Threads, keine zusätzlichen Workeragenten.
+Reproduzierbare Probes: `node spikes/t3/followup.mjs` erzeugt vier Threads (inkl. absichtlichem Credential-Replayduplikat), `followup-states.mjs` benutzt deren gespeicherte IDs und erzeugt einen Fehlerthread, `followup-attachment.mjs` benutzt einen bestehenden Thread. Diese Skripte sind absichtliche Liveprüfungen, keine normalen Tests. Sie widerrufen eigene OAuth-Sessions im finally. Nicht unbedacht wiederholen; Artefaktbereinigung von Testworktrees ist separat nötig. In dieser Durchführung insgesamt **sechs** neue Threads (einschließlich abschließender Rust-API-Prüfung), keine zusätzlichen Workeragenten.
 
 ## Voxtype und PipeWire
 
@@ -49,7 +49,7 @@ systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryM
 systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=3G -p MemorySwapMax=1G --setenv=ZURUF_MODEL=base --setenv=ZURUF_LANGUAGE=de -- mise exec rust@stable -- cargo run -j 2 -p zuruf-speech --example dictate
 ```
 
-Live-Suite erzeugt/revokiert einen OAuth-Zugang, zeichnet Ambient auf und setzt/entfernt den obskuren F24-Bind. Sie erzeugt keine Modellthreads. Das Dictatebeispiel braucht für deutsche Abnahme vorher den optionalen Modelldownload.
+Live-Suite erzeugt/revokiert OAuth-Zugänge, zeichnet Ambient auf und setzt/entfernt den obskuren F24-Bind. `live_mutations` erzeugt einen weiteren Testthread und sendet einen Follow-up; nur `live_connect` bzw. `--skip live_mutations` vermeidet neue Modellthreads. Die abschließende Rust-API-Prüfung launch → Zielrun completed → queue-send → Zielrun OK bestand, Beleg `spikes/t3/rust-evidence.json`. Das Dictatebeispiel braucht für deutsche Abnahme vorher den optionalen Modelldownload.
 
 ## Testthreads und Bereinigung
 
@@ -60,3 +60,7 @@ Live-Suite erzeugt/revokiert einen OAuth-Zugang, zeichnet Ambient auf und setzt/
 - [zuruf-test-failed-1794330191499](https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3Ac37555ebbe429cdd5c04eb98461b0415e88f4858cbb71edd3955ee962eb4afff) — `mcp:launch:c37555ebbe429cdd5c04eb98461b0415e88f4858cbb71edd3955ee962eb4afff`
 
 Der neue Testworktree `/home/mika/.t3/worktrees/main/zuruf-test-1794330125378` wurde per `git worktree remove` entfernt, Branch `zuruf-test-1794330125378` per `git branch -d` gelöscht. Keine eigenen Testworktrees/-branches übrig. Die Threadhistorie bleibt in T3; der New-Thread referenziert nun einen entfernten Testcheckout und soll nicht weiterverwendet werden. Root enthält die bewusst erzeugte Benutzerfrage; keine Antwort erfunden. Approval-/Interrupttests wurden gestoppt. Alle eigenen Prüfsessions widerrufen; keine Runtimebinds zurückgelassen.
+
+- [zuruf-test-rust [791b9cee-12c6-42b6-bfad-307bdfa19080]](https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44) — `mcp:launch:70d58ed6eb902f8cecc19c942f5c4c206ae3a13224532faad65ee5479d49bf44` (Rust-API, beide Runs completed/OK, kein Worktree).
+
+Abschlussprüfung: 14 Unit-Tests bestanden; vier unterschiedliche Ignored-Liveprüfungen bestanden (Hyprland, Continuous, OAuth/Katalog/Marker, Rust Launch/Send). `cargo clippy --all-targets -- -D warnings` und Formatprüfung sauber. Lua-Doppelapply bewahrt die Callback-ID; Commandstamp in der eigenen Bindbeschreibung macht den Vergleich mit `__lua` statt `exec` stabil.

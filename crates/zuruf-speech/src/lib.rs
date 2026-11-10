@@ -107,7 +107,11 @@ pub struct Voxtype {
 impl Transcriber for Voxtype {
     fn transcribe(&self, samples: Vec<i16>) -> AsyncResult<'_, String> {
         Box::pin(async move {
-            tokio::fs::create_dir_all(&self.directory).await?;
+            tokio::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&self.directory)
+                .await?;
             let path = self
                 .directory
                 .join(format!("segment-{}.wav", uuid::Uuid::new_v4()));
@@ -521,7 +525,11 @@ impl DaemonIo {
             self.busy = true;
             return Err(Error::BusyExternal);
         }
-        tokio::fs::create_dir_all(&self.directory).await?;
+        tokio::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&self.directory)
+            .await?;
         let path = self
             .directory
             .join(format!("daemon-{}.txt", uuid::Uuid::new_v4()));
@@ -694,6 +702,7 @@ enum DaemonCommand {
 pub struct Daemon {
     commands: tokio::sync::mpsc::UnboundedSender<DaemonCommand>,
     status: Arc<Mutex<SpeechState>>,
+    pending: Arc<std::sync::atomic::AtomicUsize>,
     epoch: String,
     annotation: Option<String>,
 }
@@ -707,6 +716,8 @@ impl Daemon {
             error: None,
         }));
         let shared = status.clone();
+        let pending = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let actor_pending = pending.clone();
         tokio::spawn(async move {
             let mut io = DaemonIo::new(executable, directory);
             io.model = model;
@@ -733,6 +744,7 @@ impl Daemon {
                                 segment.error = Some(error.to_string());
                             }
                         }
+                        actor_pending.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
                         update_daemon_state(&shared, &io, None);
                         let _ = reply.send(segment);
                     }
@@ -748,6 +760,7 @@ impl Daemon {
         Self {
             commands,
             status,
+            pending,
             epoch: String::new(),
             annotation: None,
         }
@@ -766,7 +779,8 @@ fn update_daemon_state(shared: &Mutex<SpeechState>, io: &DaemonIo, error: Option
 }
 impl SpeechAdapter for Daemon {
     fn state(&self) -> SpeechState {
-        self.status
+        let mut state = self
+            .status
             .lock()
             .map(|s| s.clone())
             .unwrap_or(SpeechState {
@@ -774,7 +788,9 @@ impl SpeechAdapter for Daemon {
                 pending_segments: 0,
                 last_gap_ms: None,
                 error: Some("state lock poisoned".into()),
-            })
+            });
+        state.pending_segments = self.pending.load(std::sync::atomic::Ordering::SeqCst);
+        state
     }
     fn start(&mut self, epoch: String) -> AsyncResult<'_, ()> {
         Box::pin(async move {
@@ -806,16 +822,22 @@ impl SpeechAdapter for Daemon {
                 error: None,
             };
             let (tx, receiver) = watch::channel(segment);
-            self.commands
+            self.pending
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self
+                .commands
                 .send(DaemonCommand::Mark(annotation.clone(), epoch.clone(), tx))
-                .map_err(|_| Error::Backend("daemon worker stopped".into()))?;
+                .is_err()
+            {
+                self.pending
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                return Err(Error::Backend("daemon worker stopped".into()));
+            }
             self.annotation = annotation;
             if let Some(epoch) = epoch {
                 self.epoch = epoch;
             }
-            if let Ok(mut state) = self.status.lock() {
-                state.pending_segments += 1;
-            }
+
             Ok(SegmentHandle { id, receiver })
         })
     }
