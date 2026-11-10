@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::{Component, Path, PathBuf},
 };
 use zuruf_core::*;
@@ -68,7 +68,10 @@ impl Paths {
     }
 }
 pub fn private_dir(path: &Path) -> Result<()> {
-    fs::create_dir_all(path)?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)?;
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     Ok(())
 }
@@ -118,6 +121,12 @@ pub struct Participant {
     pub name: String,
     pub created_at: Timestamp,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedMessage {
+    pub task_id: String,
+    pub request_id: String,
+    pub prompt: String,
+}
 pub struct Store {
     connection: Connection,
     pub paths: Paths,
@@ -128,8 +137,39 @@ impl Store {
         let db = paths.data.join("zuruf.sqlite");
         let connection = Connection::open(&db)?;
         fs::set_permissions(db, fs::Permissions::from_mode(0o600))?;
-        connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS snapshot(id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS entities(kind TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS receipts(task_id TEXT PRIMARY KEY, body TEXT NOT NULL); INSERT OR IGNORE INTO migrations VALUES(1);")?;
-        connection.execute_batch("CREATE TABLE IF NOT EXISTS entity_links(child_kind TEXT NOT NULL, child_id TEXT NOT NULL, parent_kind TEXT NOT NULL, parent_id TEXT NOT NULL, FOREIGN KEY(child_kind,child_id) REFERENCES entities(kind,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED, FOREIGN KEY(parent_kind,parent_id) REFERENCES entities(kind,id) DEFERRABLE INITIALLY DEFERRED); CREATE UNIQUE INDEX IF NOT EXISTS draft_per_review ON entities(json_extract(body,'$.reviewId')) WHERE kind='batch' AND json_extract(body,'$.state')='draft'; CREATE UNIQUE INDEX IF NOT EXISTS task_per_batch ON entities(json_extract(body,'$.batchId')) WHERE kind='task'; INSERT OR IGNORE INTO migrations VALUES(2);")?;
+        connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY);")?;
+        if connection.query_row(
+            "SELECT count(*) FROM migrations WHERE version=?1",
+            [1],
+            |row| row.get::<_, i64>(0),
+        )? == 0
+        {
+            connection.execute_batch(include_str!("../migrations/001_initial.sql"))?;
+        }
+        if connection.query_row(
+            "SELECT count(*) FROM migrations WHERE version=?1",
+            [2],
+            |row| row.get::<_, i64>(0),
+        )? == 0
+        {
+            connection.execute_batch(include_str!("../migrations/002_references.sql"))?;
+        }
+        if connection.query_row(
+            "SELECT count(*) FROM migrations WHERE version=?1",
+            [3],
+            |row| row.get::<_, i64>(0),
+        )? == 0
+        {
+            connection.execute_batch(include_str!("../migrations/003_messages.sql"))?;
+        }
+        if connection.query_row(
+            "SELECT count(*) FROM migrations WHERE version=4",
+            [],
+            |row| row.get::<_, i64>(0),
+        )? == 0
+        {
+            connection.execute_batch(include_str!("../migrations/004_entity_timestamps.sql"))?;
+        }
         Ok(Self { connection, paths })
     }
     pub fn load(&self) -> Result<Option<Snapshot>> {
@@ -147,6 +187,14 @@ impl Store {
         self.save_with_events(s, &[])
     }
     pub fn save_with_events(&mut self, s: &Snapshot, events: &[TaskEvent]) -> Result<()> {
+        self.save_with_message(s, events, None)
+    }
+    pub fn save_with_message(
+        &mut self,
+        s: &Snapshot,
+        events: &[TaskEvent],
+        message: Option<&QueuedMessage>,
+    ) -> Result<()> {
         let tx = self.connection.transaction()?;
         tx.execute(
             "INSERT INTO snapshot VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
@@ -239,6 +287,14 @@ impl Store {
                 params![e.id, serde_json::to_string(e)?],
             )?;
         }
+        if let Some(m) = message {
+            tx.execute(
+                "INSERT OR REPLACE INTO messages VALUES(?1,?2)",
+                params![m.task_id, serde_json::to_string(m)?],
+            )?;
+            tx.execute("DELETE FROM receipts WHERE task_id=?1", [&m.task_id])?;
+        }
+        tx.execute("INSERT INTO entity_timestamps SELECT kind,id,coalesce(json_extract(body,'$.createdAt'),?1),?1 FROM entities WHERE true ON CONFLICT(kind,id) DO UPDATE SET updated_at=excluded.updated_at",[now()])?;
         tx.commit()?;
         Ok(())
     }
@@ -365,6 +421,36 @@ impl Store {
             task,
             active_batch: draft,
         })
+    }
+    pub fn entity_timestamps(&self, kind: &str, id: &str) -> Result<(String, String)> {
+        Ok(self.connection.query_row(
+            "SELECT created_at,updated_at FROM entity_timestamps WHERE kind=?1 AND id=?2",
+            params![kind, id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?)
+    }
+    pub fn save_participant(&self, participant: &Participant) -> Result<()> {
+        self.connection.execute(
+            "INSERT OR REPLACE INTO entities VALUES('participant',?1,?2)",
+            params![participant.id, serde_json::to_string(participant)?],
+        )?;
+        Ok(())
+    }
+    pub fn message(&self, task: &str) -> Result<Option<QueuedMessage>> {
+        match self
+            .connection
+            .query_row("SELECT body FROM messages WHERE task_id=?1", [task], |r| {
+                r.get::<_, String>(0)
+            }) {
+            Ok(s) => Ok(Some(serde_json::from_str(&s)?)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+    pub fn clear_message(&self, task: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM messages WHERE task_id=?1", [task])?;
+        Ok(())
     }
     pub fn clear_receipt(&self, task: &str) -> Result<()> {
         self.connection

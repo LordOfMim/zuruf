@@ -51,6 +51,9 @@ pub trait T3Adapter: Send + Sync {
         client_request_id: String,
         prompt: String,
     ) -> AdapterFuture<'_, ThreadReceipt>;
+    /// An empty run is used only after explicit adopt_thread resolution: resolve
+    /// the thread's active/latest run and return its actual ID. Otherwise return
+    /// messages and pending requests strictly for the requested run.
     fn thread_status(&self, thread: String, run: String) -> AdapterFuture<'_, RemoteStatus>;
     fn find_threads_by_marker(
         &self,
@@ -74,6 +77,8 @@ pub trait SpeechAdapter: Send + Sync {
     fn state(&self) -> AdapterFuture<'_, SpeechState>;
     fn start_epoch(&self, boundary: SpeechBoundary) -> AdapterFuture<'_, ()>;
     fn mark(&self, boundary: SpeechBoundary) -> AdapterFuture<'_, Vec<SegmentHandle>>;
+    /// The daemon runs stop/start in its serialized background boundary queue.
+    /// Segment handles must retain original ownership even when finalization is slow.
     fn stop(&self) -> AdapterFuture<'_, Vec<SegmentHandle>>;
     fn cancel(&self) -> AdapterFuture<'_, ()>;
 }

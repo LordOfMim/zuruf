@@ -99,11 +99,22 @@ impl ControlState {
         self.settling = false;
     }
     /// Invalid timestamps never grant control implicitly.
-    pub fn expire(&mut self,now:&str){
-        let parse=|t:&str|time::OffsetDateTime::parse(t,&time::format_description::well_known::Rfc3339);
-        if self.owner==ControlStateOwner::Agent && self.lease_expires_at.as_deref().is_some_and(|t|match(parse(t),parse(now)){(Ok(expiry),Ok(now))=>expiry<=now,_=>true}){self.release();}
+    pub fn expire(&mut self, now: &str) {
+        let parse = |t: &str| {
+            time::OffsetDateTime::parse(t, &time::format_description::well_known::Rfc3339)
+        };
+        if self.owner == ControlStateOwner::Agent
+            && self
+                .lease_expires_at
+                .as_deref()
+                .is_some_and(|t| match (parse(t), parse(now)) {
+                    (Ok(expiry), Ok(now)) => expiry <= now,
+                    _ => true,
+                })
+        {
+            self.release();
+        }
     }
-
 }
 pub fn validate_bindings(bindings: &[Binding]) -> Vec<BindingIssue> {
     let mut issues = Vec::new();
@@ -484,5 +495,168 @@ mod tests {
                 .unwrap()
                 .contains("je Annotation")
         );
+    }
+}
+/// Monotonic control arbitration; callers supply time, so this remains pure.
+#[derive(Debug, Clone)]
+pub struct ControlArbiter {
+    pub state: ControlState,
+    lease_deadline_ms: Option<u64>,
+    settle_deadline_ms: Option<u64>,
+}
+impl Default for ControlArbiter {
+    fn default() -> Self {
+        Self {
+            state: ControlState {
+                owner: ControlStateOwner::None,
+                agent_id: None,
+                lease_expires_at: None,
+                settling: false,
+            },
+            lease_deadline_ms: None,
+            settle_deadline_ms: None,
+        }
+    }
+}
+impl ControlArbiter {
+    pub fn grant(
+        &mut self,
+        agent: String,
+        expires: Timestamp,
+        now_ms: u64,
+        lease_ms: u64,
+    ) -> Result<(), DomainError> {
+        if agent.is_empty() || lease_ms == 0 {
+            return Err(DomainError::Transition);
+        }
+        self.state.grant(agent, expires)?;
+        self.lease_deadline_ms = Some(now_ms.saturating_add(lease_ms));
+        Ok(())
+    }
+    pub fn takeover(&mut self, now_ms: u64, in_flight: bool) {
+        self.state.take_over(in_flight);
+        self.lease_deadline_ms = None;
+        self.settle_deadline_ms = in_flight.then(|| now_ms.saturating_add(500));
+    }
+    pub fn release(&mut self) -> Result<(), DomainError> {
+        if self.state.settling {
+            return Err(DomainError::Transition);
+        }
+        self.state.release();
+        self.lease_deadline_ms = None;
+        Ok(())
+    }
+    /// True means the browser must stop loading after the settling budget elapsed.
+    pub fn tick(&mut self, now_ms: u64) -> bool {
+        if self
+            .lease_deadline_ms
+            .is_some_and(|deadline| now_ms >= deadline)
+        {
+            self.state.release();
+            self.lease_deadline_ms = None;
+        }
+        if self
+            .settle_deadline_ms
+            .is_some_and(|deadline| now_ms >= deadline)
+        {
+            self.state.settle();
+            self.settle_deadline_ms = None;
+            return true;
+        }
+        false
+    }
+    pub fn command_finished(&mut self) {
+        self.state.settle();
+        self.settle_deadline_ms = None;
+    }
+    pub fn accepts(&self, agent: &str, now_ms: u64) -> bool {
+        self.state.owner == ControlStateOwner::Agent
+            && self.state.agent_id.as_deref() == Some(agent)
+            && self
+                .lease_deadline_ms
+                .is_some_and(|deadline| now_ms < deadline)
+            && !self.state.settling
+    }
+}
+#[cfg(test)]
+mod arbitration_tests {
+    use super::*;
+    #[test]
+    fn ownership_transitions_exhaustive() {
+        for owner in [
+            ControlStateOwner::None,
+            ControlStateOwner::Human,
+            ControlStateOwner::Agent,
+        ] {
+            for settling in [false, true] {
+                let mut c = ControlState {
+                    owner,
+                    agent_id: None,
+                    lease_expires_at: None,
+                    settling,
+                };
+                assert_eq!(
+                    c.grant("a".into(), "2027-01-01T00:00:00Z".into()).is_ok(),
+                    owner == ControlStateOwner::None && !settling
+                );
+                c.take_over(settling);
+                assert_eq!(c.owner, ControlStateOwner::Human);
+                assert_eq!(c.settling, settling);
+                c.release();
+                assert_eq!(c.owner, ControlStateOwner::None);
+                assert!(!c.settling);
+            }
+        }
+    }
+    #[test]
+    fn settling_and_lease_budget() {
+        let mut c = ControlArbiter::default();
+        c.grant("a".into(), "2027-01-01T00:00:00Z".into(), 0, 1000)
+            .unwrap();
+        assert!(c.accepts("a", 0));
+        assert!(!c.accepts("b", 0));
+        c.takeover(100, true);
+        assert!(!c.accepts("a", 100));
+        assert!(c.release().is_err());
+        assert!(!c.tick(599));
+        assert!(c.tick(600));
+        c.release().unwrap();
+        c.grant("a".into(), "2027-01-01T00:00:00Z".into(), 600, 100)
+            .unwrap();
+        assert!(!c.accepts("a", 700));
+        assert!(!c.tick(700));
+        assert_eq!(c.state.owner, ControlStateOwner::None);
+    }
+    #[test]
+    fn bindings_scopes_and_modifier_order() {
+        let mut bindings = Settings::default().bindings;
+        let mut b = bindings[5].clone();
+        b.scope = BindingScope::Global;
+        bindings.push(b.clone());
+        assert!(validate_bindings(&bindings).is_empty());
+        b.chord.as_mut().unwrap().mods = vec![Modifier::Alt, Modifier::Shift];
+        bindings.last_mut().unwrap().chord = b.chord.clone();
+        b.chord.as_mut().unwrap().mods.reverse();
+        bindings.push(b);
+        assert_eq!(validate_bindings(&bindings).len(), 1);
+    }
+    #[test]
+    fn every_remote_status() {
+        for (remote, expected) in [
+            ("preparing", TaskStatus::Queued),
+            ("queued", TaskStatus::Queued),
+            ("starting", TaskStatus::Running),
+            ("running", TaskStatus::Running),
+            ("waiting", TaskStatus::NeedsReview),
+            ("completed", TaskStatus::Completed),
+            ("failed", TaskStatus::Failed),
+            ("cancelled", TaskStatus::Cancelled),
+            ("interrupted", TaskStatus::Cancelled),
+            ("rolled_back", TaskStatus::NeedsReview),
+            ("idle", TaskStatus::NeedsReview),
+            ("timeout", TaskStatus::UnknownRemoteState),
+        ] {
+            assert_eq!(map_remote_status(remote, false, false), expected);
+        }
     }
 }
