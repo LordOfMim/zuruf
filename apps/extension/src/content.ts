@@ -390,31 +390,71 @@ window.addEventListener(
   },
   true,
 );
-function matches(event: KeyboardEvent, binding: Binding): boolean {
+function matches(
+  event: KeyboardEvent,
+  binding: Binding,
+  withAlt: boolean,
+): boolean {
   const chord = binding.chord;
   if (binding.scope !== "page" || !chord || chord.code !== event.code)
     return false;
+  const strong = chord.mods.some((mod) => mod !== "shift");
+  if (withAlt && strong) return false;
   return (
     event.ctrlKey === chord.mods.includes("ctrl") &&
-    event.altKey === chord.mods.includes("alt") &&
+    event.altKey === (withAlt || chord.mods.includes("alt")) &&
     event.shiftKey === chord.mods.includes("shift") &&
     event.metaKey === chord.mods.includes("super")
   );
 }
+/**
+ * The binding a key press means. A chord with Ctrl, Alt or Super is ours everywhere. A bare key
+ * is ours only outside text fields; held with Alt it reaches the same action inside them too.
+ */
+function bindingFor(event: KeyboardEvent): Binding | undefined {
+  const exact = bindings.find((b) => matches(event, b, false));
+  if (exact) {
+    const strong = event.ctrlKey || event.altKey || event.metaKey;
+    return strong || !guarded(event) ? exact : undefined;
+  }
+  return event.altKey
+    ? bindings.find((b) => matches(event, b, true))
+    : undefined;
+}
+// Keys we took: the page must not see their repeats, keypress or keyup either.
+const taken = new Set<string>();
+function swallow(event: KeyboardEvent): void {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+window.addEventListener(
+  "keyup",
+  (event) => {
+    if (event.isTrusted && taken.delete(event.code)) swallow(event);
+  },
+  true,
+);
+window.addEventListener(
+  "keypress",
+  (event) => {
+    if (event.isTrusted && taken.has(event.code)) swallow(event);
+  },
+  true,
+);
+window.addEventListener("blur", () => taken.clear());
 window.addEventListener(
   "keydown",
   (event) => {
-    if (
-      !event.isTrusted ||
-      !review ||
-      event.repeat ||
-      event.isComposing ||
-      event.keyCode === 229 ||
-      guarded(event)
-    )
+    if (!event.isTrusted) return;
+    if (taken.has(event.code)) {
+      swallow(event);
       return;
-    const binding = bindings.find((b) => matches(event, b));
+    }
+    if (!review || event.repeat || event.isComposing || event.keyCode === 229)
+      return;
+    const binding = bindingFor(event);
     if (!binding) return;
+    taken.add(event.code);
     event.preventDefault();
     event.stopImmediatePropagation();
     const action = binding.action;

@@ -8,10 +8,11 @@ import { actionLabel } from "../lib/text";
 
 type Scope = Binding["scope"];
 
-const GROUPS: { title: string; scope: Scope; actions: ActionId[] }[] = [
+const GROUPS: { title: string; note?: string; scope: Scope; actions: ActionId[] }[] = [
   {
     title: "Im Review-Browser",
     scope: "page",
+    note: "in Textfeldern mit Alt",
     actions: [
       "capture.viewport",
       "capture.region",
@@ -133,7 +134,10 @@ export function Shortcuts(props: { store: AppStore }) {
       <For each={GROUPS}>
         {(group) => (
           <section class="group">
-            <h2 class="group-title">{group.title}</h2>
+            <h2 class="group-title">
+              {group.title}
+              {group.note && <span class="group-note">{group.note}</span>}
+            </h2>
             <ul class="rows">
               <For each={group.actions}>
                 {(action) => {

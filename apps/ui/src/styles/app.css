@@ -1029,6 +1029,13 @@ button.entry-thumb:hover {
   color: var(--text-3);
 }
 
+.group-note {
+  margin-left: var(--s2);
+  font-weight: 400;
+  color: var(--text-4, var(--text-3));
+  opacity: 0.8;
+}
+
 .rows,
 .tasks-board,
 .sessions {

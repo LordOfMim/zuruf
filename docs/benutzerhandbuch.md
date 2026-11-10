@@ -33,7 +33,7 @@ Provider, Modell, Optionen und Arbeitsverzeichnis werden pro Batch eingefroren. 
 
 ## Review und Sprache
 
-Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport, `S` einen gezogenen Ausschnitt, `D` das Element unter dem Cursor. In Textfeldern, Editoren und Contenteditable bleiben diese Tasten normale Eingaben. `Esc` bricht eine Auswahl ab. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
+Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport, `S` einen gezogenen Ausschnitt, `D` das Element unter dem Cursor. In Textfeldern, Editoren und Contenteditable bleiben einzelne Tasten normale Eingaben; dieselbe Taste mit Alt (z. B. Alt+R) löst die Aktion auch dort aus. Kürzel mit Strg, Alt oder Super gelten überall. Zuruf fängt seine Tasten vor der Seite ab, einschließlich Wiederholung und Loslassen. `Esc` bricht eine Auswahl ab. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
 
 Nach dauerhafter Rohbildpersistenz bestätigt die Extension „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
 

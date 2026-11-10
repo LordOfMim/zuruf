@@ -5,6 +5,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "tsc --noEmit",
+    "test": "node test/keys.mjs dist/content.js",
     "lint": "eslint src && prettier --check src static build.mjs"
   },
   "devDependencies": {
