@@ -25,6 +25,8 @@ pub struct SessionConfig {
     pub extension_dir: PathBuf,
     pub chromium_path: PathBuf,
     pub urls: Vec<String>,
+    /// Dock the panel on the left, so the page fills the rest of the window.
+    pub panel_left: bool,
 }
 impl SessionConfig {
     pub fn new(root: PathBuf, extension_dir: PathBuf) -> Self {
@@ -34,8 +36,32 @@ impl SessionConfig {
             extension_dir,
             chromium_path: "/usr/bin/chromium".into(),
             urls: vec!["about:blank".into()],
+            panel_left: false,
         }
     }
+}
+/// Chromium reads the side panel's side from the profile; it can only be set while it is not running.
+async fn panel_side(profile: &std::path::Path, left: bool) -> Result<()> {
+    let dir = profile.join("Default");
+    let file = dir.join("Preferences");
+    let mut prefs: serde_json::Value = match tokio::fs::read(&file).await {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({})),
+        Err(_) => json!({}),
+    };
+    if !prefs.is_object() {
+        prefs = json!({});
+    }
+    let current = &prefs["side_panel"]["is_right_aligned"];
+    if *current == json!(!left) || (!left && current.is_null()) {
+        return Ok(());
+    }
+    if !prefs["side_panel"].is_object() {
+        prefs["side_panel"] = json!({});
+    }
+    prefs["side_panel"]["is_right_aligned"] = json!(!left);
+    private_dir(&dir).await?;
+    tokio::fs::write(&file, serde_json::to_vec(&prefs)?).await?;
+    Ok(())
 }
 struct Scope(String);
 impl Drop for Scope {
@@ -52,6 +78,7 @@ pub struct Browser {
     cdp: Cdp,
     endpoint: String,
     child: Mutex<Child>,
+    pid: Option<u32>,
     scope: Scope,
     pub extension: ExtensionHub,
     pub control: Arbitration,
@@ -91,6 +118,7 @@ impl Browser {
         if active.exists() {
             tokio::fs::remove_file(&active).await?;
         }
+        panel_side(&profile, config.panel_left).await?;
         let scope = Scope(format!("zuruf-browser-{}.scope", uuid::Uuid::now_v7()));
         let mut command = Command::new("systemd-run");
         command
@@ -123,6 +151,7 @@ impl Browser {
             .stderr(Stdio::null())
             .kill_on_drop(true);
         let mut child = command.spawn()?;
+        let pid = child.id();
         let endpoint = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 if child.try_wait()?.is_some() {
@@ -191,6 +220,7 @@ impl Browser {
             cdp,
             endpoint,
             child: Mutex::new(child),
+            pid,
             scope,
             extension,
             control: Arbitration::default(),
@@ -310,6 +340,10 @@ impl Browser {
             .call("Target.createTarget", json!({"url":url}), None)
             .await?;
         Ok(value["targetId"].as_str().unwrap_or_default().into())
+    }
+    /// Process id of the browser, which is also the owner of its window.
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
     }
     /// Opens the extension's side panel next to the page unless it is already open.
     /// Returns false while the extension's worker is not up yet.

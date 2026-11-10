@@ -759,6 +759,14 @@ impl BrowserController for BrowserAdapter {
                 self.paths.data.join("extension-bundle"),
             );
             config.session_id = s.id.clone();
+            let integrated = match self.app.get().and_then(std::sync::Weak::upgrade) {
+                Some(inner) => {
+                    Daemon(inner).snapshot().await.map_err(io)?.settings.ui.browser
+                        == SettingsUiBrowser::Integrated
+                }
+                None => false,
+            };
+            config.panel_left = integrated;
             config.urls = s.tabs.iter().map(|t| t.url.clone()).collect();
             if config.urls.is_empty() {
                 let start = if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) {
@@ -797,8 +805,19 @@ impl BrowserController for BrowserAdapter {
             tokio::spawn(async move {
                 for _ in 0..40 {
                     tokio::time::sleep(Duration::from_millis(500)).await;
-                    if matches!(opener.open_panel().await, Ok(true) | Err(_)) {
-                        break;
+                    match opener.open_panel().await {
+                        Ok(true) => {
+                            // One window: the app now lives in this browser's panel.
+                            if integrated {
+                                let _ = tokio::process::Command::new("systemctl")
+                                    .args(["--user", "stop", "zuruf-app.service"])
+                                    .output()
+                                    .await;
+                            }
+                            break;
+                        }
+                        Err(_) => break,
+                        Ok(false) => {}
                     }
                 }
             });

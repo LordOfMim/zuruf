@@ -31,7 +31,7 @@ function Field(props: { label: string; hint?: string; children: JSX.Element }) {
   );
 }
 
-function Segmented<T extends string>(props: {
+export function Segmented<T extends string>(props: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;

@@ -2,7 +2,9 @@ import type { BrowserSession, SessionMode } from "@zuruf/protocol";
 import { For, Show, createSignal } from "solid-js";
 import { Button, Icon } from "../components/basics";
 import type { AppStore } from "../lib/store";
+import { plain } from "../lib/store";
 import { sessionModeLabel, shortUrl } from "../lib/text";
+import { Segmented } from "./Settings";
 
 function controlLine(session: BrowserSession): string {
   if (session.state !== "running") return session.state === "crashed" ? "abgestürzt" : "aus";
@@ -98,6 +100,22 @@ export function Sessions(props: { store: AppStore }) {
     <div class="page">
       <header class="page-head">
         <h1>Sitzungen</h1>
+        <Show when={store.settings()}>
+          {(settings) => (
+            <Segmented
+              label="Browser"
+              value={settings().ui.browser ?? "separate"}
+              options={[
+                { value: "integrated", label: "Ein Fenster" },
+                { value: "separate", label: "Getrennt" },
+              ]}
+              onChange={(browser) => {
+                const next = plain(settings());
+                void store.commands.saveSettings({ ...next, ui: { ...next.ui, browser } });
+              }}
+            />
+          )}
+        </Show>
       </header>
       <section class="group">
         <ul class="sessions">

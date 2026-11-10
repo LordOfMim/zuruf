@@ -26,7 +26,8 @@ zuruf stop                      # stop service and app window
 zuruf t3 pair --origin http://127.0.0.1:<port>   # connect to T3 Code; the user confirms in T3
 ```
 
-`zuruf open` is the way to show the user something. Switching the view reloads the app window, so
+`zuruf open` is the way to show the user something. In one-window mode (`settings.ui.browser` is
+`integrated`) with a session running, it focuses that session's browser, where Zuruf is docked on the left. Switching the view reloads the app window, so
 unsent form input there is lost; do not switch views while the user is typing in Zuruf.
 
 `zuruf status` fails when the service is not running. That is a state, not an error to repair:

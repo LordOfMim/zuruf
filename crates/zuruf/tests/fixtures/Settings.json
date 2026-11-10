@@ -39,7 +39,8 @@
   "ui": {
     "theme": "system",
     "language": "de",
-    "openPanelOnReviewStart": true
+    "openPanelOnReviewStart": true,
+    "browser": "separate"
   },
   "dataDir": "example"
 }

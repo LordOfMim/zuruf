@@ -196,12 +196,16 @@ async fn run() -> Result<(), Error> {
                 if std::env::var("ZURUF_FAKE_ADAPTERS").as_deref() == Ok("1") {
                     println!("{base}/#code={code}{view}");
                 } else {
-                    client.post(format!("{base}/api/v1/app/open"))
+                    let opened = client.post(format!("{base}/api/v1/app/open"))
                         .bearer_auth(token.trim())
                         .json(&serde_json::json!({"view": match &command { Command::Open { view: Some(view) } => view.as_str(), _ => "tasks" }}))
                         .send().await.map_err(|e| Error::Join(e.to_string()))?
-                        .error_for_status().map_err(|e| Error::Join(e.to_string()))?;
-                    open_window(&paths, &format!("{base}/#code={code}{view}")).await?;
+                        .error_for_status().map_err(|e| Error::Join(e.to_string()))?
+                        .json::<serde_json::Value>().await.map_err(|e| Error::Join(e.to_string()))?;
+                    // One-window mode with a running session: the daemon focused that window.
+                    if opened["window"] != "session" {
+                        open_window(&paths, &format!("{base}/#code={code}{view}")).await?;
+                    }
                 }
             } else {
                 if matches!(command, Command::Stop) {

@@ -47,9 +47,15 @@ export function Offline(props: { store: AppStore }) {
   );
 }
 
-export function App(props: { store: AppStore }) {
+/**
+ * The whole app. `docked` is the one-window layout: the app sits in the session browser's panel,
+ * so navigation becomes a slim bar above the content and review is the home view.
+ */
+export function App(props: { store: AppStore; docked?: boolean }) {
   const store = props.store;
-  const [view, setView] = createSignal<View>((location.hash.slice(1) as View) || "tasks");
+  const [view, setView] = createSignal<View>(
+    (location.hash.slice(1) as View) || (props.docked ? "review" : "tasks"),
+  );
   const [settingsTab, setSettingsTab] = createSignal<SettingsTab | undefined>();
   const go = (next: View, tab?: SettingsTab) => {
     setSettingsTab(tab);
@@ -72,7 +78,7 @@ export function App(props: { store: AppStore }) {
   );
 
   return (
-    <div class="app">
+    <div class="app" classList={{ "is-docked": props.docked }}>
       <nav class="rail" aria-label="Hauptnavigation">
         <div class="rail-brand">
           <span class="mark" role="img" aria-label="Zuruf" />
@@ -132,6 +138,7 @@ export function App(props: { store: AppStore }) {
             <button
               type="button"
               class="rail-item"
+              title={props.docked ? entry.label : undefined}
               aria-current={view() === entry.id ? "page" : undefined}
               onClick={() => go(entry.id)}
             >
@@ -152,9 +159,9 @@ export function App(props: { store: AppStore }) {
             <Setup store={store} />
           </Match>
           <Match when={view() === "review"}>
-            <div class="review-stage">
+            <Show when={props.docked} fallback={<div class="review-stage"><Panel store={store} /></div>}>
               <Panel store={store} />
-            </div>
+            </Show>
           </Match>
           <Match when={view() === "tasks"}>
             <Tasks store={store} />

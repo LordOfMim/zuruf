@@ -716,6 +716,17 @@ pub struct SettingsUi {
     pub theme: SettingsUiTheme,
     pub language: SettingsUiLanguage,
     pub open_panel_on_review_start: bool,
+    #[serde(default)]
+    pub browser: SettingsUiBrowser,
+}
+/// Where the session browser lives: next to the app in one window, or in a window of its own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SettingsUiBrowser {
+    #[default]
+    #[serde(rename = "separate")]
+    Separate,
+    #[serde(rename = "integrated")]
+    Integrated,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

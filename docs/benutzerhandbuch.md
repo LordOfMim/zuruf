@@ -64,3 +64,7 @@ Automatische semantische Erkennung beliebiger personenbezogener Texte/Bilder, ge
 `./uninstall.sh` entfernt Programm, Bundles, Unit, beide Desktopdateien und Icon; Benutzerdaten bleiben. `--purge` löscht sie erst nach Eingabe von `LÖSCHEN`. Dieselben Zielvariablen wie bei der Installation verwenden.
 
 `zuruf doctor` prüft lokale Programme, Sockets, T3-Port und Modelle; das bestätigt noch keine Anmeldung oder deutsche Diktatqualität. `zuruf stop` beendet Dienst und Appfenster. Keine Hyprland-Konfigurationsdatei wird geändert. Abnahme und offene Handprüfungen stehen in [abnahme.md](abnahme.md), der reproduzierbare Sammellauf unter `tests/e2e/run.sh`.
+
+## Ein Fenster oder zwei
+
+Unter „Sitzungen“ legt der Schalter „Ein Fenster / Getrennt“ fest, wo der Browser lebt. „Ein Fenster“: Zuruf sitzt mit allen Bereichen links im Fenster des Sitzungsbrowsers, die Seite füllt den Rest; das eigene App-Fenster schließt sich beim Öffnen der Sitzung, `zuruf open` holt das Browserfenster nach vorn. Ohne laufende Sitzung öffnet sich weiterhin das App-Fenster. „Getrennt“: App-Fenster und Browser wie bisher. Die Wahl gilt ab dem nächsten Öffnen einer Sitzung.

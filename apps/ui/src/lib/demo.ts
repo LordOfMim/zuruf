@@ -84,7 +84,12 @@ function createDemoSnapshot(): Snapshot {
     },
     redaction: { stripQuery: false, patterns: ["token", "session", "secret"] },
     t3: { cliPath: "~/.local/bin/t3", pollSeconds: 3 },
-    ui: { theme: "system", language: "de", openPanelOnReviewStart: true },
+    ui: {
+      theme: "system",
+      language: "de",
+      openPanelOnReviewStart: true,
+      browser: new URLSearchParams(location.search).has("docked") ? "integrated" : "separate",
+    },
     dataDir: "~/.local/share/zuruf",
   };
 

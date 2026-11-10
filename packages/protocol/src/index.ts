@@ -388,6 +388,8 @@ export interface Settings {
     theme: "system" | "dark" | "light";
     language: "de" | "en";
     openPanelOnReviewStart: boolean;
+    /** integrated: Zuruf docks into the session browser's window; separate: two windows. */
+    browser?: "separate" | "integrated";
   };
   dataDir: string;
 }

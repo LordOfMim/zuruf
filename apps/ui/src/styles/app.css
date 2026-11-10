@@ -1582,3 +1582,86 @@ input[type="range"] {
     display: none;
   }
 }
+
+/* ───────── one window: the app docked beside the page */
+.app.is-docked {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--surface);
+}
+
+.is-docked .rail {
+  flex-direction: row;
+  gap: 2px;
+  padding: var(--s2);
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.is-docked .rail-brand {
+  display: none;
+}
+
+.is-docked .rail-item {
+  flex: 0 0 auto;
+  gap: var(--s2);
+  padding: 0 10px;
+}
+
+/* Only the current place is spelled out; the others are their icons. */
+.is-docked .rail-item:not([aria-current="page"]) span:nth-of-type(1) {
+  display: none;
+}
+
+.is-docked .rail-item[aria-current="page"] {
+  flex: 1 1 auto;
+}
+
+.is-docked .rail-item .rail-count {
+  margin-left: -2px;
+}
+
+.is-docked .page {
+  padding: var(--s4) var(--s3) var(--s6);
+}
+
+.is-docked .page-head {
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.is-docked .tabs {
+  flex-wrap: wrap;
+  margin: 0 calc(var(--s2) * -1);
+}
+
+.is-docked .row {
+  flex-wrap: wrap;
+  padding-left: var(--s3);
+}
+
+.is-docked .session-line {
+  flex-wrap: wrap;
+}
+
+.is-docked .rail-item {
+  justify-content: flex-start;
+}
+
+.is-docked .rail-item[aria-current="page"] span:nth-of-type(1) {
+  display: inline;
+}
+
+.is-docked .rail-item .rail-count {
+  display: inline-block;
+}
+
+/* The bar above already names the place. */
+.is-docked .page-head h1 {
+  display: none;
+}
+
+.is-docked .page-head:empty {
+  display: none;
+}

@@ -1822,7 +1822,35 @@ async fn api(
                 .0
                 .events
                 .send(json!({"type":"app.open_requested","payload":{"view":view}}));
-            json!({"ok":true})
+            // In one-window mode the app is the panel of the running session browser.
+            let snapshot = app.snapshot().await?;
+            let mut window = "app";
+            if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated
+                && let Some(runtime) = app.0.real.get()
+            {
+                let sessions = runtime.browsers.sessions.lock().await;
+                let browser = snapshot
+                    .status
+                    .active_session_id
+                    .as_ref()
+                    .and_then(|id| sessions.get(id))
+                    .or_else(|| sessions.values().next())
+                    .cloned();
+                drop(sessions);
+                if let Some(browser) = browser
+                    && let Some(pid) = browser.pid()
+                    && let Ok(desktop) =
+                        zuruf_hypr::Hyprland::detect(std::env::current_exe().map_err(StoreError::from)?)
+                            .await
+                    && let Ok(Some(address)) = desktop.find_window(pid).await
+                {
+                    let _ = browser.open_panel().await;
+                    if desktop.focus(&address).await.is_ok() {
+                        window = "session";
+                    }
+                }
+            }
+            json!({"ok":true,"window":window})
         }
         ("POST", "tasks", _, "cancel") => {
             let t = app
