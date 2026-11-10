@@ -1,0 +1,62 @@
+{
+  "runs": [
+    {
+      "run": "1794331569135",
+      "timings": {
+        "w": 288.4269870000003,
+        "s": 263.757067,
+        "d": 237.48841200000015,
+        "newDraftMs": 64.14586099999997,
+        "takeoverMs": 516.2216600000002
+      },
+      "threads": [
+        {
+          "id": "mcp:launch:5c063c6ee5e36789d17ce8cb907054750c24b153c68a8f14552b8ba15ade9b42",
+          "title": "zuruf-test-wiring-1794331569135",
+          "url": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A5c063c6ee5e36789d17ce8cb907054750c24b153c68a8f14552b8ba15ade9b42",
+          "finalRemoteStatus": "interrupted"
+        }
+      ],
+      "sealedSegments": 5,
+      "passed": true
+    },
+    {
+      "run": "1794331786267",
+      "timings": {
+        "w": 284.692986,
+        "s": 288.4710100000002,
+        "d": 257.3998880000004,
+        "newDraftMs": 62.489990000000034,
+        "takeoverMs": 517.5468769999998
+      },
+      "threads": [
+        {
+          "id": "mcp:launch:df75b4bb1c17719eded82330373f54a8bab7eb436f7e0ca1cd40217737ebf018",
+          "title": "zuruf-test-wiring-1794331786267",
+          "url": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3Adf75b4bb1c17719eded82330373f54a8bab7eb436f7e0ca1cd40217737ebf018",
+          "finalRemoteStatus": "interrupted"
+        }
+      ],
+      "sealedSegments": 5,
+      "taskStatus": "needs_review",
+      "passed": true
+    },
+    {
+      "run": "1794332226683",
+      "timings": {
+        "w": 266.0264179999999,
+        "s": 240.40101700000014,
+        "d": 221.78217200000017
+      },
+      "threads": [],
+      "rapidCaptures": true,
+      "passed": true
+    }
+  ],
+  "app": {
+    "autostart": true,
+    "visibleWindow": true,
+    "actualWaylandAppId": "chrome-127.0.0.1__-Default",
+    "strictZurufIdentity": false
+  }
+}

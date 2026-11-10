@@ -438,14 +438,8 @@ impl T3Adapter {
         }
         self.session = None;
         let init = json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"Zuruf","version":"0.1"}});
-        let value = match self.rpc("initialize", init.clone()).await {
-            Ok(v) => v,
-            Err(_) => {
-                self.pair(&origin).await?;
-                self.session = None;
-                self.rpc("initialize", init).await?
-            }
-        };
+        // Transport failures never rotate OAuth identity: replay reconciliation depends on it.
+        let value = self.rpc("initialize", init).await?;
         self.connection.version = string(&value["serverInfo"], "version");
         self.tools = self.rpc("tools/list", json!({})).await?;
         self.connection.capabilities = detect_capabilities(&self.tools);
@@ -531,15 +525,8 @@ impl T3Adapter {
         match response {
             Ok(value) => unpack(value),
             Err(Error::Protocol(reason)) if reason.starts_with("MCP HTTP 401") => {
-                let origin = self
-                    .credentials
-                    .as_ref()
-                    .map(|c| c.origin.clone())
-                    .ok_or_else(|| Error::Protocol("Disconnected".into()))?;
-                self.pair(&origin).await?;
-                self.connect(&origin).await?;
                 Err(Error::Protocol(
-                    "Credentials renewed; reconcile remote state before retrying a mutation".into(),
+                    "OAuth authorization expired; pair explicitly, then reconcile remote state before retrying".into(),
                 ))
             }
             Err(error) => {
@@ -680,9 +667,25 @@ impl T3Adapter {
         profile: &AgentProfile,
         request_id: &str,
     ) -> Result<ThreadReceipt> {
+        self.create_thread_with_attachments(project, title, prompt, profile, request_id, Vec::new())
+            .await
+    }
+    pub async fn create_thread_with_attachments(
+        &mut self,
+        project: &str,
+        title: &str,
+        prompt: &str,
+        profile: &AgentProfile,
+        request_id: &str,
+        attachments: Vec<Value>,
+    ) -> Result<ThreadReceipt> {
+        if attachments.len() > 8 {
+            return Err(Error::Unsupported("At most eight images per launch".into()));
+        }
         let title = format!("{title} [{request_id}]");
         let v = if self.connection.transport.as_deref() == Some("cli") {
-            if !profile.options.is_empty()
+            if !attachments.is_empty()
+                || !profile.options.is_empty()
                 || profile.runtime_mode.is_some()
                 || profile.interaction_mode.is_some()
                 || matches!(
@@ -733,6 +736,9 @@ impl T3Adapter {
                 }
             };
             let mut args = json!({"projectId":project_id,"title":title,"message":prompt,"modelSelection":{"instanceId":profile.provider_instance_id,"model":profile.model,"options":profile.options},"workspaceStrategy":workspace,"clientRequestId":request_id});
+            if !attachments.is_empty() {
+                args["attachments"] = json!(attachments);
+            }
             if let Some(mode) = &profile.runtime_mode {
                 args["runtimeMode"] = json!(mode);
             }

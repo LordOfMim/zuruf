@@ -479,6 +479,7 @@ async fn cli_status_action_open_never_print_token() {
             .env("ZURUF_STATE_DIR", &h.paths.state)
             .env("ZURUF_CONFIG_DIR", &h.paths.config)
             .env("ZURUF_PORT", port)
+            .env("ZURUF_FAKE_ADAPTERS", "1")
             .output()
             .await
             .unwrap();
@@ -545,5 +546,47 @@ fn manifest_redacts_sensitive_metadata_and_rejects_traversal() {
             &settings
         )
         .is_err()
+    );
+}
+
+#[tokio::test]
+async fn panel_cors_allows_only_the_built_extension() {
+    let h = Harness::new().await;
+    let origin = zuruf::real::extension_origin();
+    let client = reqwest::Client::new();
+    let preflight = client
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{}/api/v1/settings", h.base),
+        )
+        .header("origin", &origin)
+        .header("access-control-request-method", "PUT")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(preflight.status(), 204);
+    assert_eq!(preflight.headers()["access-control-allow-origin"], origin);
+    let allowed = client
+        .get(format!("{}/api/v1/state", h.base))
+        .bearer_auth(&h.token)
+        .header("origin", &origin)
+        .send()
+        .await
+        .unwrap();
+    assert!(allowed.status().is_success());
+    assert_eq!(allowed.headers()["access-control-allow-origin"], origin);
+    let denied = client
+        .get(format!("{}/api/v1/state", h.base))
+        .bearer_auth(&h.token)
+        .header("origin", "chrome-extension://untrusted")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403);
+    assert!(
+        denied
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none()
     );
 }

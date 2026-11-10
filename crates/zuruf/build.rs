@@ -22,4 +22,12 @@ fn main() {
         println!("cargo:warning=UI copy: {e}");
     }
     println!("cargo:rerun-if-changed=../../apps/ui/dist");
+    let ext = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("extension");
+    let _ = std::fs::remove_dir_all(&ext);
+    std::fs::create_dir_all(&ext).unwrap();
+    let source = std::path::Path::new("../../apps/extension/dist");
+    if source.exists() {
+        copy(source, &ext).expect("copy extension bundle");
+    }
+    println!("cargo:rerun-if-changed=../../apps/extension/dist");
 }

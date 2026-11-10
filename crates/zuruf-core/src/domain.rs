@@ -59,6 +59,13 @@ impl TaskStatus {
 }
 pub fn map_remote_status(remote: &str, approval: bool, pending: bool) -> TaskStatus {
     use TaskStatus::*;
+    if matches!(remote, "failed" | "interrupted" | "cancelled") {
+        return if remote == "failed" {
+            Failed
+        } else {
+            Cancelled
+        };
+    }
     if pending {
         return if approval { NeedsApproval } else { NeedsReview };
     }
@@ -144,6 +151,7 @@ pub fn validate_bindings(bindings: &[Binding]) -> Vec<BindingIssue> {
             || matches!(
                 c.code.as_str(),
                 "Escape"
+                    | "Period"
                     | "Space"
                     | "Enter"
                     | "Tab"
@@ -286,19 +294,19 @@ impl Default for Settings {
             (
                 ActionId::ReviewToggle,
                 "KeyR",
-                vec![Modifier::Super, Modifier::Shift],
+                vec![Modifier::Super, Modifier::Alt],
                 BindingScope::Global,
             ),
             (
                 ActionId::ControlTakeover,
-                "Escape",
-                vec![Modifier::Super, Modifier::Shift],
+                "Period",
+                vec![Modifier::Super, Modifier::Alt],
                 BindingScope::Global,
             ),
             (
                 ActionId::AppOpen,
                 "KeyZ",
-                vec![Modifier::Super, Modifier::Shift],
+                vec![Modifier::Super, Modifier::Alt],
                 BindingScope::Global,
             ),
         ] {
@@ -311,6 +319,53 @@ impl Default for Settings {
                 }),
             });
         }
+        for (action, code, mods) in [
+            (ActionId::PanelToggle, "KeyP", vec![]),
+            (ActionId::ProfileSlot1, "Digit1", vec![Modifier::Shift]),
+            (ActionId::ProfileSlot2, "Digit2", vec![Modifier::Shift]),
+            (ActionId::ProfileSlot3, "Digit3", vec![Modifier::Shift]),
+        ] {
+            bindings.push(Binding {
+                action,
+                scope: BindingScope::Page,
+                chord: Some(Chord {
+                    code: code.into(),
+                    mods,
+                }),
+            });
+        }
+        bindings.push(Binding {
+            action: ActionId::BatchSendToThread,
+            scope: BindingScope::Page,
+            chord: None,
+        });
+        for action in [ActionId::BatchDispatch, ActionId::SpeechToggle] {
+            bindings.push(Binding {
+                action,
+                scope: BindingScope::Global,
+                chord: None,
+            });
+        }
+        // Keep ordering identical to the UI's defaultBindings(), including unbound actions.
+        bindings.sort_by_key(|binding| match (binding.scope, binding.action) {
+            (BindingScope::Page, ActionId::CaptureViewport) => 0,
+            (BindingScope::Page, ActionId::CaptureRegion) => 1,
+            (BindingScope::Page, ActionId::CaptureDom) => 2,
+            (BindingScope::Page, ActionId::CommentText) => 3,
+            (BindingScope::Page, ActionId::SpeechToggle) => 4,
+            (BindingScope::Page, ActionId::BatchDispatch) => 5,
+            (BindingScope::Page, ActionId::ActionCancel) => 6,
+            (BindingScope::Page, ActionId::PanelToggle) => 7,
+            (BindingScope::Page, ActionId::BatchSendToThread) => 8,
+            (BindingScope::Page, ActionId::ProfileSlot1) => 9,
+            (BindingScope::Page, ActionId::ProfileSlot2) => 10,
+            (BindingScope::Page, ActionId::ProfileSlot3) => 11,
+            (BindingScope::Global, ActionId::ReviewToggle) => 12,
+            (BindingScope::Global, ActionId::ControlTakeover) => 13,
+            (BindingScope::Global, ActionId::AppOpen) => 14,
+            (BindingScope::Global, ActionId::BatchDispatch) => 15,
+            _ => 16,
+        });
         Self {
             bindings,
             capture: SettingsCapture {
@@ -321,7 +376,7 @@ impl Default for Settings {
             },
             speech: SettingsSpeech {
                 enabled: false,
-                backend: SettingsSpeechBackend::Daemon,
+                backend: SettingsSpeechBackend::Continuous,
                 model: None,
                 language: Some("de".into()),
                 attach: SettingsSpeechAttach::After,

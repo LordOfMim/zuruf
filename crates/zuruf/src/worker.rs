@@ -194,6 +194,7 @@ impl Daemon {
                             remote.approval,
                             remote.pending_request.is_some(),
                         );
+                        let remote_error = remote.error.clone();
                         let key = id.clone();
                         self.mutate(move |s, _| {
                             let t = s
@@ -210,7 +211,7 @@ impl Daemon {
                         })
                         .await?;
                         if task.status != status {
-                            self.task_status(id.clone(), status, None).await?;
+                            self.task_status(id.clone(), status, remote_error).await?;
                         }
                         if status.terminal() || status == TaskStatus::UnknownRemoteState {
                             return Ok(());
@@ -329,13 +330,49 @@ impl Daemon {
             }
             let sending_follow_up = task.thread_id.is_some();
             let operation = async {
+                let batch_id = task.batch_id.clone();
+                let assets = if self.0.real.get().is_some() {
+                    self.access(move |p| {
+                        let mut assets = Vec::new();
+                        for annotation in p
+                            .snapshot
+                            .annotations
+                            .iter()
+                            .filter(|a| a.batch_id == batch_id)
+                        {
+                            for asset in annotation
+                                .assets
+                                .iter()
+                                .filter(|a| a.kind == AssetKind::ScreenshotMarked)
+                            {
+                                let batch = p
+                                    .snapshot
+                                    .batches
+                                    .iter()
+                                    .find(|b| b.id == batch_id)
+                                    .ok_or_else(missing)?;
+                                let path = zuruf_store::safe_join(
+                                    &p.store.paths.batch_dir(batch)?,
+                                    &asset.path,
+                                )?;
+                                let bytes = std::fs::read(path).map_err(StoreError::from)?;
+                                assets.push((format!("{}.png", annotation.id), bytes));
+                            }
+                        }
+                        Ok(assets)
+                    })
+                    .await
+                    .map_err(|e| AdapterError::Io(e.to_string()))?
+                } else {
+                    vec![]
+                };
                 if let Some(thread) = task.thread_id {
                     self.0
                         .t3
-                        .send_message(thread, send_id, request.prompt)
+                        .send_message_with_assets(thread, send_id, request.prompt, assets)
                         .await
                 } else {
-                    self.0.t3.create_thread(request).await
+                    self.0.t3.create_thread_with_assets(request, assets).await
                 }
             };
             let outcome = tokio::time::timeout(Duration::from_secs(30), operation)

@@ -283,7 +283,10 @@ async function start(): Promise<void> {
   configuration =
     (stored.configuration as typeof configuration | undefined) ?? configuration;
   await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  await chrome.sidePanel.setOptions({ enabled: true, path: "panel.html" });
+  await chrome.sidePanel.setOptions({
+    enabled: true,
+    path: "panel/panel.html",
+  });
   connect();
 }
 void start();
