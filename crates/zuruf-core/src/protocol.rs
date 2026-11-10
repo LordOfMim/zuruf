@@ -838,6 +838,8 @@ pub enum ControlRequestAction {
     Release,
     #[serde(rename = "grant")]
     Grant,
+    #[serde(rename = "renew")]
+    Renew,
     #[serde(rename = "revoke")]
     Revoke,
 }
@@ -853,6 +855,8 @@ pub struct ControlRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ServerEvent {
+    #[serde(rename = "app.open_requested")]
+    AppOpenRequested(AppOpenRequested),
     #[serde(rename = "snapshot")]
     Snapshot(Snapshot),
     #[serde(rename = "status.changed")]
@@ -924,4 +928,10 @@ pub struct SpeechPartial {
 pub enum StringOrBool {
     String(String),
     Bool(bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppOpenRequested {
+    pub view: String,
 }

@@ -1,3 +1,5 @@
+> Stand Welle 3: Reale Adapter, Appfenster und taskgebundene MCP-Dateiübergabe sind verdrahtet. Der folgende frühere Kernbericht beschreibt historische Vertragsentscheidungen; maßgeblich für Bedienung und offene Abnahme sind [Benutzerhandbuch](../../docs/benutzerhandbuch.md), [MCP-Vertrag](../../docs/mcp.md) und [Abnahme](../../docs/abnahme.md). Kein Fakeflag für den realen Betrieb erforderlich.
+
 > Aktualisierung Welle 2: Der reale Daemon ist verdrahtet. Start, neue Routen, Livebefunde und alle verbleibenden Grenzen stehen in [tests/e2e/README.md](../../tests/e2e/README.md). Die folgenden ursprünglichen Kernnotizen beschreiben den Ausgangsstand vor dieser Verdrahtung; insbesondere Punkte 7 und 8 sind überholt.
 
 # Zuruf-Kern: Start und Verdrahtung

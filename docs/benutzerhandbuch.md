@@ -1,57 +1,52 @@
 # Zuruf – Benutzerhandbuch
 
-## Installieren
+## Installation und Start
 
-Voraussetzungen: Linux mit Hyprland/Wayland, Chromium, PipeWire, Voxtype mit mehrsprachigem Modell für Deutsch und T3 Code. Für den Build zusätzlich Rust stable über mise, Node 26, pnpm 11, Python 3 und eine erreichbare systemd-Benutzersitzung.
-
-Im Checkout `./install.sh` ausführen. Das Skript baut UI, Extension und Release-Binary unter einer Speichergrenze von 3 GiB (Cargo: zwei Jobs). Es installiert ausschließlich im Benutzerbereich, aktiviert jedoch keinen Dienst. Erneuter Aufruf ersetzt Programm und Bundles, vorhandene Daten bleiben erhalten. `--skip-build` verwendet bereits gebaute Dateien. Das Platzhaltericon unter `assets/icon/zuruf.svg` kann vor der Installation ersetzt werden.
-
-Standardziele sind `~/.local/bin/zuruf`, `~/.local/share/zuruf/{ui,extension}`, `~/.config/systemd/user/zuruf.service`, der Desktopstarter und das hicolor-Icon. Die UI wird außerdem bereits beim Rust-Build eingebettet; die zusätzlichen installierten Bundles erfüllen den Installationsvertrag. Die endgültige Nutzung der Extensiondateien durch den echten Browserstart **folgt** mit der Verdrahtung.
-
-`PREFIX` sowie `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` ändern Installationsziele. Der Dienst erhält die aufgelösten `ZURUF_DATA_DIR`, `ZURUF_STATE_DIR` und `ZURUF_CONFIG_DIR` ausdrücklich in der Unit. Die CLI benötigt bei abweichenden Datenpfaden dieselben Variablen. `.env.example` dokumentiert Variablen, wird aber nicht automatisch eingelesen.
-
-## Erster Start
-
-Zuerst `zuruf doctor` ausführen. `ok`, `fehlt` und `Hinweis` erklären Abhängigkeiten; fehlende Pflichtbestandteile führen zu Exitcode 1. Der Check lädt keine Modelle herunter und verändert weder Voxtype noch Hyprland.
-
-Dieser Branch enthält noch den Fake-Daemon: Ein echter Start ohne `ZURUF_FAKE_ADAPTERS=1` wird ausdrücklich abgewiesen. Produktiver Browser-/Audio-/T3-Betrieb **folgt** mit der parallelen Adapterverdrahtung. Den Dienst deshalb erst danach aktivieren:
+Voraussetzungen: Linux mit Hyprland/Wayland, System-Chromium, PipeWire, Voxtype und T3 Code. Builds benötigen Rust stable über mise, Node 26 und pnpm 11. `./install.sh` baut UI, Extension und Rust in dieser Reihenfolge unter 3 GiB Speichergrenze mit zwei Cargo-Jobs. `--skip-build` verwendet fertige Release-Artefakte. Installiert werden Binary, Bundles, Benutzer-Unit, Starter und Zuruf-Icon. Die Installation aktiviert keinen Dienst.
 
 ```sh
+zuruf doctor
 systemctl --user daemon-reload
 systemctl --user enable --now zuruf.service
-zuruf open
+zuruf open --view sessions
 ```
 
-`zuruf open` fordert aktuell einen kurzlebigen Link an und gibt ihn aus. Automatischer Dienststart und eigenes App-Fenster **folgen**. Die installierte Unit hat Speichergrenzen, startet bei Fehlern neu und ist an die grafische Sitzung gebunden. Keine globalen Konfigurationsdateien werden geändert.
+`open` startet bei Bedarf den Daemon und ein eigenes Chromium-Appfenster mit privatem Profil. Wiederholtes `open --view tasks|sessions|settings|review` fordert den Viewwechsel an und fokussiert das vorhandene Fenster. Der Viewwechsel lädt die UI neu; noch nicht abgesendete Formulareingaben können dabei verloren gehen. Chromium erzeugt auf diesem Rechner die Fensterkennung `chrome-127.0.0.1__-Default`; der Installer enthält dafür einen unsichtbaren Desktopalias zur Iconzuordnung. Ein eigenes `zuruf`-App-ID-Flag wird nicht behauptet.
 
-## Mit T3 verbinden
+`PREFIX`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` und die spezifischen `ZURUF_*_DIR` ändern Ziele. Für CLI und Dienst müssen dieselben Pfade gelten. `.env.example` ist Dokumentation und wird nicht automatisch geladen. Tests installieren ausschließlich in einen Wegwerfpräfix.
 
-Pairing/OAuth über die bestehende T3-Schnittstelle ist vorgesehen. Die vollständige Bedienung aus Zuruf **folgt**; keine T3-Dateien oder Datenbanken manuell bearbeiten. Die Agentenübergabe mit taskgebundenem MCP-Zugang ist in `docs/mcp.md` beschrieben. Automatische Credential-Injection in T3 ist in diesem Branch nicht verdrahtet.
+## T3 verbinden
 
-## Review aufnehmen
+Den tatsächlichen lokalen T3-Origin feststellen, dann `zuruf t3 pair --origin http://127.0.0.1:<port>` ausführen. Zuruf nutzt die verifizierte externe Pairing-/MCP-Schnittstelle. OAuth-Credentials liegen privat im Zustandsverzeichnis. T3-Dateien und Datenbanken werden nicht verändert. Ein abgelaufener Zugang verlangt ausdrückliches erneutes Pairing. Der ausdrücklich gewählte CLI-Fallback (`ZURUF_T3_TRANSPORT=cli`) unterstützt weniger Funktionen, insbesondere keine Bildattachments und keinen Livekatalog.
 
-Vorgesehener Ablauf nach Verdrahtung: Projekt und Session wählen, manuell im verwalteten Browser anmelden, Review aktivieren. `W` erfasst den Viewport, `S` einen Ausschnitt, `D` ein DOM-Element. Die Extension unterdrückt diese Kurzbefehle bei Texteingaben. `R` steuert die Aufnahme; gesprochener Text wird über Marker zugeordnet. `Shift+N` versiegelt den Batch und öffnet sofort einen neuen Puffer. Dispatch und Transkription laufen asynchron. Eine Audio-Lücke des Voxtype-Fallbacks muss sichtbar bleiben.
+Provider, Modell, Optionen und Arbeitsverzeichnis werden pro Batch eingefroren. Für parallele Schreibaufträge separate Worktrees wählen. `unknown_remote_state` verlangt Abgleich und manuelle Auflösung; ein Retry erzeugt dabei keinen stillen zweiten Thread. Höchstens acht Bilder können pro T3-Nachricht versendet werden.
 
-Domänenlogik, Fake-Flows sowie Browser-/Sprachadapter sind vorhanden; die gemeinsame Abnahme dieses Ablaufs im laufenden Desktop **folgt**. Vor Versand Screenshots und Freitext auf sensible Inhalte prüfen.
+## Review und Sprache
 
-## Aufgabenboard und Sessions
+Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport, `S` einen gezogenen Ausschnitt, `D` das Element unter dem Cursor. In Textfeldern, Editoren und Contenteditable bleiben diese Tasten normale Eingaben. `Esc` bricht eine Auswahl ab. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
 
-Tasks haben eigene Batches und können parallel laufen. Das Modell kennt Status, letzte Nachricht, Fehler und Worktree-Konflikte. Das endgültig verdrahtete Board **folgt**. MCP-Agenten können ihren zugewiesenen Kontext lesen, Annotationstatus aktualisieren und Fortschritt melden.
+Nach dauerhafter Rohbildpersistenz bestätigt die Extension „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
 
-Sessions besitzen getrennte IDs und Browserprofile. Der Mensch hat Vorrang bei Takeover. MCP gibt den gefilterten CDP-Endpunkt nur während einer eigenen Lease heraus. Die atomare Verlängerung einer Lease fehlt noch im Browservertrag und wird derzeit mit einem Toolfehler abgewiesen. Reale CDP-Autorisierung und sofortiger Befehlsabbruch benötigen die parallele Proxyverdrahtung.
+Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung läuft im Hintergrund. Der Daemon-Fallback hat eine Stop-/Start-Lücke. `Shift+N` versiegelt den alten Batch und öffnet sofort den neuen Draft. Späte Transkripte bleiben am alten Batch. Vor Versand Transkripte und Bilder prüfen. Nur `base.en` ist auf dem Abnahmerechner vorhanden; deutsche Sprachqualität bleibt manuell offen. Zuruf lädt keine Modelle und verändert oder startet den vorhandenen Voxtype-Daemon nicht neu.
 
-## Kurzbefehle ändern
+## Aufgaben und Agentenzugriff
 
-Bindings sind über die vorhandene Settings-API konfigurierbar und werden auf Konflikte geprüft. Die fertig integrierte Einstellungsbedienung **folgt**. Seitenaktionen erlauben Einzeltasten; globale Aktionen benötigen einen Modifier. Hyprland-Konfiguration nicht manuell für Zuruf umschreiben.
+Das Board zeigt parallele Tasks, Status, Antworten und Freigabeanforderungen. Follow-ups können nach Ende eines Runs an denselben Thread gesendet werden. **T3-Freigaben erteilt ausschließlich der Nutzer in T3.** Zuruf gibt sie nicht stellvertretend frei.
 
-## Deinstallieren
+Für Captures einer einzelnen Session erhält jeder Task einen eigenen MCP-Zugang. Die externe T3-Launchschnittstelle hat keinen privaten MCP-/Environment-Parameter. Deshalb nennt der Prompt nur den Pfad einer privaten Datei unter `state/agents/<task>/credential.json` (0600). Der Agent liest die Datei lokal, ohne ihren Inhalt auszugeben, und verwendet URL, Origin und Bearer für MCP-JSON-RPC. Das ist eine Dateisystemübergabe, keine automatisch registrierte MCP-Verbindung im Provider. Prozesse desselben Unix-Nutzers können diese Datei lesen; eine OS-Sandbox wird nicht behauptet. Gemischte Mehrsessionbatches werden abgewiesen.
 
-`./uninstall.sh` stoppt/deaktiviert bei Standardinstallation den Benutzerdienst und entfernt Binary, Unit, Starter, Icon sowie installierte Bundles. Benutzerprojekte, Datenbank, Profile und Einstellungen bleiben erhalten. Anschließend bei Standardinstallation `systemctl --user daemon-reload` ausführen.
+MCP bietet Manifest, Annotationen, Bilder und Fortschrittsmeldungen. CDP verlangt zusätzlich eine aktive Kontrolllease; Erneuerung ist atomar und kann weder Ablauf noch menschliches Takeover überholen. Leaseablauf aktualisiert die Anzeige selbstständig. Abschluss, Abbruch und Interrupt widerrufen den Taskzugang; Shutdown entfernt die Dateien, Neustart verwirft alte Credentials. Laufende Tasks werden anhand ihrer gespeicherten Receipts weiterverfolgt. Nach Neustart muss ein Agentenzugang neu bereitgestellt werden; automatische Wiederanmeldung eines bereits laufenden Agenten bleibt offen.
 
-`./uninstall.sh --purge` fragt vor dem Löschen sämtlicher Zuruf-Daten, Zustände und Einstellungen nach der ausdrücklichen Eingabe `LÖSCHEN`. Bei abweichenden Installationszielen dieselben Variablen wie beim Installieren setzen. Isolierte Testziele steuern niemals die echte systemd-Sitzung.
+Menschliches Takeover sperrt neue Proxybefehle sofort. Bereits ausgeführtes JavaScript kann weiterwirken; Browserkontrolle ist kein Rollback. Der rohe Chromium-CDP-Port ist nur auf Loopback erreichbar, aber keine Sicherheitsgrenze gegenüber lokalen Prozessen.
 
-## Fehlersuche
+## Datenschutz
 
-`zuruf doctor` prüft Chromium-/Voxtype-/T3-Versionen, T3-Port 3773, Hyprland- und PipeWire-Socket, Modelldateien im Voxtype-Standardverzeichnis und verfügbaren RAM. Abweichende Voxtype-Modellpfade manuell prüfen. Ein Socket-/Portcheck bestätigt noch keine erfolgreiche Anmeldung oder Aufnahme. Bei wenig freiem RAM Browser-Sessions schließen. `journalctl --user -u zuruf.service` zeigt Dienstfehler; niemals Tokens veröffentlichen.
+URLs verlieren Zugangsdaten, Fragmente und sensible Queryparameter; DOM-Attribute sind begrenzt, Eingabewerte werden nicht gespeichert. Screenshots maskieren Passwortfelder und `[data-zuruf-private]` im Hauptdokument vor der Persistenz. `ZURUF_MASK_SELECTORS` ergänzt CSS-Selektoren (kommagetrennt). Ungültige Selektoren lassen den Capture fehlschlagen. Überlappende DOM-Metadaten werden verworfen.
 
-`tests/install-roundtrip.sh` prüft eine isolierte Installation einschließlich Upgrade, Unit-/Desktopsyntax, Datenerhalt und bestätigtem Purge. Das setzt fertige Release-/Frontend-Builds voraus. Alle Testläufe speicherbegrenzt starten, wie in `docs/mcp.md` beschrieben.
+Automatische semantische Erkennung beliebiger personenbezogener Texte/Bilder, geschlossene Shadow Roots und fremde Frames sind damit nicht abgedeckt. Masken ersetzen keine Sichtprüfung und ausdrückliche Freigabe vor Weitergabe an einen externen Provider. Kein Secret gehört in Notizen, URLs, Prompts oder Logs.
+
+## Deinstallation und Diagnose
+
+`./uninstall.sh` entfernt Programm, Bundles, Unit, beide Desktopdateien und Icon; Benutzerdaten bleiben. `--purge` löscht sie erst nach Eingabe von `LÖSCHEN`. Dieselben Zielvariablen wie bei der Installation verwenden.
+
+`zuruf doctor` prüft lokale Programme, Sockets, T3-Port und Modelle; das bestätigt noch keine Anmeldung oder deutsche Diktatqualität. `zuruf stop` beendet Dienst und Appfenster. Keine Hyprland-Konfigurationsdatei wird geändert. Abnahme und offene Handprüfungen stehen in [abnahme.md](abnahme.md), der reproduzierbare Sammellauf unter `tests/e2e/run.sh`.

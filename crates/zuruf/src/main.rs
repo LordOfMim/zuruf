@@ -172,6 +172,11 @@ async fn run() -> Result<(), Error> {
                 if std::env::var("ZURUF_FAKE_ADAPTERS").as_deref() == Ok("1") {
                     println!("{base}/#code={code}{view}");
                 } else {
+                    client.post(format!("{base}/api/v1/app/open"))
+                        .bearer_auth(token.trim())
+                        .json(&serde_json::json!({"view": match &command { Command::Open { view: Some(view) } => view.as_str(), _ => "tasks" }}))
+                        .send().await.map_err(|e| Error::Join(e.to_string()))?
+                        .error_for_status().map_err(|e| Error::Join(e.to_string()))?;
                     open_window(&paths, &format!("{base}/#code={code}{view}")).await?;
                 }
             } else {
@@ -223,6 +228,7 @@ async fn ensure_daemon(base: &str) -> Result<(), Error> {
             "ZURUF_CONFIG_DIR",
             "ZURUF_FAKE_ADAPTERS",
             "T3_URL",
+            "ZURUF_MASK_SELECTORS",
             "WAYLAND_DISPLAY",
             "HYPRLAND_INSTANCE_SIGNATURE",
         ] {
@@ -267,6 +273,34 @@ async fn open_window(paths: &Paths, url: &str) -> Result<(), Error> {
         .await
         .map_err(StoreError::from)?;
     if unit.status.success() {
+        let pid = tokio::process::Command::new("systemctl")
+            .args([
+                "--user",
+                "show",
+                "zuruf-app.service",
+                "--property=MainPID",
+                "--value",
+            ])
+            .output()
+            .await
+            .map_err(StoreError::from)?;
+        let pid: u32 = String::from_utf8_lossy(&pid.stdout)
+            .trim()
+            .parse()
+            .map_err(|_| Error::Join("App-PID fehlt".into()))?;
+        let desktop =
+            zuruf_hypr::Hyprland::detect(std::env::current_exe().map_err(StoreError::from)?)
+                .await
+                .map_err(|e| Error::Join(e.to_string()))?;
+        let address = desktop
+            .find_window(pid)
+            .await
+            .map_err(|e| Error::Join(e.to_string()))?
+            .ok_or_else(|| Error::Join("App-Fenster fehlt".into()))?;
+        desktop
+            .focus(&address)
+            .await
+            .map_err(|e| Error::Join(e.to_string()))?;
         return Ok(());
     }
     let status = tokio::process::Command::new("systemd-run")

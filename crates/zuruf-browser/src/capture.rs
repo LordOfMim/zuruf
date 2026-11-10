@@ -140,6 +140,65 @@ pub fn mark(
     }
     Ok(output)
 }
+/// Paint configured sensitive rectangles before any image is persisted or handed off.
+pub fn mask(raw: &[u8], viewport: Point, rectangles: &[Rect]) -> Result<Vec<u8>> {
+    if !rectangles
+        .iter()
+        .any(|r| r.x < viewport.x && r.y < viewport.y && r.x + r.width > 0. && r.y + r.height > 0.)
+    {
+        return Ok(raw.to_vec());
+    }
+    let mut reader = png::Decoder::new(Cursor::new(raw))
+        .read_info()
+        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let mut bytes = vec![
+        0;
+        reader
+            .output_buffer_size()
+            .ok_or_else(|| Error::Invalid("PNG too large".into()))?
+    ];
+    let info = reader
+        .next_frame(&mut bytes)
+        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let channels = match info.color_type {
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        _ => return Err(Error::Invalid("RGB image required".into())),
+    };
+    if viewport.x <= 0. || viewport.y <= 0. {
+        return Err(Error::Invalid("empty viewport".into()));
+    }
+    let sx = info.width as f64 / viewport.x;
+    let sy = info.height as f64 / viewport.y;
+    for r in rectangles {
+        let left = (r.x * sx).floor().clamp(0., info.width as f64) as usize;
+        let right = ((r.x + r.width) * sx).ceil().clamp(0., info.width as f64) as usize;
+        let top = (r.y * sy).floor().clamp(0., info.height as f64) as usize;
+        let bottom = ((r.y + r.height) * sy).ceil().clamp(0., info.height as f64) as usize;
+        for y in top..bottom {
+            for x in left..right {
+                let offset = (y * info.width as usize + x) * channels;
+                bytes[offset..offset + 3].fill(0);
+                if channels == 4 {
+                    bytes[offset + 3] = 255;
+                }
+            }
+        }
+    }
+    let mut output = vec![];
+    {
+        let mut encoder = png::Encoder::new(&mut output, info.width, info.height);
+        encoder.set_color(info.color_type);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Fastest);
+        encoder
+            .write_header()
+            .map_err(|e| Error::Invalid(e.to_string()))?
+            .write_image_data(&bytes[..info.buffer_size()])
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+    }
+    Ok(output)
+}
 /// Defence in depth. The extension never sends values, HTML or arbitrary attrs.
 pub fn redact(dom: &mut DomCapture) {
     dom.attributes.retain(|key, _| {
@@ -208,6 +267,44 @@ mod tests {
         redact(&mut d);
         assert!(d.attributes.is_empty());
         assert!(d.text.is_none());
+    }
+    #[test]
+    fn mask_covers_scaled_rectangle_without_changing_other_pixels() {
+        let mut raw = vec![];
+        {
+            let mut encoder = png::Encoder::new(&mut raw, 4, 4);
+            encoder.set_color(png::ColorType::Rgb);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&[255; 48])
+                .unwrap();
+        }
+        let image = mask(
+            &raw,
+            Point { x: 2., y: 2. },
+            &[Rect {
+                x: 0.5,
+                y: 0.5,
+                width: 1.,
+                height: 1.,
+            }],
+        )
+        .unwrap();
+        let mut reader = png::Decoder::new(Cursor::new(image)).read_info().unwrap();
+        let mut bytes = vec![0; 48];
+        reader.next_frame(&mut bytes).unwrap();
+        for y in 0..4 {
+            for x in 0..4 {
+                let expected = if (1..3).contains(&x) && (1..3).contains(&y) {
+                    0
+                } else {
+                    255
+                };
+                assert_eq!(&bytes[(y * 4 + x) * 3..(y * 4 + x) * 3 + 3], &[expected; 3]);
+            }
+        }
     }
     #[test]
     fn ring_golden_pixels() {

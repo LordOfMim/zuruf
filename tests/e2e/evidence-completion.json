@@ -1,0 +1,26 @@
+{
+  "run": "1794332745486",
+  "timings": {
+    "w": 300.2932800000003,
+    "s": 333.441499,
+    "d": 243.91056500000013,
+    "newDraftMs": 71.44210699999985
+  },
+  "threads": [
+    {
+      "id": "mcp:launch:2f11866463f5a06ca01ba57facd3c1d2e52b52e9120329a9e3b581c13223b69f",
+      "title": "zuruf-test-wiring-1794332745486",
+      "url": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3A2f11866463f5a06ca01ba57facd3c1d2e52b52e9120329a9e3b581c13223b69f"
+    },
+    {
+      "id": "mcp:launch:db5f4ea2a1b12fd9caa0e942147d2a54329597baeaf2b3a1a7d7b11fd2d5698e",
+      "title": "zuruf-test-concurrent-1794332745486",
+      "url": "https://app.t3.codes/threads/faa29a94-47bb-4c46-99e4-5a28099b0307/mcp%3Alaunch%3Adb5f4ea2a1b12fd9caa0e942147d2a54329597baeaf2b3a1a7d7b11fd2d5698e"
+    }
+  ],
+  "concurrentStatuses": [
+    "running",
+    "running"
+  ],
+  "error": "Error: condition timeout"
+}

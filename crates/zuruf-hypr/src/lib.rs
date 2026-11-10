@@ -416,7 +416,15 @@ impl Hyprland {
             if *stop.borrow() {
                 return self.shutdown().await;
             }
-            let stream = UnixStream::connect(event_socket()?).await;
+            let socket = match event_socket() {
+                Ok(socket) => socket,
+                Err(error) => {
+                    tracing::warn!(error=%error, "Hyprland event socket unavailable");
+                    tokio::select! { _=stop.changed()=>return self.shutdown().await, _=tokio::time::sleep(std::time::Duration::from_secs(1))=>() }
+                    continue;
+                }
+            };
+            let stream = UnixStream::connect(socket).await;
             match stream {
                 Ok(stream) => {
                     let issues = self.apply(self.wanted.clone()).await?;
@@ -450,12 +458,20 @@ impl Hyprland {
     pub async fn focus(&self, address: &str) -> Result<()> {
         validate_address(address)?;
         if self.available() {
-            run(&[
-                "dispatch".into(),
-                "focuswindow".into(),
-                format!("address:{address}"),
-            ])
-            .await?;
+            if self.parser == Parser::Lua {
+                run(&[
+                    "dispatch".into(),
+                    format!("hl.dsp.focus({{window=\"address:{address}\"}})"),
+                ])
+                .await?;
+            } else {
+                run(&[
+                    "dispatch".into(),
+                    "focuswindow".into(),
+                    format!("address:{address}"),
+                ])
+                .await?;
+            }
         }
         Ok(())
     }
@@ -512,10 +528,24 @@ pub fn event_socket() -> Result<PathBuf> {
     if signature.contains('/') || signature == ".." {
         return Err(Error::InvalidCommand);
     }
-    Ok(PathBuf::from(runtime)
-        .join("hypr")
-        .join(signature)
-        .join(".socket2.sock"))
+    let directory = PathBuf::from(runtime).join("hypr");
+    let current = directory.join(signature).join(".socket2.sock");
+    if current.exists() {
+        return Ok(current);
+    }
+    // A restarted compositor can change its signature while this daemon lives.
+    // Only select an unambiguous replacement; never guess between sessions.
+    let mut candidates = std::fs::read_dir(&directory)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join(".socket2.sock"))
+        .filter(|path| path.exists());
+    let candidate = candidates
+        .next()
+        .ok_or_else(|| Error::Compositor("Hyprland event socket missing".into()))?;
+    if candidates.next().is_some() {
+        return Err(Error::Compositor("Multiple Hyprland event sockets".into()));
+    }
+    Ok(candidate)
 }
 
 #[cfg(test)]

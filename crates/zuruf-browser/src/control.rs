@@ -34,6 +34,29 @@ impl Arbitration {
         state.until = Some(Instant::now() + lease);
         Ok(())
     }
+    /// Extend only a live lease owned by this agent, under the same lock as takeover.
+    pub async fn renew(&self, agent: &str, lease: Duration) -> Result<()> {
+        let mut s = self.inner.lock().await;
+        if s.human
+            || s.settling
+            || s.agent.as_deref() != Some(agent)
+            || !s.until.is_some_and(|until| until > Instant::now())
+        {
+            return Err(Error::Denied("lease is not owned or expired"));
+        }
+        s.until = Some(Instant::now() + lease);
+        Ok(())
+    }
+    pub async fn expire(&self) -> bool {
+        let mut s = self.inner.lock().await;
+        if s.until.is_some_and(|until| until <= Instant::now()) {
+            s.until = None;
+            s.agent = None;
+            s.generation += 1;
+            return true;
+        }
+        false
+    }
     pub async fn release(&self) {
         let mut s = self.inner.lock().await;
         s.human = false;
@@ -118,6 +141,24 @@ mod tests {
         a.grant("a".into(), Duration::from_secs(1)).await.unwrap();
         drop(permit);
         assert!(queued.await.unwrap().is_err());
+    }
+    #[tokio::test]
+    async fn renewal_never_revives_expired_or_taken_over_lease() {
+        let a = Arbitration::default();
+        a.grant("a".into(), Duration::from_secs(1)).await.unwrap();
+        let generation = a.check("a").await.unwrap();
+        assert!(a.renew("b", Duration::from_secs(1)).await.is_err());
+        a.renew("a", Duration::from_secs(2)).await.unwrap();
+        assert_eq!(a.check("a").await.unwrap(), generation);
+        a.begin_takeover().await;
+        assert!(a.renew("a", Duration::from_secs(1)).await.is_err());
+        a.finish_takeover().await;
+        a.release().await;
+        a.grant("a".into(), Duration::ZERO).await.unwrap();
+        assert!(a.renew("a", Duration::from_secs(1)).await.is_err());
+        assert!(a.expire().await);
+        assert_eq!(a.snapshot().await.agent_id, None);
+        assert!(!a.expire().await);
     }
     #[tokio::test]
     async fn lease_and_explicit_release() {

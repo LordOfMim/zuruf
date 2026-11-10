@@ -135,6 +135,13 @@ pub trait BrowserController: Send + Sync {
     fn open_tab(&self, session: Id, url: String) -> AdapterFuture<'_, BrowserTab>;
     fn list_tabs(&self, session: Id) -> AdapterFuture<'_, Vec<BrowserTab>>;
     fn capture(&self, request: CaptureRequest) -> AdapterFuture<'_, CaptureResult>;
+    fn confirm_capture(&self, _session: Id) -> AdapterFuture<'_, ()> {
+        Box::pin(async { Ok(()) })
+    }
+    /// Stage two runs only after the daemon has durably persisted the raw image.
+    fn complete_capture(&self, _result: CaptureResult) -> AdapterFuture<'_, Vec<CaptureImage>> {
+        Box::pin(async { Ok(vec![]) })
+    }
     fn set_review_mode(&self, on: bool) -> AdapterFuture<'_, ()>;
     fn push_bindings(&self, bindings: Vec<Binding>) -> AdapterFuture<'_, ()>;
     fn control(&self, session: Id, request: ControlRequest) -> AdapterFuture<'_, ControlState>;

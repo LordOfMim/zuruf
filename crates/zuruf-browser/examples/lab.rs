@@ -23,11 +23,7 @@ async fn main() -> Result<()> {
     let out = root.join(".spike/browser-lab");
     tokio::fs::create_dir_all(&out).await?;
     let mut config = SessionConfig::new(
-        out.join(if automated {
-            format!("session-{}", uuid::Uuid::now_v7())
-        } else {
-            "session".into()
-        }),
+        std::env::temp_dir().join(format!("zuruf-lab-session-{}", uuid::Uuid::now_v7())),
         root.join("apps/extension/dist"),
     );
     let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -310,10 +306,10 @@ async fn serve(
             }
             "/test/isolated" => {
                 let mut config = b
-                    .duplicate_config(root.join(format!(
-                        ".spike/browser-lab/isolated-{}",
-                        uuid::Uuid::now_v7()
-                    )))
+                    .duplicate_config(
+                        std::env::temp_dir()
+                            .join(format!("zuruf-lab-isolated-{}", uuid::Uuid::now_v7())),
+                    )
                     .await?;
                 // Laboratory profile swap keeps the endpoint identity; real duplication
                 // gets its own Bootstrap/session/token from the daemon.

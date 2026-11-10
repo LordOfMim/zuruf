@@ -73,3 +73,11 @@ Erstellt wurden ausschließlich:
 - **MCP-Mount:** kein `zuruf-mcp` angelegt, keine Workspace-Memberliste geändert (`crates/*`). `Daemon::router()` hat explizite Routen und eine finale UI-Fallbackroute; der parallele MCP-Agent kann vor dem Fallback `.merge(...)` ergänzen. Adapterglue liegt separat in `real.rs`.
 
 Keine Änderungen an UI-Komponenten oder `apps/ui/src/lib/**`, kein Overlay-Restyling. Keine Installation, kein Push und kein PR. T3-Dateien/Datenbank, echte Browserprofile, Voxtype-Konfiguration und Hyprland-Konfiguration blieben unberührt. Runtimebindungen wurden nach Tests auf null geprüft.
+
+## Welle 3
+
+Der historische Welle-2-Bericht oben bleibt als Übergabenachweis erhalten. Aktueller Stand und Handabnahme: [docs/abnahme.md](../../docs/abnahme.md), aktuelle Bedienung: [Benutzerhandbuch](../../docs/benutzerhandbuch.md).
+
+`bash tests/e2e/run.sh` führt die sechs unabhängigen Szenarien jeweils unter 3 GiB/1 GiB Swap aus und meldet PASS/FAIL samt Logpfad. Vorher UI → Extension → Rust inklusive `cargo build -p zuruf-browser --example lab -j 2` bauen sowie `npm --prefix tests/mcp ci` ausführen. Keine realen Agentenstarts im Standardlauf. Die Captureprüfung setzt den bereits gepaarten lokalen T3-Zugang voraus, startet aber keinen Thread. Sie misst Keyevent/Bestätigungs-RAF direkt in der Extension und Rohbildereignisse über WebSocket ohne Statuspolling als Zeitquelle. Die sonstige Ablaufsteuerung darf weiterhin pollen.
+
+`wiring.mjs --completion` ist ausdrücklich ein Nutzer-Handabnahmelauf: zwei echte Threads, nötige T3-Freigaben nur durch den Nutzer; bei ausstehender Freigabe scheitert der automatische Teil und räumt auf. Erteilt kein Agent selbst. `followup.mjs` verwendet einen bestehenden synthetischen Task (`ZURUF_FOLLOWUP_RUN`), erzeugt keinen weiteren Thread und unterbricht den Testlauf anschließend. Niemals einen produktiven Task dafür verwenden.

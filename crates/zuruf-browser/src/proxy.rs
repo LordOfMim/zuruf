@@ -72,6 +72,7 @@ pub struct AgentAccess {
     pub agent_id: String,
     pub token: String,
     revoked: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    validator: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 impl AgentAccess {
     pub fn new(agent_id: String, token: String) -> Self {
@@ -79,14 +80,21 @@ impl AgentAccess {
             agent_id,
             token,
             revoked: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            validator: None,
         }
+    }
+    pub fn with_validator(mut self, validator: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        self.validator = Some(std::sync::Arc::new(validator));
+        self
     }
     pub fn revoke(&self) {
         self.revoked
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
     pub fn check(&self) -> Result<()> {
-        if self.revoked.load(std::sync::atomic::Ordering::SeqCst) {
+        if self.revoked.load(std::sync::atomic::Ordering::SeqCst)
+            || self.validator.as_ref().is_some_and(|valid| !valid())
+        {
             Err(Error::Denied("agent token revoked"))
         } else {
             Ok(())

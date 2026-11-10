@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {once} from 'node:events';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-const dir=await mkdtemp(new URL('./.run-',import.meta.url).pathname);
+const dir=await mkdtemp(join(tmpdir(),'zuruf-mcp-'));
 const port=48673, base=`http://127.0.0.1:${port}`;
 const daemon=spawn('../../target/debug/zuruf',['daemon','--seed-demo'],{cwd:new URL('.',import.meta.url),env:{...process.env,ZURUF_FAKE_ADAPTERS:'1',ZURUF_PORT:String(port),ZURUF_DATA_DIR:`${dir}/data`,ZURUF_STATE_DIR:`${dir}/state`,ZURUF_CONFIG_DIR:`${dir}/config`},stdio:'ignore'});
 let client;
@@ -50,7 +52,7 @@ try {
  await tool('list_annotations',{batchId:'foreign-task-batch'},true);
  await tool('get_cdp_endpoint',{},true);
  await tool('request_browser_control');await tool('get_cdp_endpoint');
- await tool('renew_browser_control',{},true); // Explicit contract gap; no unsafe release/regrant.
+ await tool('renew_browser_control',{}); // Atomic live-owner renewal.
  await tool('release_browser_control');await tool('get_cdp_endpoint',{},true);
  await tool('request_browser_control',{leaseSeconds:1});
  await new Promise(r=>setTimeout(r,1200));
@@ -61,7 +63,7 @@ try {
  await tool('get_cdp_endpoint',{},true);await tool('request_browser_control',{},true);
  await api('mcp/credentials',{scope,revoke:true});
  const revoked=await fetch(`${base}/mcp`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});assert.equal(revoked.status,401);
- console.log('PASS: official SDK initialize/list/all 15 tools, image, auth, task scope, revoke, lease/release/takeover; renewal fails closed (contract gap).');
+ console.log('PASS: official SDK initialize/list/all 15 tools, image, auth, task scope, revoke, lease/release/takeover; atomic renewal.');
 } finally {
  await client?.close().catch(()=>{});
  const stopped=once(daemon,'exit');daemon.kill('SIGTERM');await stopped;

@@ -129,6 +129,12 @@ export function createAppStore(transport: Transport) {
       case "settings.changed":
         setState("snapshot", "settings", reconcile(event.payload));
         break;
+      case "app.open_requested":
+        if (location.hash !== `#${event.payload.view}`) {
+          location.hash = event.payload.view;
+          location.reload();
+        }
+        break;
       case "notice":
         pushToast(event.payload);
         break;

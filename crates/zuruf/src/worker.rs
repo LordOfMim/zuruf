@@ -77,11 +77,17 @@ impl Daemon {
             t.workspace_conflict = conflict;
             t.dispatched_at = Some(now());
             t.error = None;
+            t.pending_request = None;
+            t.last_message = None;
+            t.remote_status = None;
             val(t)
         })
         .await
     }
     async fn task_status(&self, id: Id, status: TaskStatus, error: Option<String>) -> Result<()> {
+        if status.terminal() || status == TaskStatus::UnknownRemoteState {
+            self.revoke_mcp_task(&id);
+        }
         self.mutate(move |s, _| {
             let t = s
                 .tasks
@@ -111,12 +117,16 @@ impl Daemon {
                 .cloned()
                 .ok_or_else(missing)?;
             if task.status.terminal() || task.status == TaskStatus::UnknownRemoteState {
+                self.revoke_mcp_task(&id);
                 return Ok(());
             }
             if s.annotations.iter().any(|a| {
                 a.batch_id == task.batch_id
                     && a.r#type != AnnotationType::Text
-                    && a.assets.is_empty()
+                    && !a
+                        .assets
+                        .iter()
+                        .any(|asset| asset.kind == AssetKind::ScreenshotMarked)
             }) {
                 if finalize_started.elapsed() > Duration::from_secs(120) {
                     self.task_status(
@@ -180,6 +190,26 @@ impl Daemon {
                     .await
                 {
                     Ok(remote) => {
+                        if ["completed", "interrupted", "failed", "cancelled"]
+                            .contains(&remote.status.as_str())
+                        {
+                            self.revoke_mcp_task(&id);
+                            if let Some(session) = s
+                                .sessions
+                                .iter()
+                                .find(|s| s.control.agent_id.as_deref() == Some(&id))
+                            {
+                                self.session_control(
+                                    session.id.clone(),
+                                    ControlRequest {
+                                        action: ControlRequestAction::Revoke,
+                                        agent_id: None,
+                                        lease_seconds: None,
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
                         if !receipt.run_id.is_empty() && remote.run_id != receipt.run_id {
                             self.task_status(
                                 id,
@@ -300,14 +330,21 @@ impl Daemon {
                         &serde_json::to_vec_pretty(&manifest)?,
                     )?;
                     let path = path.to_string_lossy().into_owned();
-                    let prompt = build_prompt(&path).map_err(|e| invalid(&e.to_string()))?;
+                    let prompt = format!(
+                        "{}\nBatch-Anweisung des Nutzers: {}",
+                        build_prompt(&path).map_err(|e| invalid(&e.to_string()))?,
+                        batch.note
+                    );
                     Ok((path, prompt))
                 })
                 .await?;
             tracing::info!(task_id=%id,manifest=%manifest_path,"dispatching batch");
             self.task_status(id.clone(), TaskStatus::Dispatching, None)
                 .await?;
-            let prompt = message.as_ref().map(|m| m.prompt.clone()).unwrap_or(prompt);
+            let mut prompt = message.as_ref().map(|m| m.prompt.clone()).unwrap_or(prompt);
+            if let Some(path) = self.agent_credential_path(&task).await? {
+                prompt.push_str(&format!("\nZuruf task MCP credential file: {path}. Read this private file locally without printing it. Use its url and Origin/Authorization headers for JSON-RPC tools/call. Never include its token in messages, logs or files. Available tools include get_batch_manifest, get_annotation_asset and report_progress. The credential expires and is revoked at task end."));
+            }
             let send_id = message
                 .as_ref()
                 .map(|m| m.request_id.clone())

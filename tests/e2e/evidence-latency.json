@@ -1,0 +1,91 @@
+{
+  "run": "1794333877641",
+  "timings": {
+    "w": 230.85468400000036,
+    "s": 262.7648429999999,
+    "d": 203.4090570000003
+  },
+  "threads": [],
+  "stages": [
+    {
+      "prepareMs": 29.697245000000002
+    },
+    {
+      "metadataMs": 1.316172,
+      "postprocessMs": 2.47588,
+      "screenshotMs": 103.51242300000001
+    },
+    {
+      "prepareMs": 2.0343370000000003
+    },
+    {
+      "metadataMs": 0.9886840000000001,
+      "postprocessMs": 0.790391,
+      "screenshotMs": 77.512653
+    },
+    {
+      "prepareMs": 35.953435
+    },
+    {
+      "metadataMs": 4.191677,
+      "postprocessMs": 1.643921,
+      "screenshotMs": 90.238316
+    },
+    {
+      "prepareMs": 32.582806999999995
+    },
+    {
+      "metadataMs": 0.998584,
+      "postprocessMs": 1.4567880000000002,
+      "screenshotMs": 97.096402
+    },
+    {
+      "prepareMs": 131.09896700000002
+    },
+    {
+      "metadataMs": 1.155449,
+      "postprocessMs": 2.371493,
+      "screenshotMs": 80.816475
+    }
+  ],
+  "captureEvents": [
+    {
+      "keyAt": 1794333879639.1,
+      "confirmedAt": 1794333879844.2
+    },
+    {
+      "keyAt": 1794333879879.7,
+      "confirmedAt": 1794333880127.8
+    },
+    {
+      "keyAt": 1794333880146.7,
+      "confirmedAt": 1794333880334.5
+    }
+  ],
+  "rawEvents": [
+    {
+      "id": "01a1c6a2-2d74-75d3-89b4-f4cc3c52aef4",
+      "at": 1794333879817
+    },
+    {
+      "id": "01a1c6a2-2ecb-73d2-a8f2-d70c72a51e06",
+      "at": 1794333880109
+    },
+    {
+      "id": "01a1c6a2-2f57-7041-b556-4326200fd22b",
+      "at": 1794333880302
+    },
+    {
+      "id": "01a1c6a2-301a-7279-be0f-d7ea73a11f7d",
+      "at": 1794333880501
+    },
+    {
+      "id": "01a1c6a2-301c-74d1-90cb-641a4813baab",
+      "at": 1794333880585
+    }
+  ],
+  "rapidCaptures": true,
+  "passed": true,
+  "binary": "target/release/zuruf",
+  "measurement": "Key event to raw WebSocket receipt; confirmation after two requestAnimationFrame callbacks. S includes selection."
+}
