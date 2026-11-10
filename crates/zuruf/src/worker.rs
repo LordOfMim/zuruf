@@ -296,7 +296,7 @@ impl Daemon {
                 }
             }
             let key = id.clone();
-            let (manifest_path, prompt) = self
+            let (manifest_path, prompt, title) = self
                 .access(move |p| {
                     let s = &p.snapshot;
                     let task = s.tasks.iter().find(|t| t.id == key).ok_or_else(missing)?;
@@ -335,9 +335,27 @@ impl Daemon {
                         build_prompt(&path).map_err(|e| invalid(&e.to_string()))?,
                         batch.note
                     );
-                    Ok((path, prompt))
+                    let title = (task.title == DEFAULT_TITLE)
+                        .then(|| title_from(&annotations))
+                        .flatten();
+                    Ok((path, prompt, title))
                 })
                 .await?;
+            // Name the task after what the user said; transcripts are final at this point.
+            let title = match title {
+                Some(title) => {
+                    let (key, value) = (id.clone(), title.clone());
+                    self.mutate(move |s, _| {
+                        if let Some(t) = s.tasks.iter_mut().find(|t| t.id == key) {
+                            t.title = value.clone();
+                        }
+                        Ok(())
+                    })
+                    .await?;
+                    title
+                }
+                None => task.title.clone(),
+            };
             tracing::info!(task_id=%id,manifest=%manifest_path,"dispatching batch");
             self.task_status(id.clone(), TaskStatus::Dispatching, None)
                 .await?;
@@ -353,7 +371,7 @@ impl Daemon {
                 client_request_id: id.clone(),
                 profile: task.profile,
                 project: project.clone(),
-                title: format!("{} [zuruf:{}]", task.title, id),
+                title: format!("{title} [zuruf:{id}]"),
                 prompt,
             };
             if self
@@ -452,5 +470,75 @@ impl Daemon {
                 }
             }
         }
+    }
+}
+
+/// Placeholder a draft batch starts with; replaced by the user's own words on dispatch.
+pub(crate) const DEFAULT_TITLE: &str = "Aufgabe 1";
+
+/// First thing the user said or typed in the batch, cut at a word boundary.
+fn title_from(annotations: &[Annotation]) -> Option<String> {
+    const MAX: usize = 64;
+    let mut ordered: Vec<&Annotation> = annotations.iter().collect();
+    ordered.sort_by(|a, b| a.order.total_cmp(&b.order));
+    let text = ordered.iter().find_map(|a| {
+        [a.transcript.trim(), a.note.trim()]
+            .into_iter()
+            .find(|t| t.chars().any(char::is_alphanumeric))
+    })?;
+    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let sentence = line
+        .split_inclusive(['.', '!', '?'])
+        .next()
+        .unwrap_or(&line)
+        .trim_end_matches(['.', '!', '?', ' ']);
+    if sentence.chars().count() <= MAX {
+        return Some(sentence.to_string());
+    }
+    let cut: String = sentence.chars().take(MAX).collect();
+    let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(head, _)| head);
+    Some(format!("{}…", cut.trim_end_matches([',', ';', ':', ' '])))
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+
+    fn annotation(order: f64, transcript: &str, note: &str) -> Annotation {
+        let mut a: Annotation =
+            serde_json::from_str(include_str!("../tests/fixtures/Annotation.json")).unwrap();
+        a.order = order;
+        a.transcript = transcript.into();
+        a.note = note.into();
+        a
+    }
+
+    #[test]
+    fn uses_first_spoken_sentence_in_order() {
+        let list = [
+            annotation(2., "Zweiter Punkt.", ""),
+            annotation(1., "Der Knopf soll größer sein. Und blau.", ""),
+        ];
+        assert_eq!(
+            title_from(&list).as_deref(),
+            Some("Der Knopf soll größer sein")
+        );
+    }
+
+    #[test]
+    fn falls_back_to_note_and_skips_silence() {
+        let list = [
+            annotation(1., ".", ""),
+            annotation(2., "", "Abstand prüfen"),
+        ];
+        assert_eq!(title_from(&list).as_deref(), Some("Abstand prüfen"));
+        assert_eq!(title_from(&[annotation(1., ".", "")]), None);
+    }
+
+    #[test]
+    fn cuts_long_text_at_a_word() {
+        let long = "Hier fehlt ein Leerzustand wenn der Filter nichts findet und die Liste komplett leer bleibt";
+        let title = title_from(&[annotation(1., long, "")]).unwrap();
+        assert!(title.ends_with('…') && title.chars().count() <= 65 && !title.contains("  "));
     }
 }

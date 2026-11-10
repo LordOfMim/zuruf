@@ -1042,7 +1042,7 @@ fn create_draft(s: &mut Snapshot, r: &Review) {
             .fold(0., f64::max)
             + 1.,
         state: BatchState::Draft,
-        title: "Aufgabe 1".into(),
+        title: worker::DEFAULT_TITLE.into(),
         note: String::new(),
         profile_id: s
             .projects
