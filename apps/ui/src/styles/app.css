@@ -1418,3 +1418,160 @@ input[type="range"] {
     opacity: 0.7;
   }
 }
+
+/* ───────── forms, setup */
+.form {
+  display: grid;
+  gap: var(--s2);
+}
+
+.form-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+
+.card {
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.sessions + .card {
+  margin-top: var(--s2);
+}
+
+.setup {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--s4);
+  min-height: 100%;
+  padding: var(--s6) var(--s4);
+}
+
+.setup h1 {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.mark-lg {
+  width: 32px;
+  height: 32px;
+  box-shadow: inset 0 0 0 3px var(--text);
+}
+
+.mark-lg::after {
+  inset: 10px;
+}
+
+.steps {
+  width: min(400px, 100%);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+
+.step {
+  display: flex;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+}
+
+.step + .step {
+  border-top: 1px solid var(--line);
+}
+
+.step > .glyph {
+  flex: none;
+  margin-top: 6px;
+}
+
+.step-body {
+  display: grid;
+  gap: var(--s3);
+  flex: 1;
+  min-width: 0;
+}
+
+.step-title {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  font-weight: 500;
+}
+
+.step-value {
+  overflow: hidden;
+  color: var(--text-3);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step.is-later .step-title {
+  color: var(--text-3);
+}
+
+.step-note {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.step-error {
+  color: var(--danger);
+}
+
+/* Project switcher next to the mark. */
+.rail-brand {
+  gap: var(--s2);
+}
+
+.rail-brand .menu {
+  flex: 1;
+}
+
+.rail-project {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.rail-project span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-project svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.rail-project:hover,
+.rail-project[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.menu-item-quiet {
+  margin-top: 4px;
+  color: var(--text-2);
+}
+
+@media (max-width: 640px) {
+  .rail-brand .menu {
+    display: none;
+  }
+}

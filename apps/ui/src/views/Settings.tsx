@@ -4,12 +4,14 @@ import { Button, Icon } from "../components/basics";
 import type { AppStore } from "../lib/store";
 import { plain } from "../lib/store";
 import { strategyLabel } from "../lib/text";
+import { ProjectSettings } from "./Projects";
 import { Shortcuts } from "./Shortcuts";
 
-type Tab = "shortcuts" | "agents" | "speech" | "capture";
+export type Tab = "shortcuts" | "projects" | "agents" | "speech" | "capture";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "shortcuts", label: "Kurzbefehle" },
+  { id: "projects", label: "Projekte" },
   { id: "agents", label: "Agenten" },
   { id: "speech", label: "Diktat" },
   { id: "capture", label: "Aufnahme" },
@@ -339,13 +341,22 @@ function AgentSettings(props: { store: AppStore }) {
               T3 Code
               <small>
                 {t3()?.state === "connected"
-                  ? `verbunden · ${t3()?.version ?? ""}${t3()?.transport === "cli" ? " · eingeschränkt" : ""}`
+                  ? `verbunden${t3()?.version ? ` · ${t3()?.version}` : ""}${t3()?.transport === "cli" ? " · eingeschränkt" : ""}`
                   : (t3()?.error ?? "nicht verbunden")}
               </small>
             </span>
-            <Button size="sm" onClick={() => store.commands.reconnectT3()}>
-              Neu verbinden
-            </Button>
+            <Show
+              when={t3()?.state === "connected"}
+              fallback={
+                <Button size="sm" variant="solid" onClick={() => store.commands.pairT3()}>
+                  Verbinden
+                </Button>
+              }
+            >
+              <Button size="sm" onClick={() => store.commands.reconnectT3()}>
+                Neu verbinden
+              </Button>
+            </Show>
           </li>
         </ul>
       </section>
@@ -386,8 +397,8 @@ function AgentSettings(props: { store: AppStore }) {
   );
 }
 
-export function Settings(props: { store: AppStore }) {
-  const [tab, setTab] = createSignal<Tab>("shortcuts");
+export function Settings(props: { store: AppStore; tab?: Tab }) {
+  const [tab, setTab] = createSignal<Tab>(props.tab ?? "shortcuts");
   return (
     <div class="page">
       <header class="page-head">
@@ -405,6 +416,9 @@ export function Settings(props: { store: AppStore }) {
       <Show when={props.store.settings()}>
         <Show when={tab() === "shortcuts"}>
           <Shortcuts store={props.store} />
+        </Show>
+        <Show when={tab() === "projects"}>
+          <ProjectSettings store={props.store} />
         </Show>
         <Show when={tab() === "agents"}>
           <AgentSettings store={props.store} />

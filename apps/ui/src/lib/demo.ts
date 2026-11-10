@@ -5,6 +5,7 @@ import type {
   ServerEnvelope,
   ServerEvent,
   Settings,
+  Project,
   Snapshot,
   Task,
   TaskStatus,
@@ -276,8 +277,31 @@ function createDemoSnapshot(): Snapshot {
   };
 }
 
-export function createDemoTransport(): Transport {
-  const snapshot = createDemoSnapshot();
+/** `?demo=empty` shows a fresh install: nothing paired, no project, no agent. */
+function emptied(snapshot: Snapshot): Snapshot {
+  Object.assign(snapshot, {
+    projects: [],
+    profiles: [],
+    sessions: [],
+    reviews: [],
+    batches: [],
+    annotations: [],
+    segments: [],
+    tasks: [],
+  });
+  Object.assign(snapshot.status, {
+    activeProjectId: null,
+    activeReviewId: null,
+    activeSessionId: null,
+    activeBatchId: null,
+    reviewMode: false,
+  });
+  snapshot.status.t3 = { ...snapshot.status.t3, state: "disconnected", version: null };
+  return snapshot;
+}
+
+export function createDemoTransport(empty = false): Transport {
+  const snapshot = empty ? emptied(createDemoSnapshot()) : createDemoSnapshot();
   const listeners = new Set<(event: ServerEnvelope) => void>();
   let seq = 0;
 
@@ -568,6 +592,51 @@ export function createDemoTransport(): Transport {
       if (!existing) snapshot.profiles.push(saved);
       emit({ type: "profile.upserted", payload: saved });
       return reply(saved);
+    }
+
+    if (resource === "t3" && (resourceId === "pair" || resourceId === "reconnect")) {
+      snapshot.status.t3 = { ...snapshot.status.t3, state: "connected", version: "0.1.7", error: null };
+      statusChanged();
+      return reply(snapshot.status.t3);
+    }
+
+    if (resource === "t3" && resourceId === "projects") {
+      return reply([
+        { id: "t3-werkbank", title: "Werkbank", workspaceRoot: "/home/du/projekte/werkbank" },
+        { id: "t3-angebote", title: "Angebote", workspaceRoot: "/home/du/projekte/angebote" },
+      ]);
+    }
+
+    if (resource === "projects") {
+      if (method === "DELETE") {
+        snapshot.projects = snapshot.projects.filter((entry) => entry.id !== resourceId);
+        emit({ type: "project.removed", payload: { id: resourceId! } });
+        if (snapshot.status.activeProjectId === resourceId) {
+          snapshot.status.activeProjectId = snapshot.projects[0]?.id ?? null;
+          statusChanged();
+        }
+        return reply({});
+      }
+      const existing = snapshot.projects.find((entry) => entry.id === resourceId);
+      const saved = existing
+        ? Object.assign(existing, data, { updatedAt: now() })
+        : ({ ...data, id: id("project"), createdAt: now(), updatedAt: now() } as Project);
+      if (!existing) {
+        snapshot.projects.push(saved);
+        snapshot.status.activeProjectId = saved.id;
+        statusChanged();
+      }
+      emit({ type: "project.upserted", payload: saved });
+      return reply(saved);
+    }
+
+    if (resource === "active") {
+      Object.assign(snapshot.status, {
+        ...(data.projectId ? { activeProjectId: data.projectId } : {}),
+        ...(data.sessionId ? { activeSessionId: data.sessionId } : {}),
+      });
+      statusChanged();
+      return reply(snapshot.status);
     }
 
     if (resource === "t3" && resourceId === "catalog") {

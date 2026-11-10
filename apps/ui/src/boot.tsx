@@ -32,7 +32,7 @@ export async function boot(view: (store: AppStore) => JSX.Element) {
     return;
   }
 
-  const store = createAppStore(demo ? createDemoTransport() : createHttpTransport(bootstrap!));
+  const store = createAppStore(demo ? createDemoTransport(params.get("demo") === "empty") : createHttpTransport(bootstrap!));
 
   render(() => {
     createEffect(() => {
