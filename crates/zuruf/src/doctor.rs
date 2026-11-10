@@ -58,15 +58,8 @@ pub fn run() -> bool {
         })
         .unwrap_or(0);
     println!(
-        "Hinweis: {count} Modelldateien im Voxtype-Standardverzeichnis; abweichende Modellpfade manuell prüfen."
+        "Hinweis: {count} lokale Modelldateien im Voxtype-Standardverzeichnis. Ohne Modell in den Zuruf-Einstellungen gilt die Voxtype-Konfiguration (lokal oder Remote-Endpunkt)."
     );
-    println!(
-        "Hinweis: Für Deutsch ist ein mehrsprachiges Modell erforderlich (kein .en-Modell). Es wird nichts heruntergeladen."
-    );
-    if count == 0 {
-        println!("fehlt: Voxtype-Modell im Standardverzeichnis");
-        ok = false;
-    }
     let memory = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
         s.lines()
             .find(|l| l.starts_with("MemAvailable:"))

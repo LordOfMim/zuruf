@@ -37,7 +37,7 @@ Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls man
 
 Nach dauerhafter Rohbildpersistenz bestätigt die Extension „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
 
-Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung läuft im Hintergrund. Der Daemon-Fallback hat eine Stop-/Start-Lücke. `Shift+N` versiegelt den alten Batch und öffnet sofort den neuen Draft. Späte Transkripte bleiben am alten Batch. Vor Versand Transkripte und Bilder prüfen. Nur `base.en` ist auf dem Abnahmerechner vorhanden; deutsche Sprachqualität bleibt manuell offen. Zuruf lädt keine Modelle und verändert oder startet den vorhandenen Voxtype-Daemon nicht neu.
+Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung läuft im Hintergrund. Der Daemon-Fallback hat eine Stop-/Start-Lücke. `Shift+N` versiegelt den alten Batch und öffnet sofort den neuen Draft. Späte Transkripte bleiben am alten Batch. Vor Versand Transkripte und Bilder prüfen. Ohne Modell in den Einstellungen gilt die eigene Voxtype-Konfiguration, auch ein Remote-Endpunkt mit API-Schlüssel aus den Environment-Dateien von `voxtype.service`; dann verlässt die Tonaufnahme den Rechner wie bei Voxtype selbst. Ein in Zuruf eingetragenes Modell erzwingt lokale Erkennung und muss vorhanden sein. Deutsche Sprachqualität bleibt manuell offen. Zuruf lädt keine Modelle und verändert oder startet den vorhandenen Voxtype-Daemon nicht neu.
 
 ## Aufgaben und Agentenzugriff
 
@@ -54,6 +54,10 @@ Menschliches Takeover sperrt neue Proxybefehle sofort. Bereits ausgeführtes Jav
 URLs verlieren Zugangsdaten, Fragmente und sensible Queryparameter; DOM-Attribute sind begrenzt, Eingabewerte werden nicht gespeichert. Screenshots maskieren Passwortfelder und `[data-zuruf-private]` im Hauptdokument vor der Persistenz. `ZURUF_MASK_SELECTORS` ergänzt CSS-Selektoren (kommagetrennt). Ungültige Selektoren lassen den Capture fehlschlagen. Überlappende DOM-Metadaten werden verworfen.
 
 Automatische semantische Erkennung beliebiger personenbezogener Texte/Bilder, geschlossene Shadow Roots und fremde Frames sind damit nicht abgedeckt. Masken ersetzen keine Sichtprüfung und ausdrückliche Freigabe vor Weitergabe an einen externen Provider. Kein Secret gehört in Notizen, URLs, Prompts oder Logs.
+
+## Skill für Agenten
+
+`skills/zuruf/SKILL.md` beschreibt CLI, Sitzungen und Task-MCP für Agenten. Einbinden per Symlink des Ordners in das Skill-Verzeichnis des jeweiligen Agenten.
 
 ## Deinstallation und Diagnose
 

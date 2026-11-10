@@ -422,20 +422,24 @@ impl SpeechAdapter for Speech {
         Box::pin(async move {
             use zuruf_speech::SpeechAdapter;
             let settings = self.settings.read().map_err(io)?.clone();
-            let model = settings.model.unwrap_or_else(|| "base".into());
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .ok_or_else(|| io("HOME missing"))?;
-            if !home
-                .join(format!(".local/share/voxtype/models/ggml-{model}.bin"))
-                .exists()
-            {
-                let detail = format!("Sprachmodell {model} fehlt. Kein automatischer Download.");
-                if let Some(app) = self.app.get().and_then(std::sync::Weak::upgrade) {
-                    let _ = app.events.send(json!({"type":"notice","payload":{"level":"error","code":"speech.model_missing","detail":detail}}));
+            // No model set: Voxtype's own configuration decides, including a remote endpoint.
+            if let Some(model) = &settings.model {
+                let home = std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .ok_or_else(|| io("HOME missing"))?;
+                if !home
+                    .join(format!(".local/share/voxtype/models/ggml-{model}.bin"))
+                    .exists()
+                {
+                    let detail =
+                        format!("Sprachmodell {model} fehlt. Kein automatischer Download.");
+                    if let Some(app) = self.app.get().and_then(std::sync::Weak::upgrade) {
+                        let _ = app.events.send(json!({"type":"notice","payload":{"level":"error","code":"speech.model_missing","detail":detail}}));
+                    }
+                    return Err(AdapterError::Unavailable(detail));
                 }
-                return Err(AdapterError::Unavailable(detail));
             }
+            let model = settings.model.clone();
             let mut i = self.inner.lock().await;
             if i.backend.is_some() {
                 return Err(AdapterError::Rejected("Sprache läuft bereits".into()));
@@ -444,10 +448,11 @@ impl SpeechAdapter for Speech {
                 zuruf_speech::Voxtype {
                     executable: settings.voxtype_path.clone().into(),
                     directory: self.directory.clone(),
-                    model: Some(model.clone()),
-                    language: Some(settings.language.unwrap_or_else(|| "de".into())),
+                    model: model.clone(),
+                    language: settings.language.clone(),
                     engine: None,
                     keep_audio: settings.keep_audio,
+                    env: zuruf_speech::voxtype_service_env().await,
                 },
                 1,
             );
@@ -471,7 +476,7 @@ impl SpeechAdapter for Speech {
                     let mut fallback = zuruf_speech::Daemon::new(
                         settings.voxtype_path.into(),
                         self.directory.clone(),
-                        Some(model),
+                        model,
                     );
                     fallback
                         .start(boundary.batch_id.clone())

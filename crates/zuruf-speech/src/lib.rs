@@ -109,6 +109,60 @@ pub struct Voxtype {
     pub engine: Option<String>,
     pub directory: PathBuf,
     pub keep_audio: bool,
+    /// Extra environment for the child only, see [`voxtype_service_env`]. Never logged.
+    pub env: Vec<(String, String)>,
+}
+/// Variables the user's `voxtype.service` gets from its environment files (e.g. the API key
+/// of a remote endpoint) and this process lacks. Only `VOXTYPE_*` names are returned, so a
+/// per-segment `voxtype transcribe` behaves like the user's own Voxtype. Values must not be logged.
+pub async fn voxtype_service_env() -> Vec<(String, String)> {
+    let Ok(out) = Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            "voxtype",
+            "-p",
+            "EnvironmentFiles",
+            "--value",
+        ])
+        .output()
+        .await
+    else {
+        return vec![];
+    };
+    let mut env = vec![];
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let path = line.split(" (").next().unwrap_or(line).trim();
+        if path.is_empty() {
+            continue;
+        }
+        let Ok(text) = tokio::fs::read_to_string(path).await else {
+            continue;
+        };
+        env.extend(parse_env_file(&text));
+    }
+    env.retain(|(name, _)| std::env::var_os(name).is_none());
+    env
+}
+fn parse_env_file(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let line = line.strip_prefix("export ").unwrap_or(line);
+            let (name, value) = line.split_once('=')?;
+            let name = name.trim();
+            if !name.starts_with("VOXTYPE_") {
+                return None;
+            }
+            let value = value.trim();
+            let value = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+                .unwrap_or(value);
+            Some((name.to_owned(), value.to_owned()))
+        })
+        .collect()
 }
 impl Transcriber for Voxtype {
     fn transcribe(&self, samples: Vec<i16>) -> AsyncResult<'_, String> {
@@ -141,12 +195,13 @@ impl Transcriber for Voxtype {
             .await
             .map_err(|_| Error::Backend("WAV worker failed".into()))??;
             let mut cmd = Command::new(&self.executable);
-            cmd.args(["--quiet", "--whisper-mode", "local"]);
-            for (flag, v) in [
-                ("--model", &self.model),
-                ("--language", &self.language),
-                ("--engine", &self.engine),
-            ] {
+            cmd.arg("--quiet").envs(self.env.iter().cloned());
+            // Without a model Voxtype's own configuration decides (local or remote endpoint);
+            // a model named in Zuruf is a local Whisper file and pins local mode.
+            if let Some(model) = &self.model {
+                cmd.args(["--whisper-mode", "local", "--model", model]);
+            }
+            for (flag, v) in [("--language", &self.language), ("--engine", &self.engine)] {
                 if let Some(v) = v {
                     cmd.args([flag, v]);
                 }
@@ -1020,6 +1075,7 @@ mod tests {
             engine: Some("whisper".into()),
             directory: std::env::temp_dir().join("zuruf-speech-smoke"),
             keep_audio: false,
+            env: vec![],
         };
         let mut c = Continuous::new(v, 1);
         c.start("smoke".into()).await.unwrap();
@@ -1032,6 +1088,23 @@ mod tests {
             matches!(segment.state, SegmentState::Ready | SegmentState::Empty),
             "{:?}",
             segment
+        );
+    }
+}
+#[cfg(test)]
+mod env_tests {
+    #[test]
+    fn only_voxtype_variables_are_taken() {
+        let env = super::parse_env_file(
+            "# comment\nPATH=/x\nVOXTYPE_WHISPER_API_KEY=\"abc\"\nexport VOXTYPE_OTHER='d e'\nVOXTYPE_RAW=f\n",
+        );
+        assert_eq!(
+            env,
+            [
+                ("VOXTYPE_WHISPER_API_KEY".to_owned(), "abc".to_owned()),
+                ("VOXTYPE_OTHER".to_owned(), "d e".to_owned()),
+                ("VOXTYPE_RAW".to_owned(), "f".to_owned()),
+            ]
         );
     }
 }

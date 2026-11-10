@@ -6,9 +6,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         executable: "voxtype".into(),
         model: std::env::var("ZURUF_MODEL").ok(),
         language: std::env::var("ZURUF_LANGUAGE").ok(),
-        engine: Some("whisper".into()),
+        engine: None,
         directory: std::env::temp_dir().join("zuruf-dictate"),
         keep_audio: false,
+        env: zuruf_speech::voxtype_service_env().await,
     };
     let mut recorder = Continuous::new(v, 1);
     recorder.start("dictate".into()).await?;
