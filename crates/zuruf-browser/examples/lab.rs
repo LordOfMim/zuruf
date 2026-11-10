@@ -66,23 +66,16 @@ async fn main() -> Result<()> {
     *session.write().await = Some(browser.clone());
     let bindings = default_bindings();
     browser.set_review_mode(true, bindings).await?;
-    let captures = browser.clone();
+    let capture_holder = session.clone();
     let output = out.clone();
     let mut events = hub.subscribe();
     let capture_task = tokio::spawn(async move {
         while let Ok(event) = events.recv().await {
-            if let Message::Capture { kind, rect, .. } = event.message {
-                let received = Instant::now();
-                let target = captures
-                    .extension
-                    .tabs()
-                    .await
-                    .into_iter()
-                    .find(|t| Some(t.tab_id) == event.tab_id)
-                    .map(|t| t.target_id);
-                let Some(target) = target else {
+            if let Message::Capture { ref kind, .. } = event.message {
+                let Some(captures) = capture_holder.read().await.clone() else {
                     continue;
                 };
+                let received = Instant::now();
                 let kind = match kind.as_str() {
                     "viewport" => CaptureKind::Viewport,
                     "region" => CaptureKind::Region,
@@ -90,7 +83,7 @@ async fn main() -> Result<()> {
                     _ => continue,
                 };
                 match captures
-                    .capture(&target, kind, rect, capture::Ring::default())
+                    .capture_request(&event, capture::Ring::default())
                     .await
                 {
                     Ok(result) => {
@@ -102,11 +95,12 @@ async fn main() -> Result<()> {
                             continue;
                         }
                         let raw_ms = received.elapsed().as_secs_f64() * 1000.0;
+                        let keypress_raw_ms = now_ms().saturating_sub(event.timestamp);
                         if let Err(e) = tokio::fs::write(marked, &result.marked_png).await {
                             eprintln!("{e}");
                             continue;
                         }
-                        let metadata = serde_json::json!({"requestId":id,"kind":kind,"dom":result.dom,"viewport":result.viewport,"scroll":result.scroll,"cursor":result.cursor,"rect":result.rect,"rawMs":raw_ms,"markedMs":received.elapsed().as_secs_f64()*1000.0,"keypressRawMs":now_ms().saturating_sub(event.timestamp)});
+                        let metadata = serde_json::json!({"requestId":id,"kind":kind,"dom":result.dom,"viewport":result.viewport,"scroll":result.scroll,"cursor":result.cursor,"rect":result.rect,"rawMs":raw_ms,"markedMs":received.elapsed().as_secs_f64()*1000.0,"keypressRawMs":keypress_raw_ms,"keypressMarkedMs":now_ms().saturating_sub(event.timestamp)});
                         let _ = tokio::fs::write(
                             output.join(format!("{id}.json")),
                             metadata.to_string(),
@@ -266,14 +260,7 @@ async fn serve(
             return Err(Error::Denied("session path"));
         }
         return browser
-            .serve_agent(
-                ws,
-                AgentAccess {
-                    agent_id: "lab".into(),
-                    token,
-                },
-                auth.as_deref(),
-            )
+            .serve_agent(ws, AgentAccess::new("lab".into(), token), auth.as_deref())
             .await;
     }
     let mut consumed = vec![0; size];
@@ -289,6 +276,30 @@ async fn serve(
             return Err(Error::Denied("lab token"));
         }
         let b = browser.ok_or(Error::Closed)?;
+        if path.starts_with("/test/metrics?") {
+            let query = path.split('?').nth(1).unwrap_or_default();
+            let mut dpr = 1.0;
+            let mut zoom = 1.0;
+            for pair in query.split('&') {
+                if let Some((key, value)) = pair.split_once('=') {
+                    let value: f64 = value.parse().map_err(|_| Error::Invalid("metric".into()))?;
+                    match key {
+                        "dpr" => dpr = value,
+                        "zoom" => zoom = value,
+                        _ => {}
+                    }
+                }
+            }
+            let tab = b
+                .list_tabs()
+                .await?
+                .into_iter()
+                .find(|t| t.active)
+                .ok_or(Error::Closed)?;
+            b.emulate_dpr(&tab.id, dpr).await?;
+            b.set_zoom(&tab.id, zoom).await?;
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
         match path.as_str() {
             "/test/takeover" => {
                 b.takeover().await?;
@@ -296,6 +307,24 @@ async fn serve(
             "/test/release" => {
                 b.release().await;
                 b.grant("lab".into(), Duration::from_secs(600)).await?;
+            }
+            "/test/isolated" => {
+                let mut config = b
+                    .duplicate_config(root.join(format!(
+                        ".spike/browser-lab/isolated-{}",
+                        uuid::Uuid::now_v7()
+                    )))
+                    .await?;
+                // Laboratory profile swap keeps the endpoint identity; real duplication
+                // gets its own Bootstrap/session/token from the daemon.
+                config.session_id = b.extension.bootstrap.session_id.clone();
+                config.urls = vec![format!("http://127.0.0.1:{}/", b.extension.bootstrap.port)];
+                b.stop().await?;
+                let isolated = Arc::new(Browser::start(config, b.extension.clone()).await?);
+                isolated
+                    .grant("lab".into(), Duration::from_secs(600))
+                    .await?;
+                *holder.write().await = Some(isolated);
             }
             "/test/restart" => {
                 let restarted = Arc::new(b.restart().await?);
