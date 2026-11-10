@@ -59,7 +59,7 @@ pub struct AgentProfile {
     pub workspace_strategy: WorkspaceStrategy,
     pub base_ref: Option<String>,
     pub worktree_path: Option<String>,
-    pub slot: Option<u8>,
+    pub slot: Option<f64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
