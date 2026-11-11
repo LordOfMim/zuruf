@@ -89,7 +89,16 @@ try {
   assert.equal((await api("POST", `/sessions/${session.id}/stop`, {})).state, "stopped");
   await sleep(600);
   assert.equal((await current()).state, "stopped");
-  console.log("PASS packaged native browser: start, click, screenshot, filtered CDP, width, profile recovery and deliberate stop");
+  // Updates use this CLI while windows are still open. It must wait for browser cleanup.
+  await api("POST", `/sessions/${session.id}/start`, {});
+  const stop = spawn(join(prefix, `bin/zuruf${process.platform === "win32" ? ".exe" : ""}`), ["stop"], { env, windowsHide: true, stdio: "ignore" });
+  const stopped = new Promise((done, reject) => {
+    stop.once("error", reject);
+    stop.once("exit", (code) => code === 0 ? done() : reject(new Error(`CLI stop exited ${code}`)));
+  });
+  await stopped;
+  await assert.rejects(fetch(base, { signal: AbortSignal.timeout(1000) }), "CLI stop must wait for shutdown");
+  console.log("PASS packaged native browser: start, click, screenshot, filtered CDP, width, profile recovery, deliberate stop and update shutdown");
 } catch (error) {
   console.error(log.split("\n").slice(-12).join("\n").replace(/([#?](?:code|token)=)[^\s"<>]+/g, "$1<redacted>"));
   throw error;

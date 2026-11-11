@@ -41,7 +41,7 @@ Für die Lizenzsammlung lädt das Skript eine festgelegte `cargo-about`-Version 
 
 ## Prüfung
 
-`python tools/release/test-installers.py` installiert in temporäre Verzeichnisse, prüft Aktualisierung und Deinstallation mit Datenerhalt und startet den tatsächlich paketierten Browser. Unter Linux ohne Desktop:
+`python tools/release/test-installers.py` installiert in temporäre Verzeichnisse, prüft Aktualisierung und Deinstallation mit Datenerhalt und startet den tatsächlich paketierten Browser. Auch fremde Dateien im Installationsordner müssen erhalten bleiben. Der Stopp-Befehl wird mit geöffnetem Browser geprüft, damit Updates auf das Ende der Browserprozesse warten. Unter Linux ohne Desktop:
 
 ```sh
 ZURUF_SHELL_ARGS=--disable-gpu xvfb-run -a -s '-screen 0 1600x1000x24' python tools/release/test-installers.py

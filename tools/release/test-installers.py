@@ -27,6 +27,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="zuruf installer test ") as temporary:
         directory = Path(temporary)
         prefix = directory / "Zuruf Installed"
+        prefix.mkdir()
+        unrelated = prefix / "keep unrelated file.txt"
+        unrelated.write_text("not owned by Zuruf")
         if os.name == "nt":
             installer = ROOT / "artifacts/Zuruf-Setup-windows-x64.exe"
             subprocess.run([str(installer), "/S", f"/D={prefix}"], check=True)
@@ -62,7 +65,8 @@ def main():
             extracted = directory / "deb"
             subprocess.run(["dpkg-deb", "--extract", str(ROOT / "artifacts/zuruf-linux-amd64.deb"), str(extracted)], check=True)
             smoke(extracted / "usr")
-        print("PASS installer update/uninstall, preserved user data and packaged browser")
+        assert unrelated.read_text() == "not owned by Zuruf"
+        print("PASS installer update/uninstall, preserved user data and unrelated files, packaged browser")
 
 
 if __name__ == "__main__":

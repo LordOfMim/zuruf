@@ -204,6 +204,27 @@ async fn run() -> Result<(), Error> {
                 .json::<serde_json::Value>()
                 .await
                 .map_err(|e| Error::Join(e.to_string()))?;
+            if matches!(command, Command::Stop) {
+                // Installers may replace the binaries immediately after this command returns.
+                // The shutdown response precedes browser cleanup; wait until that is complete.
+                tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                    loop {
+                        match tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+                            .await
+                        {
+                            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                                return Ok::<(), Error>(());
+                            }
+                            Err(error) => return Err(StoreError::from(error).into()),
+                            Ok(_) => {
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await
+                            }
+                        }
+                    }
+                })
+                .await
+                .map_err(|_| Error::Join("Daemon shutdown timed out".into()))??;
+            }
             match response["code"].as_str() {
                 Some(code) => println!("{base}/#code={code}&view={view}"),
                 None => println!("{}", serde_json::to_string_pretty(&response)?),
