@@ -103,7 +103,7 @@ async fn run() -> Result<(), Error> {
         return Ok(());
     }
     if matches!(args.command, Command::Open { .. }) {
-        ensure_daemon(&base).await?;
+        ensure_daemon(&base, &paths).await?;
     }
     match args.command {
         Command::Daemon { seed_demo } => {
@@ -119,14 +119,13 @@ async fn run() -> Result<(), Error> {
                 let _ = daemon.close().await;
                 return Err(error);
             }
-            let listener =
-                match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
-                    Ok(listener) => listener,
-                    Err(error) => {
-                        let _ = daemon.close().await;
-                        return Err(StoreError::from(error).into());
-                    }
-                };
+            let listener = match bind(port).await {
+                Ok(listener) => listener,
+                Err(error) => {
+                    let _ = daemon.close().await;
+                    return Err(StoreError::from(error).into());
+                }
+            };
             tracing::info!(
                 port = listener.local_addr().map_err(StoreError::from)?.port(),
                 "daemon listening"
@@ -207,7 +206,23 @@ async fn run() -> Result<(), Error> {
     Ok(())
 }
 
-async fn ensure_daemon(base: &str) -> Result<(), Error> {
+/// Listen on the daemon's loopback port. The port lies in the range the system also hands to
+/// outgoing connections, so one of those can hold it for a moment; that is worth a short wait
+/// rather than a failed start.
+async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let mut attempts = 0;
+    loop {
+        match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && attempts < 20 => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
     let client = reqwest::Client::new();
     if client.get(base).send().await.is_ok() {
         return Ok(());
@@ -272,12 +287,18 @@ async fn ensure_daemon(base: &str) -> Result<(), Error> {
             .map_err(StoreError::from)?
             .success()
     } else {
-        // No systemd user session: the daemon runs as a plain background process.
+        // No systemd user session: the daemon runs as a plain background process. There is
+        // no journal either, so it keeps its own log.
+        tokio::fs::create_dir_all(&paths.state)
+            .await
+            .map_err(StoreError::from)?;
+        let log =
+            std::fs::File::create(paths.state.join("daemon.log")).map_err(StoreError::from)?;
         tokio::process::Command::new(&binary)
             .arg("daemon")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(log)
             .spawn()
             .is_ok()
     };

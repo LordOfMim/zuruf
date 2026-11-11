@@ -9,7 +9,8 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 const dir=await mkdtemp(join(tmpdir(),'zuruf-mcp-'));
 const port=48673, base=`http://127.0.0.1:${port}`;
-const daemon=spawn('../../target/debug/zuruf',['daemon','--seed-demo'],{cwd:new URL('.',import.meta.url),env:{...process.env,ZURUF_FAKE_ADAPTERS:'1',ZURUF_PORT:String(port),ZURUF_DATA_DIR:`${dir}/data`,ZURUF_STATE_DIR:`${dir}/state`,ZURUF_CONFIG_DIR:`${dir}/config`},stdio:'ignore'});
+// The build may live outside the checkout (CARGO_TARGET_DIR).
+const daemon=spawn(join(process.env.CARGO_TARGET_DIR??'../../target','debug/zuruf'),['daemon','--seed-demo'],{cwd:new URL('.',import.meta.url),env:{...process.env,ZURUF_FAKE_ADAPTERS:'1',ZURUF_PORT:String(port),ZURUF_DATA_DIR:`${dir}/data`,ZURUF_STATE_DIR:`${dir}/state`,ZURUF_CONFIG_DIR:`${dir}/config`},stdio:'ignore'});
 let client;
 try {
  let ui;

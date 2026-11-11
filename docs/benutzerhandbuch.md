@@ -2,7 +2,7 @@
 
 ## Installation und Start
 
-Voraussetzungen: Linux mit Hyprland/Wayland, System-Chromium, PipeWire, Voxtype und T3 Code. Builds benötigen Rust stable über mise, Node 26 und pnpm 11. `./install.sh` baut UI, Extension und Rust in dieser Reihenfolge unter 3 GiB Speichergrenze mit zwei Cargo-Jobs. `--skip-build` verwendet fertige Release-Artefakte. Installiert werden Binary, Bundles, Benutzer-Unit, Starter und Zuruf-Icon. Die Installation aktiviert keinen Dienst.
+Voraussetzungen: Linux mit Hyprland/Wayland, PipeWire, Voxtype und T3 Code. Einen Browser bringt Zuruf selbst mit; System-Chromium und eine Extension werden nicht mehr gebraucht. Builds benötigen Rust stable über mise, Node 26, pnpm 11 sowie `cmake` und `ninja`. `./install.sh` baut UI, Seiten-Agent und Rust in dieser Reihenfolge unter 4 GiB Speichergrenze mit vier Cargo-Jobs; beim ersten Mal lädt der Build die Chromium-Laufzeit (rund 140 MB) nach `~/.cache/zuruf/cef`. `--skip-build` verwendet fertige Release-Artefakte. Installiert werden `zuruf`, das Browserfenster samt Chromium-Laufzeit unter `~/.local/lib/zuruf` (rund 330 MB), Benutzer-Unit, Starter und Zuruf-Icon. Die Installation aktiviert keinen Dienst.
 
 ```sh
 zuruf doctor
@@ -11,7 +11,7 @@ systemctl --user enable --now zuruf.service
 zuruf open --view sessions
 ```
 
-`open` startet bei Bedarf den Daemon und ein eigenes Chromium-Appfenster mit privatem Profil. Wiederholtes `open --view tasks|sessions|settings|review` fordert den Viewwechsel an und fokussiert das vorhandene Fenster. Der Viewwechsel lädt die UI neu; noch nicht abgesendete Formulareingaben können dabei verloren gehen. Chromium erzeugt auf diesem Rechner die Fensterkennung `chrome-127.0.0.1__-Default`; der Installer enthält dafür einen unsichtbaren Desktopalias zur Iconzuordnung. Ein eigenes `zuruf`-App-ID-Flag wird nicht behauptet.
+`open` startet bei Bedarf den Daemon und zeigt die App: im Fenster der laufenden Sitzung, sonst in einem eigenen Fenster mit privatem Profil. Wiederholtes `open --view tasks|sessions|settings|review` fordert den Viewwechsel an und holt das vorhandene Fenster nach vorn. Alle Zuruf-Fenster tragen die Fensterkennung (App-ID) `zuruf`; damit lassen sie sich in Hyprland-Regeln ansprechen, und der Starter findet sein Icon.
 
 `PREFIX`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` und die spezifischen `ZURUF_*_DIR` ändern Ziele. Für CLI und Dienst müssen dieselben Pfade gelten. `.env.example` ist Dokumentation und wird nicht automatisch geladen. Tests installieren ausschließlich in einen Wegwerfpräfix.
 
@@ -19,7 +19,7 @@ zuruf open --view sessions
 
 Ein leeres Datenverzeichnis enthält absichtlich keine Demo-Projekte oder Fakeversion. Die T3-Verbindung meldet zunächst `disconnected` ohne Fehlermeldung. Der Einrichtungsclient verbindet über `POST /api/v1/t3/pair` mit `{origin?}`; ohne Adresse verwendet Zuruf den gespeicherten Origin oder prüft die dokumentierte lokale Adresse `http://127.0.0.1:3773` anhand ihrer OAuth-Metadaten. Antwortet dort kein T3, muss die lokale Adresse angegeben werden. Die Verbindung gilt sofort, ein Dienstneustart ist nicht erforderlich. `POST /api/v1/t3/reconnect` liest gespeicherte Adresse und Credentials erneut. Gültige Credentials werden wiederverwendet.
 
-Danach Projekt mit vorhandenem Repository-Verzeichnis und HTTP-/HTTPS-Basis-URL anlegen. Derselbe Repository-Pfad darf nur einmal registriert werden. Zuruf ordnet bei erreichbarem T3 dessen Projekt anhand des Workspace-Roots zu und erzeugt automatisch Review und leeren Draft. Ein Profil aus dem Livekatalog wählen; das erste angelegte Profil wird auch bereits vorhandenen Projekten und offenen Drafts ohne Profil zugeordnet. Eine isolierte Browser-Sitzung für das Projekt anlegen und starten: Chromium öffnet die Basis-URL im eigenen Sitzungsprofil. Anschließend Review einschalten und mit W aufnehmen. Ohne Projekt oder laufende aktive Sitzung meldet Review eine verständliche Fehlermeldung.
+Danach Projekt mit vorhandenem Repository-Verzeichnis und HTTP-/HTTPS-Basis-URL anlegen. Derselbe Repository-Pfad darf nur einmal registriert werden. Zuruf ordnet bei erreichbarem T3 dessen Projekt anhand des Workspace-Roots zu und erzeugt automatisch Review und leeren Draft. Ein Profil aus dem Livekatalog wählen; das erste angelegte Profil wird auch bereits vorhandenen Projekten und offenen Drafts ohne Profil zugeordnet. Eine isolierte Browser-Sitzung für das Projekt anlegen und starten: Zurufs Browserfenster öffnet die Basis-URL im eigenen Sitzungsprofil, die App sitzt links daneben. Anschließend Review einschalten und mit W aufnehmen. Ohne Projekt oder laufende aktive Sitzung meldet Review eine verständliche Fehlermeldung.
 
 Projektwechsel schaltet Review aus und aktiviert den projektspezifischen Draft sowie die zuletzt verwendete Sitzung oder keine Sitzung. Löschen wird bei laufenden Sitzungen oder nicht abgeschlossenen Aufgaben abgewiesen. Beim zulässigen Löschen verschwinden Projekt und zugehörige Einträge aus dem Snapshot; Capturedateien und Browserprofil-Verzeichnisse bleiben konservativ auf der Platte erhalten.
 
@@ -35,7 +35,7 @@ Provider, Modell, Optionen und Arbeitsverzeichnis werden pro Batch eingefroren. 
 
 Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport, `S` einen gezogenen Ausschnitt, `D` das Element unter dem Cursor. In Textfeldern, Editoren und Contenteditable bleiben einzelne Tasten normale Eingaben; dieselbe Taste mit Alt (z. B. Alt+R) löst die Aktion auch dort aus. Kürzel mit Strg, Alt oder Super gelten überall. Zuruf fängt seine Tasten vor der Seite ab, einschließlich Wiederholung und Loslassen. `Esc` bricht eine Auswahl ab. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
 
-Nach dauerhafter Rohbildpersistenz bestätigt die Extension „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
+Nach dauerhafter Rohbildpersistenz bestätigt die Seite „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
 
 Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung läuft im Hintergrund. Der Daemon-Fallback hat eine Stop-/Start-Lücke. `Shift+N` versiegelt den alten Batch und öffnet sofort den neuen Draft. Späte Transkripte bleiben am alten Batch. Vor Versand Transkripte und Bilder prüfen. Ohne Modell in den Einstellungen gilt die eigene Voxtype-Konfiguration, auch ein Remote-Endpunkt mit API-Schlüssel aus den Environment-Dateien von `voxtype.service`; dann verlässt die Tonaufnahme den Rechner wie bei Voxtype selbst. Ein in Zuruf eingetragenes Modell erzwingt lokale Erkennung und muss vorhanden sein. Deutsche Sprachqualität bleibt manuell offen. Zuruf lädt keine Modelle und verändert oder startet den vorhandenen Voxtype-Daemon nicht neu.
 
@@ -47,7 +47,7 @@ Für Captures einer einzelnen Session erhält jeder Task einen eigenen MCP-Zugan
 
 MCP bietet Manifest, Annotationen, Bilder und Fortschrittsmeldungen. CDP verlangt zusätzlich eine aktive Kontrolllease; Erneuerung ist atomar und kann weder Ablauf noch menschliches Takeover überholen. Leaseablauf aktualisiert die Anzeige selbstständig. Abschluss, Abbruch und Interrupt widerrufen den Taskzugang; Shutdown entfernt die Dateien, Neustart verwirft alte Credentials. Laufende Tasks werden anhand ihrer gespeicherten Receipts weiterverfolgt. Nach Neustart muss ein Agentenzugang neu bereitgestellt werden; automatische Wiederanmeldung eines bereits laufenden Agenten bleibt offen.
 
-Menschliches Takeover sperrt neue Proxybefehle sofort. Bereits ausgeführtes JavaScript kann weiterwirken; Browserkontrolle ist kein Rollback. Der rohe Chromium-CDP-Port ist nur auf Loopback erreichbar, aber keine Sicherheitsgrenze gegenüber lokalen Prozessen.
+Menschliches Takeover sperrt neue Proxybefehle sofort. Bereits ausgeführtes JavaScript kann weiterwirken; Browserkontrolle ist kein Rollback. Der rohe CDP-Port des Browserfensters ist nur auf Loopback erreichbar, aber keine Sicherheitsgrenze gegenüber lokalen Prozessen.
 
 ## Datenschutz
 
@@ -61,10 +61,30 @@ Automatische semantische Erkennung beliebiger personenbezogener Texte/Bilder, ge
 
 ## Deinstallation und Diagnose
 
-`./uninstall.sh` entfernt Programm, Bundles, Unit, beide Desktopdateien und Icon; Benutzerdaten bleiben. `--purge` löscht sie erst nach Eingabe von `LÖSCHEN`. Dieselben Zielvariablen wie bei der Installation verwenden.
+`./uninstall.sh` entfernt Programm, Browserfenster samt Chromium-Laufzeit, Unit, Desktopdatei und Icon; Benutzerdaten bleiben. `--purge` löscht sie erst nach Eingabe von `LÖSCHEN`. Dieselben Zielvariablen wie bei der Installation verwenden.
 
-`zuruf doctor` prüft lokale Programme, Sockets, T3-Port und Modelle; das bestätigt noch keine Anmeldung oder deutsche Diktatqualität. `zuruf stop` beendet Dienst und Appfenster. Keine Hyprland-Konfigurationsdatei wird geändert. Abnahme und offene Handprüfungen stehen in [abnahme.md](abnahme.md), der reproduzierbare Sammellauf unter `tests/e2e/run.sh`.
+`zuruf doctor` prüft lokale Programme, Sockets, T3-Port und Modelle; das bestätigt noch keine Anmeldung oder deutsche Diktatqualität. `zuruf stop` beendet Dienst und alle Zuruf-Fenster. Keine Hyprland-Konfigurationsdatei wird geändert. Abnahme und offene Handprüfungen stehen in [abnahme.md](abnahme.md), der reproduzierbare Sammellauf unter `tests/e2e/run.sh`.
+
+## Das Browserfenster
+
+Zuruf hat einen eigenen Browser: Chromium ist eingebaut, es gibt keine Extension und kein zweites Programm, zwischen dem man wechseln müsste. Ein Sitzungsfenster zeigt links Zuruf und rechts die geprüfte Seite mit Tab-Leiste und Adressleiste.
+
+| Taste | Wirkung |
+|---|---|
+| Strg+T, Strg+W | Tab öffnen, Tab schließen |
+| Strg+Tab, Strg+Umschalt+Tab | nächster, vorheriger Tab |
+| Strg+L | Adresse eingeben |
+| Strg+R oder F5, Strg+Umschalt+R | neu laden, ohne Zwischenspeicher neu laden |
+| Alt+←, Alt+→ | zurück, vorwärts |
+| Strg+Plus, Strg+Minus, Strg+0 | Zoom |
+| F12 | Entwicklerwerkzeuge in eigenem Fenster |
+
+In die Adressleiste getippte Adressen ohne Schema werden für `localhost` und IP-Adressen mit `http://`, sonst mit `https://` geladen. Links, die ein neues Fenster öffnen wollen, bekommen einen Tab. `panel.toggle` (Standard Alt+P) blendet Zuruf aus und ein; die Seite bekommt dann die volle Breite. Fensterfarben folgen dem Thema aus den Einstellungen.
+
+Das Fenster ist ein Review-Browser, kein Alltagsbrowser: Downloads, Berechtigungsabfragen (Kamera, Mikrofon, Standort) und eine Passwortverwaltung gibt es nicht. Anmeldungen bleiben im Profil der Sitzung erhalten.
+
+Wer das Sitzungsfenster schließt, beendet die Sitzung; sie lässt sich unter „Sitzungen“ oder mit `zuruf open` jederzeit wieder starten. Stürzt der Browser ab, zeigt Zuruf die Sitzung als abgestürzt an – ein erneuter Start genügt.
 
 ## Ein Fenster oder zwei
 
-Unter „Sitzungen“ legt der Schalter „Ein Fenster / Getrennt“ fest, wo der Browser lebt. „Ein Fenster“: Zuruf sitzt mit allen Bereichen links im Fenster des Sitzungsbrowsers, die Seite füllt den Rest; das eigene App-Fenster schließt sich beim Öffnen der Sitzung, `zuruf open` holt das Browserfenster nach vorn. Ohne laufende Sitzung öffnet sich weiterhin das App-Fenster. „Getrennt“: App-Fenster und Browser wie bisher. Die Wahl gilt ab dem nächsten Öffnen einer Sitzung.
+Unter „Sitzungen“ legt der Schalter „Ein Fenster / Getrennt“ fest, wo Zuruf lebt. „Ein Fenster“ ist der Standard: Zuruf sitzt mit allen Bereichen links im Sitzungsfenster, die Seite füllt den Rest; das eigene App-Fenster schließt sich beim Start der Sitzung, `zuruf open` holt das Sitzungsfenster nach vorn. Ohne laufende Sitzung öffnet sich das App-Fenster. „Getrennt“: Im Sitzungsfenster sitzt nur das Review-Werkzeug, die übrige App behält ihr eigenes Fenster. Die Wahl gilt ab dem nächsten Start einer Sitzung.

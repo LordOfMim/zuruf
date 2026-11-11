@@ -69,7 +69,8 @@ pub fn default_shell_path() -> PathBuf {
             directory.join("../lib/zuruf").join(&name),
         ];
         if let Some(found) = candidates.into_iter().find(|path| path.exists()) {
-            return found;
+            // A plain path reads better in diagnostics and in the process list.
+            return found.canonicalize().unwrap_or(found);
         }
     }
     name.into()

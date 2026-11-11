@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Removes what install.sh put in place. User data stays unless --purge is confirmed.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 source scripts/install-paths.sh
@@ -7,14 +8,19 @@ source scripts/install-paths.sh
 if [[ $unit_dir = "$HOME/.config/systemd/user" && $PREFIX = "$HOME/.local" && -z ${ZURUF_INSTALL_TEST:-} ]]; then
   systemctl --user disable --now zuruf.service || true
 fi
-python3 - "$PREFIX" "$unit_dir" "$XDG_DATA_HOME" "$ZURUF_DATA_DIR" <<'PY'
+python3 - "$PREFIX" "$unit_dir" "$XDG_DATA_HOME" "$ZURUF_DATA_DIR" "$lib_dir" <<'PY'
 from pathlib import Path
 import shutil,sys
-prefix,unit,data,app=map(Path,sys.argv[1:])
+prefix,unit,data,app,lib=map(Path,sys.argv[1:])
 for p in [prefix/'bin/zuruf',unit/'zuruf.service',data/'applications/zuruf.desktop',data/'applications/chrome-127.0.0.1__-Default.desktop',data/'icons/hicolor/scalable/apps/zuruf.svg']: p.unlink(missing_ok=True)
+# 'extension' is left over from installations that used system Chromium.
 for name in ['ui','extension']:
     p=app/name
     if p.exists(): shutil.rmtree(p)
+if lib.name=='zuruf' and not lib.is_symlink() and lib.exists(): shutil.rmtree(lib)
+# Do not leave an empty lib directory behind that the installation created.
+try: lib.parent.rmdir()
+except OSError: pass
 PY
 if [[ ${1:-} = --purge ]]; then
   echo "Dauerhaft löschen: $ZURUF_DATA_DIR, $ZURUF_STATE_DIR, $ZURUF_CONFIG_DIR"
