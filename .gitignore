@@ -9,3 +9,11 @@ target/
 tests/*.log
 tests/mcp/.run-*/
 tests/.install-*/
+
+# Local credentials and configuration
+.env.*
+!.env.example
+credential.json
+*.pem
+*.key
+.humaify/
