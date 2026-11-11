@@ -69,10 +69,13 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Rust tests
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         run: cargo test --workspace --locked -j 4
       - name: Rust lint
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
       - name: Build release
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         run: cargo build --workspace --release --locked -j 4
       - name: Fetch license source metadata for all platforms
         run: cargo fetch --locked
