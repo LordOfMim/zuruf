@@ -64,7 +64,10 @@ impl T3Adapter for FakeT3 {
             Ok(vec![T3ProjectRef {
                 id: "fake-project".into(),
                 title: "Demo".into(),
-                workspace_root: "/tmp/zuruf-demo".into(),
+                workspace_root: std::env::temp_dir()
+                    .join("zuruf-demo")
+                    .to_string_lossy()
+                    .into(),
             }])
         })
     }
@@ -118,9 +121,11 @@ impl T3Adapter for FakeT3 {
                 thread_url: Some(format!("http://127.0.0.1/fake/{thread}")),
                 run_id: id(),
                 workspace_path: Some(match input.profile.workspace_strategy {
-                    WorkspaceStrategy::NewWorktree => {
-                        format!("/tmp/zuruf-demo/{}", input.client_request_id)
-                    }
+                    WorkspaceStrategy::NewWorktree => std::env::temp_dir()
+                        .join("zuruf-demo")
+                        .join(&input.client_request_id)
+                        .to_string_lossy()
+                        .into(),
                     WorkspaceStrategy::ExistingWorktree => input
                         .profile
                         .worktree_path

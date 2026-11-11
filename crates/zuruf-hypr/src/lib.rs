@@ -580,23 +580,24 @@ mod tests {
         assert!(key_name("F25").is_err());
         assert!(key_name("Unknown").is_err());
     }
+    #[cfg(unix)]
     #[test]
     fn command_injection() {
         assert_eq!(
             action_command(Path::new("/tmp/a'$(id)"), "app.open").unwrap(),
             "'/tmp/a'\\''$(id)' action 'app.open'"
         );
-        assert!(action_command(Path::new("/bin/zuruf"), "app.open;id").is_err());
+        assert!(action_command(&std::env::current_exe().unwrap(), "app.open;id").is_err());
         assert!(action_command(Path::new("relative"), "app.open").is_err());
     }
     #[test]
     fn conflicts_and_diff() {
         let existing: Vec<ExistingBind> =
             serde_json::from_str(include_str!("../tests/binds.json")).unwrap();
-        let (w, i) = prepare(Path::new("/bin/zuruf"), &[binding()], &existing);
+        let (w, i) = prepare(&std::env::current_exe().unwrap(), &[binding()], &existing);
         assert_eq!(i[0].kind, "taken_by_system");
         assert!(w.is_empty());
-        let (w, i) = prepare(Path::new("/bin/zuruf"), &[binding()], &[]);
+        let (w, i) = prepare(&std::env::current_exe().unwrap(), &[binding()], &[]);
         assert!(i.is_empty());
         let (r, a) = diff(&existing, &w);
         assert!(r.is_empty());

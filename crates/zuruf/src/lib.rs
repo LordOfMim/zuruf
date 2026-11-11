@@ -456,7 +456,10 @@ impl Daemon {
             let p = Project {
                 id: id(),
                 name: "Zuruf Demo".into(),
-                repository_path: "/tmp/zuruf-demo".into(),
+                repository_path: std::env::temp_dir()
+                    .join("zuruf-demo")
+                    .to_string_lossy()
+                    .into(),
                 base_url: "http://localhost:3000".into(),
                 t3_project_id: Some("fake-project".into()),
                 default_profile_id: None,
