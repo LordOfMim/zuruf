@@ -32,15 +32,19 @@ async function until(name, probe, timeout = 25000) {
 let token;
 let daemon;
 let browser;
+let ownerBrowser;
 let lastSession;
 let log = "";
 const viaLauncher = process.platform === "win32";
 function alive(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
-async function appWindows() {
+async function daemonLog() {
   const contents = log + await readFile(join(env.ZURUF_STATE_DIR, "daemon.log"), "utf8").catch(() => "");
-  const plain = contents.replace(/\u001b\[[0-9;]*m/g, "");
+  return contents.replace(/\u001b\[[0-9;]*m/g, "");
+}
+async function appWindows() {
+  const plain = await daemonLog();
   return [...plain.matchAll(/app window started pid=(\d+)/g)].map((match) => Number(match[1]));
 }
 async function api(method, path, body) {
@@ -69,6 +73,8 @@ try {
     } catch { return false; }
   });
   if (viaLauncher) await until("the GUI launcher to finish opening the app", () => daemon.exitCode === 0);
+  // This inert profile only unlocks the real session-management UI. Never dispatch it.
+  await api("POST", "/profiles", { name: "UI fixture", providerInstanceId: "fixture-not-connected", model: "fixture", options: {}, workspaceStrategy: "shared_root" });
   const project = await api("POST", "/projects", { name: "Release fixture", repositoryPath: directory, baseUrl: url });
   const session = await api("POST", "/sessions", { projectId: project.id, name: "Release smoke", mode: "shared", agentAccess: true });
   const current = async () => (lastSession = (await api("GET", "/state")).sessions.find((entry) => entry.id === session.id));
@@ -97,16 +103,34 @@ try {
     await until("the restored width", async () => await page.evaluate(() => innerWidth) === 390);
     await browser.close(); browser = undefined;
   }
-  const windowsBeforeStop = (await appWindows()).length;
-  assert.equal((await api("POST", `/sessions/${session.id}/stop`, {})).state, "stopped");
-  const appPid = await until("the standalone app after stopping the last session", async () =>
-    (await appWindows()).slice(windowsBeforeStop).find(alive));
-  await sleep(600);
-  assert.equal((await current()).state, "stopped");
-  assert(alive(appPid), "stopping a session must keep the application open");
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const windowsBeforeStop = (await appWindows()).length;
+    // The owner inspects the native panel; the agent connection above must never see it.
+    const nativeLog = await readFile(join(env.ZURUF_DATA_DIR, "sessions", session.id, "shell.log"), "utf8");
+    const nativePort = [...(await daemonLog()).matchAll(/browser session started session_id=([\w-]+) port=(\d+)/g)]
+      .filter((match) => match[1] === session.id).at(-1)?.[2];
+    const endpoint = nativeLog.match(/DevTools listening on (ws:\/\/[^\s]+)/)?.[1]
+      ?? (nativePort ? `http://127.0.0.1:${nativePort}` : undefined);
+    assert(endpoint, "the native test browser must publish its diagnostic endpoint");
+    ownerBrowser = await chromium.connectOverCDP(endpoint);
+    const panel = await until("the actual docked app", () => ownerBrowser.contexts()[0].pages().find((page) => page.url().startsWith(`${base}/panel.html`)));
+    await panel.getByRole("button", { name: "Sitzungen", exact: true }).click();
+    await panel.getByRole("button", { name: "Stoppen", exact: true }).click({ noWaitAfter: true }).catch((error) => {
+      if (!panel.isClosed()) throw error;
+    });
+    await until("the session stopped by its own panel", async () => (await current()).state === "stopped");
+    const appPid = await until("the standalone app after stopping the last session", async () =>
+      (await appWindows()).slice(windowsBeforeStop).find(alive));
+    await ownerBrowser.close().catch(() => {}); ownerBrowser = undefined;
+    await sleep(600);
+    assert.equal((await current()).state, "stopped");
+    assert(alive(appPid), "stopping a session must keep the application open");
+    await api("POST", `/sessions/${session.id}/start`, {});
+    await until("the standalone app to dock into the new session", () => !alive(appPid));
+    await until("the redocked fixture", async () => (await current()).tabs.some((tab) => tab.scriptable && tab.url === url));
+    console.log(`PASS native panel Stop and redock cycle ${cycle + 1}`);
+  }
   // Updates use this CLI while windows are still open. It must wait for browser cleanup.
-  await api("POST", `/sessions/${session.id}/start`, {});
-  await until("the standalone app to dock into the new session", () => !alive(appPid));
   const stop = spawn(join(prefix, `bin/zuruf${process.platform === "win32" ? ".exe" : ""}`), ["stop"], { env, windowsHide: true, stdio: "ignore" });
   const stopped = new Promise((done, reject) => {
     stop.once("error", reject);
@@ -138,6 +162,7 @@ try {
   console.error(redact(log.split("\n").slice(-12).join("\n")));
   throw error;
 } finally {
+  await ownerBrowser?.close().catch(() => {});
   await browser?.close().catch(() => {});
   if (token) {
     await api("POST", "/shutdown", {}).catch(() => {});

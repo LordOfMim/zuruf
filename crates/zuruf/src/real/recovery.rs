@@ -149,16 +149,9 @@ impl Browsers {
         self: Arc<Self>,
         session: &str,
     ) -> std::result::Result<(), AdapterError> {
-        let carried_app = self.sessions.lock().await.contains_key(session);
         let life = self.lifecycle(session).await?;
         let requested = life.request(false, true);
-        life.wait(requested).await?;
-        if carried_app && *life.intent.borrow() == requested && !*self.shutting_down.borrow() {
-            // Closing the session also removes its docked panel. Keep the application
-            // visible in another running session, or reopen its standalone window.
-            self.open_app(&self.daemon()?, "sessions").await?;
-        }
-        Ok(())
+        life.wait(requested).await
     }
 
     pub(crate) fn cancel_recovery(&self) {
@@ -228,6 +221,7 @@ impl Browsers {
         let mut wanted = life.intent.subscribe();
         let mut shutdown = self.shutting_down.subscribe();
         let mut failures: u32 = 0;
+        let mut keep_app_visible = false;
         loop {
             if *shutdown.borrow() {
                 break;
@@ -238,6 +232,23 @@ impl Browsers {
                     let _ = self
                         .phase(&session, &life, intent, BrowserSessionState::Stopped, None)
                         .await;
+                }
+                if keep_app_visible && *wanted.borrow() == intent {
+                    let Ok(daemon) = self.daemon() else {
+                        break;
+                    };
+                    // The old panel owns the HTTP connection that requested Stop. Closing
+                    // that window cancels its request, so this supervisor owns the handoff.
+                    tokio::select! {
+                        result = self.open_app(&daemon, "sessions") => {
+                            if let Err(error) = result {
+                                tracing::warn!(session_id=%session, error=%error, "app handoff failed");
+                            }
+                            keep_app_visible = false;
+                        },
+                        _ = wanted.changed() => continue,
+                        _ = shutdown.changed() => break,
+                    }
                 }
                 life.report(intent, Phase::Stopped);
                 tokio::select! {
@@ -251,6 +262,13 @@ impl Browsers {
                 .phase(&session, &life, intent, BrowserSessionState::Starting, None)
                 .await;
             life.report(intent, Phase::Connecting);
+            // An occupied lock means the app is already opening or closing. Remember
+            // that handoff without delaying Stop behind another window's startup.
+            let app_present = match self.app_window.try_lock() {
+                Ok(window) => window.is_some(),
+                Err(_) => true,
+            };
+            keep_app_visible |= app_present;
             let launched = tokio::select! {
                 result = self.launch(&session) => Some(result),
                 _ = wanted.changed() => None,
@@ -265,6 +283,7 @@ impl Browsers {
                     model,
                     events,
                 }) => {
+                    keep_app_visible = true;
                     if *wanted.borrow() != intent || *shutdown.borrow() {
                         let _ = browser.stop().await;
                         continue;

@@ -49,6 +49,8 @@ ZURUF_SHELL_ARGS=--disable-gpu xvfb-run -a -s '-screen 0 1600x1000x24' python to
 
 Der native Test verwendet einen echten Daemon und Chromium, private temporäre Daten und einen lokalen HTTP-Prüfserver. Er prüft Start, Klicks, Screenshot, gefilterten Agentenzugang, Seitenbreite, Profilwiederherstellung und gezieltes Stoppen. Es werden keine echten Modellaufrufe, Mikrofonaufnahmen oder T3-Aufgaben ausgelöst. Windows wird auf einem Windows-Runner gebaut und ausgeführt; Diktat und desktopweite Hotkeys bleiben Linux-Funktionen.
 
+Der Sitzungsstopp wird dreimal über den tatsächlichen „Stoppen“-Button im nativen Panel ausgelöst. Dabei darf dessen Clientverbindung mit dem alten Fenster enden: Die Sitzungsverwaltung muss das Hauptfenster unabhängig davon erhalten und beim erneuten Start wieder andocken. Der Prüfclient als Besitzer darf dafür den privaten Panel-Target untersuchen; der gefilterte Agentenzugang bleibt davon getrennt.
+
 ## Neuen Release erstellen
 
 1. Änderungen per Pull Request prüfen und beide Plattform-Jobs abwarten.

@@ -211,7 +211,7 @@ impl Browser {
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        tracing::info!(session_id = %config.session_id, "browser session started");
+        tracing::info!(session_id = %config.session_id, port, "browser session started");
 
         let (events, _) = broadcast::channel(256);
         let remembered = Arc::new(Mutex::new(config.urls.clone()));
