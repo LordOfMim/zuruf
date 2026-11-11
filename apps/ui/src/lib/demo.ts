@@ -88,7 +88,7 @@ function createDemoSnapshot(): Snapshot {
       theme: "system",
       language: "de",
       openPanelOnReviewStart: true,
-      browser: new URLSearchParams(location.search).has("docked") ? "integrated" : "separate",
+      browser: new URLSearchParams(location.search).has("separate") ? "separate" : "integrated",
     },
     dataDir: "~/.local/share/zuruf",
   };
@@ -253,6 +253,25 @@ function createDemoSnapshot(): Snapshot {
           shadowPath: [],
           children: [],
         },
+        diagnostics: [
+          {
+            kind: "network",
+            level: "error",
+            text: "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+            url: "http://localhost:3000/api/angebote/17",
+            count: 1,
+            ageMs: 2400,
+          },
+          {
+            kind: "exception",
+            level: "error",
+            text: "TypeError: Cannot read properties of undefined (reading 'id')",
+            url: "http://localhost:3000/src/angebote/speichern.ts",
+            line: 42,
+            count: 1,
+            ageMs: 2390,
+          },
+        ],
       }),
       annotation(2, "region", "Der Abstand zwischen den Karten ist zu eng.", {}),
       annotation(3, "viewport", "Hier fehlt ein Leerzustand, wenn der Filter nichts findet.", {

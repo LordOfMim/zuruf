@@ -1,29 +1,44 @@
+// Hyprland check of the app window: `zuruf open` starts the daemon, shows one window with the
+// app id "zuruf", and a second `open` focuses that same window instead of opening another.
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, '../..');
-const env = {...process.env,ZURUF_PORT:'47638',ZURUF_DATA_DIR:process.env.ZURUF_SMOKE_DATA || `${process.env.HOME}/.local/share/zuruf/e2e-app`,ZURUF_STATE_DIR:process.env.ZURUF_SMOKE_STATE || `${process.env.HOME}/.local/state/zuruf/e2e-app`,ZURUF_CONFIG_DIR:process.env.ZURUF_SMOKE_CONFIG || `${process.env.HOME}/.local/share/zuruf/e2e-app-config`};
+const home = process.env.HOME;
+const env = {
+  ...process.env,
+  ZURUF_PORT: '47638',
+  ZURUF_DATA_DIR: process.env.ZURUF_SMOKE_DATA || `${home}/.local/share/zuruf/e2e-app`,
+  ZURUF_STATE_DIR: process.env.ZURUF_SMOKE_STATE || `${home}/.local/state/zuruf/e2e-app`,
+  ZURUF_CONFIG_DIR: process.env.ZURUF_SMOKE_CONFIG || `${home}/.local/share/zuruf/e2e-app-config`,
+};
 delete env.ZURUF_FAKE_ADAPTERS;
 delete env.T3_URL;
-const cli = (...args)=>exec(process.env.ZURUF_SMOKE_BIN || resolve(root,'target/debug/zuruf'),args,{env});
+const cli = (...args) => exec(process.env.ZURUF_SMOKE_BIN || resolve(root, 'target/debug/zuruf'), args, { env });
+const windows = async () => {
+  const { stdout } = await exec('hyprctl', ['clients', '-j']);
+  return JSON.parse(stdout).filter((client) => client.class === 'zuruf');
+};
 try {
- await cli('open','--view','sessions');
- const {stdout}=await cli('status');assert(JSON.parse(stdout).status.protocolVersion===1);
- await exec('systemctl',['--user','is-active','zuruf-app.service']);
- const {stdout:pidText}=await exec('systemctl',['--user','show','zuruf-app.service','--property=MainPID','--value']);
- const pid=Number(pidText.trim());
- let found=false;let owned=[];
- for(let i=0;i<100;i++) {
-  const {stdout}=await exec('hyprctl',['clients','-j']);
-  owned=JSON.parse(stdout).filter(w=>w.pid===pid).map(w=>({class:w.class,initialClass:w.initialClass}));
-  if(owned.some(w=>w.class==='chrome-127.0.0.1__-Default')) { found=true;break; }
-  await new Promise(r=>setTimeout(r,100));
- }
- assert(found,'App window class: '+JSON.stringify(owned));
- await cli('open','--view','settings');
- const {stdout:focused}=await exec('hyprctl',['activewindow','-j']);assert.equal(JSON.parse(focused).pid,pid);
- const {stdout:pidAgain}=await exec('systemctl',['--user','show','zuruf-app.service','--property=MainPID','--value']);assert.equal(Number(pidAgain.trim()),pid);
- console.log('Real app window and daemon autostart: passed; identity '+JSON.stringify(owned));
-} finally { await cli('stop'); }
+  const before = new Set((await windows()).map((client) => client.address));
+  await cli('open', '--view', 'sessions');
+  const { stdout } = await cli('status');
+  assert.equal(JSON.parse(stdout).status.protocolVersion, 1);
+  let own = [];
+  for (let attempt = 0; attempt < 100 && own.length === 0; attempt++) {
+    own = (await windows()).filter((client) => !before.has(client.address));
+    if (own.length === 0) await new Promise((done) => setTimeout(done, 100));
+  }
+  assert.equal(own.length, 1, 'expected exactly one new window with app id "zuruf"');
+  await cli('open', '--view', 'settings');
+  await new Promise((done) => setTimeout(done, 300));
+  const { stdout: focused } = await exec('hyprctl', ['activewindow', '-j']);
+  assert.equal(JSON.parse(focused).address, own[0].address, 'the second open focuses the same window');
+  const after = (await windows()).filter((client) => !before.has(client.address));
+  assert.equal(after.length, 1, 'the second open must not create another window');
+  console.log('Real app window and daemon autostart: passed; app id zuruf, pid ' + own[0].pid);
+} finally {
+  await cli('stop');
+}

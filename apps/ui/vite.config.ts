@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 
-// Two entry points from one codebase: the app window and the side panel.
-// Relative base so the panel bundle also works from inside the extension.
+// Two entry points from one codebase: the app window and the panel docked in a session window.
+// Both are served by the daemon; the relative base keeps them independent of the mount path.
 export default defineConfig({
   base: "./",
   plugins: [solid()],

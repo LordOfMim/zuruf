@@ -1,5 +1,5 @@
 // Run in a memory-capped systemd unit. This creates ONE real T3 test thread.
-import { chromium } from '../../apps/extension/node_modules/playwright-core/index.mjs';
+import { chromium } from '../../apps/page/node_modules/playwright-core/index.mjs';
 import { spawn } from 'node:child_process';
 import { readFile, mkdir, writeFile, copyFile, chmod } from 'node:fs/promises';
 import { createServer } from 'node:http';

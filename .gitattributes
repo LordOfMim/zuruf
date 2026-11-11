@@ -1,0 +1,2 @@
+# Shell scripts run on Linux; keep their line endings independent of the checkout platform.
+*.sh text eol=lf

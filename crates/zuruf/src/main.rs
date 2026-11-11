@@ -103,7 +103,7 @@ async fn run() -> Result<(), Error> {
         return Ok(());
     }
     if matches!(args.command, Command::Open { .. }) {
-        ensure_daemon(&base).await?;
+        ensure_daemon(&base, &paths).await?;
     }
     match args.command {
         Command::Daemon { seed_demo } => {
@@ -119,14 +119,13 @@ async fn run() -> Result<(), Error> {
                 let _ = daemon.close().await;
                 return Err(error);
             }
-            let listener =
-                match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
-                    Ok(listener) => listener,
-                    Err(error) => {
-                        let _ = daemon.close().await;
-                        return Err(StoreError::from(error).into());
-                    }
-                };
+            let listener = match bind(port).await {
+                Ok(listener) => listener,
+                Err(error) => {
+                    let _ = daemon.close().await;
+                    return Err(StoreError::from(error).into());
+                }
+            };
             tracing::info!(
                 port = listener.local_addr().map_err(StoreError::from)?.port(),
                 "daemon listening"
@@ -165,6 +164,12 @@ async fn run() -> Result<(), Error> {
                 .await
                 .map_err(StoreError::from)?;
             let client = reqwest::Client::new();
+            // With fake adapters there are no windows; print a sign-in link instead.
+            let fake = std::env::var("ZURUF_FAKE_ADAPTERS").as_deref() == Ok("1");
+            let view = match &command {
+                Command::Open { view: Some(view) } => view.as_str(),
+                _ => "tasks",
+            };
             let request = match &command {
                 Command::Status => client.get(format!("{base}/api/v1/state")),
                 Command::Action { action_id } => client
@@ -173,9 +178,13 @@ async fn run() -> Result<(), Error> {
                 Command::Stop => client
                     .post(format!("{base}/api/v1/shutdown"))
                     .json(&serde_json::json!({})),
-                Command::Open { .. } => client
+                Command::Open { .. } if fake => client
                     .post(format!("{base}/api/v1/auth/code"))
                     .json(&serde_json::json!({})),
+                // The daemon shows the app: docked in the session window or in its own.
+                Command::Open { .. } => client
+                    .post(format!("{base}/api/v1/app/open"))
+                    .json(&serde_json::json!({ "view": view })),
                 Command::Daemon { .. } | Command::Doctor | Command::T3 { .. } => return Ok(()),
             };
             let response = request
@@ -188,176 +197,120 @@ async fn run() -> Result<(), Error> {
                 .json::<serde_json::Value>()
                 .await
                 .map_err(|e| Error::Join(e.to_string()))?;
-            if let Some(code) = response["code"].as_str() {
-                let view = match &command {
-                    Command::Open { view: Some(view) } => format!("&view={view}"),
-                    _ => String::new(),
-                };
-                if std::env::var("ZURUF_FAKE_ADAPTERS").as_deref() == Ok("1") {
-                    println!("{base}/#code={code}{view}");
-                } else {
-                    let opened = client.post(format!("{base}/api/v1/app/open"))
-                        .bearer_auth(token.trim())
-                        .json(&serde_json::json!({"view": match &command { Command::Open { view: Some(view) } => view.as_str(), _ => "tasks" }}))
-                        .send().await.map_err(|e| Error::Join(e.to_string()))?
-                        .error_for_status().map_err(|e| Error::Join(e.to_string()))?
-                        .json::<serde_json::Value>().await.map_err(|e| Error::Join(e.to_string()))?;
-                    // One-window mode with a running session: the daemon focused that window.
-                    if opened["window"] != "session" {
-                        open_window(&paths, &format!("{base}/#code={code}{view}")).await?;
-                    }
-                }
-            } else {
-                if matches!(command, Command::Stop) {
-                    let _ = tokio::process::Command::new("systemctl")
-                        .args(["--user", "stop", "zuruf-app.service"])
-                        .output()
-                        .await;
-                }
-                println!("{}", serde_json::to_string_pretty(&response)?);
+            match response["code"].as_str() {
+                Some(code) => println!("{base}/#code={code}&view={view}"),
+                None => println!("{}", serde_json::to_string_pretty(&response)?),
             }
         }
     }
     Ok(())
 }
 
-async fn ensure_daemon(base: &str) -> Result<(), Error> {
+/// Listen on the daemon's loopback port. The port lies in the range the system also hands to
+/// outgoing connections, and a daemon that has just stopped may not have let go of it yet;
+/// that is worth a wait of up to fifteen seconds rather than a failed start.
+async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let mut attempts = 0;
+    loop {
+        match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && attempts < 60 => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
     let client = reqwest::Client::new();
     if client.get(base).send().await.is_ok() {
         return Ok(());
     }
-    let installed = tokio::process::Command::new("systemctl")
-        .args(["--user", "cat", "zuruf.service"])
-        .output()
-        .await
-        .map_err(StoreError::from)?
-        .status
-        .success();
-    let mut command = if installed {
-        let mut c = tokio::process::Command::new("systemctl");
-        c.args(["--user", "start", "zuruf.service"]);
-        c
-    } else {
-        let mut c = tokio::process::Command::new("systemd-run");
-        c.args([
-            "--user",
-            "--collect",
-            "--unit=zuruf-daemon",
-            "--description=Zuruf daemon",
-            "-p",
-            "MemoryMax=3G",
-            "-p",
-            "MemorySwapMax=1G",
-        ]);
-        for name in [
-            "ZURUF_PORT",
-            "ZURUF_DATA_DIR",
-            "ZURUF_STATE_DIR",
-            "ZURUF_CONFIG_DIR",
-            "ZURUF_FAKE_ADAPTERS",
-            "T3_URL",
-            "ZURUF_MASK_SELECTORS",
-            "WAYLAND_DISPLAY",
-            "HYPRLAND_INSTANCE_SIGNATURE",
-        ] {
-            if let Ok(value) = std::env::var(name) {
-                c.arg(format!("--setenv={name}={value}"));
+    let binary = std::env::current_exe().map_err(StoreError::from)?;
+    let systemd = cfg!(target_os = "linux")
+        && std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|runtime| {
+            std::path::Path::new(&runtime)
+                .join("systemd/private")
+                .exists()
+        });
+    let started = if systemd {
+        let installed = tokio::process::Command::new("systemctl")
+            .args(["--user", "cat", "zuruf.service"])
+            .output()
+            .await
+            .map_err(StoreError::from)?
+            .status
+            .success();
+        let mut command = if installed {
+            let mut c = tokio::process::Command::new("systemctl");
+            c.args(["--user", "start", "zuruf.service"]);
+            c
+        } else {
+            let mut c = tokio::process::Command::new("systemd-run");
+            c.args([
+                "--user",
+                "--collect",
+                "--unit=zuruf-daemon",
+                "--description=Zuruf daemon",
+                "-p",
+                "MemoryMax=3G",
+                "-p",
+                "MemorySwapMax=1G",
+            ]);
+            for name in [
+                "ZURUF_PORT",
+                "ZURUF_DATA_DIR",
+                "ZURUF_STATE_DIR",
+                "ZURUF_CONFIG_DIR",
+                "ZURUF_FAKE_ADAPTERS",
+                "ZURUF_SHELL",
+                "ZURUF_SHELL_ARGS",
+                "T3_URL",
+                "ZURUF_MASK_SELECTORS",
+                "WAYLAND_DISPLAY",
+                "DISPLAY",
+                "HYPRLAND_INSTANCE_SIGNATURE",
+            ] {
+                if let Ok(value) = std::env::var(name) {
+                    c.arg(format!("--setenv={name}={value}"));
+                }
             }
-        }
-        c.arg(std::env::current_exe().map_err(StoreError::from)?)
-            .arg("daemon");
-        c
+            c.arg(&binary).arg("daemon");
+            c
+        };
+        command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(StoreError::from)?
+            .success()
+    } else {
+        // No systemd user session: the daemon runs as a plain background process. There is
+        // no journal either, so it keeps its own log.
+        tokio::fs::create_dir_all(&paths.state)
+            .await
+            .map_err(StoreError::from)?;
+        let log =
+            std::fs::File::create(paths.state.join("daemon.log")).map_err(StoreError::from)?;
+        tokio::process::Command::new(&binary)
+            .arg("daemon")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(log)
+            .spawn()
+            .is_ok()
     };
-    if !command
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(StoreError::from)?
-        .success()
-    {
+    if !started {
         return Err(Error::Join("Daemon konnte nicht gestartet werden".into()));
     }
-    for _ in 0..100 {
+    // Longer than the daemon is willing to wait for its port.
+    for _ in 0..200 {
         if client.get(base).send().await.is_ok() {
             return Ok(());
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     Err(Error::Join("Daemon-Start Timeout".into()))
-}
-async fn open_window(paths: &Paths, url: &str) -> Result<(), Error> {
-    use std::os::unix::fs::PermissionsExt;
-    let profile = paths.data.join("ui-profile");
-    tokio::fs::create_dir_all(&profile)
-        .await
-        .map_err(StoreError::from)?;
-    tokio::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o700))
-        .await
-        .map_err(StoreError::from)?;
-    let unit = tokio::process::Command::new("systemctl")
-        .args(["--user", "is-active", "zuruf-app.service"])
-        .output()
-        .await
-        .map_err(StoreError::from)?;
-    if unit.status.success() {
-        let pid = tokio::process::Command::new("systemctl")
-            .args([
-                "--user",
-                "show",
-                "zuruf-app.service",
-                "--property=MainPID",
-                "--value",
-            ])
-            .output()
-            .await
-            .map_err(StoreError::from)?;
-        let pid: u32 = String::from_utf8_lossy(&pid.stdout)
-            .trim()
-            .parse()
-            .map_err(|_| Error::Join("App-PID fehlt".into()))?;
-        let desktop =
-            zuruf_hypr::Hyprland::detect(std::env::current_exe().map_err(StoreError::from)?)
-                .await
-                .map_err(|e| Error::Join(e.to_string()))?;
-        let address = desktop
-            .find_window(pid)
-            .await
-            .map_err(|e| Error::Join(e.to_string()))?
-            .ok_or_else(|| Error::Join("App-Fenster fehlt".into()))?;
-        desktop
-            .focus(&address)
-            .await
-            .map_err(|e| Error::Join(e.to_string()))?;
-        return Ok(());
-    }
-    let status = tokio::process::Command::new("systemd-run")
-        .args([
-            "--user",
-            "--collect",
-            "--unit=zuruf-app",
-            "--description=Zuruf App",
-            "-p",
-            "MemoryMax=1G",
-            "-p",
-            "MemorySwapMax=512M",
-            "/usr/bin/chromium",
-            "--ozone-platform=wayland",
-            "--class=zuruf",
-            "--no-first-run",
-            "--no-default-browser-check",
-        ])
-        .arg(format!("--user-data-dir={}", profile.display()))
-        .arg(format!("--app={url}"))
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(StoreError::from)?;
-    if !status.success() {
-        return Err(Error::Join(
-            "App-Fenster konnte nicht gestartet werden".into(),
-        ));
-    }
-    Ok(())
 }

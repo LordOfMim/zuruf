@@ -24,7 +24,22 @@ fn version(program: &str) -> bool {
     }
 }
 pub fn run() -> bool {
-    let mut ok = version("chromium");
+    // The browser is Zuruf's own shell with Chromium built in; it must sit next to its library.
+    let shell = zuruf_browser::default_shell_path();
+    let library = shell
+        .parent()
+        .is_some_and(|directory| directory.join("libcef.so").exists());
+    let mut ok = shell.exists() && library;
+    println!(
+        "{}: Browser-Shell {}{}",
+        if ok { "ok" } else { "fehlt" },
+        shell.display(),
+        if shell.exists() && !library {
+            " (libcef.so fehlt daneben)"
+        } else {
+            ""
+        }
+    );
     ok = version("voxtype") && ok;
     ok = version("t3") && ok;
     let reachable = TcpStream::connect_timeout(

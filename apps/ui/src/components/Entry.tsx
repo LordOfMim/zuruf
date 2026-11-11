@@ -1,5 +1,5 @@
 import type { Annotation } from "@zuruf/protocol";
-import { Match, Show, Switch, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createSignal } from "solid-js";
 import type { AppStore } from "../lib/store";
 import { shortUrl } from "../lib/text";
 import { Icon, type IconName, Shot } from "./basics";
@@ -28,9 +28,24 @@ function target(annotation: Annotation): string {
   return shortUrl(annotation.url);
 }
 
+/** "2 Fehler", "1 Warnung": what the page itself reported when the entry was captured. */
+function issueSummary(annotation: Annotation): string {
+  const list = annotation.diagnostics ?? [];
+  const errors = list.filter((entry) => entry.level === "error").length;
+  const warnings = list.length - errors;
+  const parts: string[] = [];
+  if (errors > 0) parts.push(`${errors} Fehler`);
+  if (warnings > 0) parts.push(warnings === 1 ? "1 Warnung" : `${warnings} Warnungen`);
+  return parts.join(", ");
+}
+
+const ISSUE_KIND = { console: "Konsole", exception: "Ausnahme", network: "Anfrage" } as const;
+
 /** One feedback entry of the open batch: thumbnail, editable words, where it points. */
 export function Entry(props: { annotation: Annotation; store: AppStore; onOpenShot: (url: string) => void }) {
   const [focused, setFocused] = createSignal(false);
+  const [issuesOpen, setIssuesOpen] = createSignal(false);
+  const issues = () => props.annotation.diagnostics ?? [];
   const isText = () => props.annotation.type === "text";
   const field = () => (isText() ? "note" : "transcript");
   const value = () => (isText() ? props.annotation.note : props.annotation.transcript);
@@ -107,7 +122,40 @@ export function Entry(props: { annotation: Annotation; store: AppStore; onOpenSh
               unsicher
             </span>
           </Show>
+          <Show when={issues().length > 0}>
+            <button
+              type="button"
+              class="entry-issues-toggle"
+              classList={{ "has-errors": issues().some((entry) => entry.level === "error") }}
+              aria-expanded={issuesOpen()}
+              title="Von der Seite gemeldet – geht mit an den Agenten"
+              onClick={() => setIssuesOpen(!issuesOpen())}
+            >
+              {issueSummary(props.annotation)}
+            </button>
+          </Show>
         </p>
+        <Show when={issuesOpen() && issues().length > 0}>
+          <ul class="entry-issues">
+            <For each={issues()}>
+              {(entry) => (
+                <li class="entry-issue" classList={{ "is-warning": entry.level === "warning" }}>
+                  <span class="entry-issue-kind">
+                    {ISSUE_KIND[entry.kind]}
+                    <Show when={entry.count > 1}> ×{entry.count}</Show>
+                  </span>
+                  <span class="entry-issue-text">{entry.text}</span>
+                  <Show when={entry.url}>
+                    <span class="entry-issue-source">
+                      {shortUrl(entry.url)}
+                      <Show when={entry.line}>:{entry.line}</Show>
+                    </span>
+                  </Show>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
       </div>
 
       <button

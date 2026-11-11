@@ -1,0 +1,9 @@
+{
+  "kind": "network",
+  "level": "error",
+  "text": "example",
+  "url": "example",
+  "line": 1,
+  "count": 1,
+  "ageMs": 1
+}

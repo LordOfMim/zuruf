@@ -1,5 +1,11 @@
 # Zuruf – Abnahme, Welle 3
 
+> **Nachtrag 11.11.2026 – integrierter Browser.** Zuruf läuft seither in einem eigenen Browserfenster (`zuruf-shell`, eingebettetes Chromium 156) statt in System-Chromium mit Extension. Der Bericht unten beschreibt den Aufbau davor; alles zu App-ID, Seitenleiste, Extension und die gemessenen Latenzen gilt für den neuen Aufbau nicht als belegt.
+>
+> Neu geprüft, ohne Desktop in einem Linux-Container (X11 unter Xvfb und Wayland unter sway, Software-Rendering, ohne Sandbox): `cargo test --workspace` (alle bestanden), `cargo test -p zuruf-browser --test shell -- --ignored` (Sitzung im echten Fenster), die Tastenprüfung des Seiten-Agenten (7 von 7), `tests/e2e/shell.mjs` (X11: 11 Prüfungen, Wayland: 12 einschließlich „Fenster schließen“) mit unverändertem Playwright als Agent über `/cdp`, sowie der Installationsrundlauf mit dem Release-Build. Gemessen am installierten Release-Build im Container: `zuruf open` kehrt nach rund 0,2 s zurück, eine Seite nimmt rund 0,4 s nach Sitzungsstart Hotkeys an, ein Fenster mit App und einer Seite belegt rund 310 MiB, der Daemon 13 MiB.
+>
+> **Nicht geprüft und auf dem Zielrechner nachzuholen:** Hyprland selbst (Fokus über `hyprctl`, globale Hotkeys, Fensterregeln), GPU-Rendering und die Chromium-Sandbox, die systemd-Scope mit Speichergrenze, HiDPI und Browserzoom (die Zoom-/DPR-Matrix unten), physische Tastatur und IME, Sprache mit Voxtype, T3-Anbindung, Anmeldungen mit 2FA sowie die Latenz vom Tastendruck bis zur Bestätigung.
+
 Stand: 10.11.2026. Checkout `worktrees/finish`, Branch `feat/finish`. Kein vollständiges Produktabnahmeversprechen. Die Ergebnisse beziehen sich auf diesen Rechner (Hyprland/Wayland, Chromium 155, Voxtype 1.1.1, T3 0.1.7, nur `base.en`). Keine Nutzerfreigabe in T3 wurde stellvertretend erteilt.
 
 ## AT-01 bis AT-20

@@ -1,5 +1,5 @@
 // Explicit live acceptance: one temporary OAuth identity and one read-only T3 thread.
-import { chromium } from '../../apps/extension/node_modules/playwright-core/index.mjs';
+import { chromium } from '../../apps/page/node_modules/playwright-core/index.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

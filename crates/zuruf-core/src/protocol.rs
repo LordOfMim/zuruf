@@ -290,6 +290,40 @@ pub struct LocatorCandidate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
+/// Something the page reported on its own before a capture: a console message, an uncaught
+/// exception or a request that failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic {
+    pub kind: DiagnosticKind,
+    pub level: DiagnosticLevel,
+    pub text: String,
+    /// The script it came from, or the address that failed to load.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// How often the same report came in a row.
+    pub count: u32,
+    /// How long before the capture it was last reported.
+    pub age_ms: u64,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticKind {
+    #[serde(rename = "console")]
+    Console,
+    #[serde(rename = "exception")]
+    Exception,
+    #[serde(rename = "network")]
+    Network,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticLevel {
+    #[serde(rename = "error")]
+    Error,
+    #[serde(rename = "warning")]
+    Warning,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DomCapture {
@@ -398,6 +432,9 @@ pub struct Annotation {
     pub rect: Option<Rect>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dom: Option<DomCapture>,
+    /// Console errors, uncaught exceptions and failed requests of the page at capture time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<Diagnostic>,
     pub assets: Vec<Asset>,
     pub transcript: String,
     pub transcript_state: AnnotationTranscriptState,
@@ -722,9 +759,10 @@ pub struct SettingsUi {
 /// Where the session browser lives: next to the app in one window, or in a window of its own.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SettingsUiBrowser {
-    #[default]
     #[serde(rename = "separate")]
     Separate,
+    /// The default: one window carries the app and the pages under review.
+    #[default]
     #[serde(rename = "integrated")]
     Integrated,
 }

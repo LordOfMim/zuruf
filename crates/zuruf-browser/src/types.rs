@@ -80,6 +80,24 @@ pub struct Viewport {
     pub height: f64,
     pub device_scale_factor: f64,
 }
+/// Something a page reported on its own: a console message, an uncaught exception or a
+/// request that failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic {
+    /// `console`, `exception` or `network`.
+    pub kind: String,
+    /// `error` or `warning`.
+    pub level: String,
+    pub text: String,
+    /// Where it came from: the script, or the address that failed to load.
+    pub url: Option<String>,
+    pub line: Option<u32>,
+    /// How often the same report came in a row.
+    pub count: u32,
+    /// How long before the capture it was last reported.
+    pub age_ms: u64,
+}
 #[derive(Debug, Clone)]
 pub struct CaptureResult {
     pub raw_png: Vec<u8>,
@@ -92,11 +110,17 @@ pub struct CaptureResult {
     pub rect: Option<Rect>,
     pub dom: Option<DomCapture>,
     pub tab: BrowserTab,
+    /// What the page reported since its document loaded, oldest first.
+    pub diagnostics: Vec<Diagnostic>,
 }
 #[derive(Debug, Clone)]
 pub enum BrowserEvent {
     TabsChanged(Vec<BrowserTab>),
+    /// The browser went away unexpectedly.
     Crashed,
+    /// The user closed the session's window.
+    Closed,
     ControlChanged(ControlState),
-    Extension(Box<crate::extension::Envelope>),
+    /// A key press, picker result or other message from a page.
+    Page(Box<crate::bridge::Envelope>),
 }

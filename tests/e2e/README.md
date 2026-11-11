@@ -1,5 +1,7 @@
 # Reale Verdrahtung – Abnahmebericht
 
+> **Stand integrierter Browser.** Zuruf bringt sein Browserfenster selbst mit (`zuruf-shell`); System-Chromium, Extension und die Unit `zuruf-app.service` gibt es nicht mehr. Der aktuelle, T3-unabhängige Durchlauf ist `node tests/e2e/shell.mjs`: echter Daemon, eigenes Fenster, angedockte App, unverändertes Playwright als Agent über `/cdp`, Hotkey-Aufnahmen, Takeover, Absturz und Neustart, Fenster schließen. Er läuft unter X11 und Wayland, ohne Desktop im Container aus `tools/dev/`. Bauen: `pnpm --filter @zuruf/ui build`, `pnpm --filter @zuruf/page build`, dann `cargo build`. Der Bericht unten stammt aus der Zeit davor; seine Messwerte und die Abschnitte zu App-ID, Panel und Extension sind überholt.
+
 Stand: 10.11.2026, Branch `feat/wire`. Kein vollständiges AT-01–AT-20-Abnahmeversprechen.
 
 ## Start und Build
@@ -8,7 +10,7 @@ Alle Befehle aus dem Worktree ausführen. UI vor Extension bauen, beide vor Rust
 
 ```sh
 systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=1G -p MemorySwapMax=512M -- pnpm --dir apps/ui build
-systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=1G -p MemorySwapMax=512M -- pnpm --dir apps/extension build
+systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=1G -p MemorySwapMax=512M -- pnpm --dir apps/page build
 systemd-run --user --wait --collect --pipe --working-directory="$PWD" -p MemoryMax=3G -p MemorySwapMax=1G -- mise exec rust@stable -- cargo build -j 2 -p zuruf
 ```
 

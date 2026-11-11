@@ -203,6 +203,23 @@ export interface DomCapture {
   children: string[];
 }
 
+/**
+ * Something the page reported on its own before a capture: a console message, an uncaught
+ * exception or a request that failed. Collected automatically; the agent gets them in the manifest.
+ */
+export interface Diagnostic {
+  kind: "console" | "exception" | "network";
+  level: "error" | "warning";
+  text: string;
+  /** The script it came from, or the address that failed to load. */
+  url?: string | null;
+  line?: number | null;
+  /** How often the same report came in a row. */
+  count: number;
+  /** How long before the capture it was last reported. */
+  ageMs: number;
+}
+
 export interface Annotation {
   id: Id;
   batchId: Id;
@@ -222,6 +239,8 @@ export interface Annotation {
   /** Region rectangle in viewport CSS pixels. */
   rect?: Rect | null;
   dom?: DomCapture | null;
+  /** What the page had reported when the capture was taken, oldest first. Absent when nothing. */
+  diagnostics?: Diagnostic[];
   assets: Asset[];
   /** Editable transcript; starts as the joined text of the linked segments. */
   transcript: string;
@@ -388,7 +407,7 @@ export interface Settings {
     theme: "system" | "dark" | "light";
     language: "de" | "en";
     openPanelOnReviewStart: boolean;
-    /** integrated: Zuruf docks into the session browser's window; separate: two windows. */
+    /** integrated (default): the app docks into the session window; separate: it keeps a window of its own. */
     browser?: "separate" | "integrated";
   };
   dataDir: string;
@@ -534,6 +553,7 @@ export interface ControlRequest {
  * POST   /sessions/:id/start | /stop | /duplicate → BrowserSession
  * POST   /sessions/:id/tabs    { url }            → BrowserSession
  * POST   /sessions/:id/control ControlRequest     → BrowserSession
+ * POST   /sessions/:id/page-width { width: number | null } → { ok: true, width }   width pages are shown at; null: full width
  *
  * POST   /reviews              { projectId, name } → Review
  * PATCH  /batches/:id          { title?, note?, profileId? } → Batch     drafts only

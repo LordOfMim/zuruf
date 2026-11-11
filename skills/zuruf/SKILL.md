@@ -5,7 +5,7 @@ description: Operate Zuruf, the local browser-review app on this machine (CLI `z
 
 # Zuruf
 
-Zuruf is a local app: the user reviews a web app in a managed Chromium, marks things (screenshot,
+Zuruf is a local app with its own browser window: the user reviews a web app there, marks things (screenshot,
 region, element, spoken or typed note) and sends the batch to a coding agent as a task. You meet it
 in two roles. Know which one you are in.
 
@@ -21,7 +21,7 @@ zuruf open                      # start the service if needed, open or focus the
 zuruf open --view tasks         # views: tasks | sessions | settings | review
 zuruf status                    # full state as JSON (projects, sessions, batches, tasks, settings)
 zuruf action <action-id>        # trigger what a shortcut would trigger
-zuruf doctor                    # check Chromium, Voxtype, T3 Code, sockets
+zuruf doctor                    # check the browser shell, Voxtype, T3 Code, sockets
 zuruf stop                      # stop service and app window
 zuruf t3 pair --origin http://127.0.0.1:<port>   # connect to T3 Code; the user confirms in T3
 ```
@@ -55,7 +55,7 @@ api -X POST http://127.0.0.1:47600/api/v1/sessions/<sessionId>/tabs  -d '{"url":
 api -X POST http://127.0.0.1:47600/api/v1/sessions/<sessionId>/stop  -d '{}'
 ```
 
-A session is a Chromium with its own profile, created by the user in the app (Sitzungen). Starting
+A session is a Zuruf browser window with its own profile, created by the user in the app (Sitzungen). Starting
 one opens the project's address. If there is no session or project yet, open the app
 (`zuruf open --view sessions`) and let the user set it up; do not create projects, profiles or
 sessions on your own.
@@ -135,3 +135,11 @@ failing with 401, say so in your reply; you cannot renew it yourself.
 - Do not start a second service or change the port; `ZURUF_PORT` and the `ZURUF_*_DIR` variables
   exist for tests.
 - Screenshots can show personal data. Do not paste them into other services or public places.
+
+## Working alongside the user
+
+The user watches the session window while you work. Keep them in the picture:
+
+- `report_progress {message}` shows a short note in the page as well as in the task list. Say what you are about to do, not what you did.
+- `show_in_browser {selector, message}` marks an element in the visible tab with your message beside it. Use it to ask ("Is this the button you mean?") or to show a result. It needs no browser control and returns `{"shown": false}` when the selector matches nothing.
+- While you hold browser control, the user sees your pointer and clicks. They can take over at any moment; your commands are then refused until they release control.

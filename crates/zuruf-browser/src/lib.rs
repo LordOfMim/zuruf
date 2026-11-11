@@ -1,12 +1,12 @@
-//! Managed Chromium sessions. Raw debugging endpoints never leave this crate.
+//! Browser sessions in Zuruf's own shell window. Raw debugging endpoints never leave this crate.
+pub mod bridge;
 pub mod capture;
 pub mod cdp;
 pub mod control;
-pub mod extension;
 pub mod proxy;
 pub mod session;
 pub mod types;
-pub use session::{Browser, SessionConfig};
+pub use session::{AppWindow, Browser, SessionConfig, default_shell_path};
 pub use types::*;
 
 #[derive(Debug, thiserror::Error)]

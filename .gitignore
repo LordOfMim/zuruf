@@ -17,3 +17,7 @@ credential.json
 *.pem
 *.key
 .humaify/
+
+# Screenshots taken while developing in the container
+tools/dev/*.png
+.pnpm-store/

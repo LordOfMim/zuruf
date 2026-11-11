@@ -31,6 +31,9 @@ pub trait ZurufApi: Send + Sync {
     ) -> ApiFuture<'_, Value>;
     /// Must use the browser's authoritative arbiter (also used by human takeover).
     fn control(&self, scope: Scope, action: String, seconds: u64) -> ApiFuture<'_, Value>;
+    /// Mark an element in the session's visible tab for the person at the browser, with a
+    /// message. Needs no control of the browser: it only shows, it does not act.
+    fn show(&self, scope: Scope, selector: String, message: String) -> ApiFuture<'_, Value>;
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -224,6 +227,11 @@ fn definitions() -> Vec<(&'static str, Value, Vec<&'static str>)> {
         json!({"message":string,"needsReview":{"type":"boolean"}}),
         vec!["message"],
     ));
+    d.push((
+        "show_in_browser",
+        json!({"selector":string,"message":string}),
+        vec!["selector", "message"],
+    ));
     for n in ["request_browser_control", "renew_browser_control"] {
         d.push((
             n,
@@ -233,8 +241,21 @@ fn definitions() -> Vec<(&'static str, Value, Vec<&'static str>)> {
     }
     d
 }
+/// What a tool is for, where its name does not say it all.
+fn description(name: &str) -> String {
+    let purpose = match name {
+        "show_in_browser" => {
+            "Markiert im Browser des Nutzers das Element, auf das der CSS-Selektor passt, und zeigt daneben die Nachricht – zum Rückfragen oder Zeigen eines Ergebnisses. Braucht keine Browserkontrolle"
+        }
+        "report_progress" => {
+            "Meldet, woran du gerade arbeitest; der Nutzer sieht die Nachricht in der Aufgabe und im Browser"
+        }
+        _ => name,
+    };
+    format!("{purpose}: nur für den zugewiesenen Task und dessen Session")
+}
 pub fn tools() -> Vec<Value> {
-    definitions().into_iter().map(|(name,p,r)|json!({"name":name,"description":format!("{name}: nur für den zugewiesenen Task und dessen Session"),"inputSchema":{"type":"object","properties":p,"required":r,"additionalProperties":false}})).collect()
+    definitions().into_iter().map(|(name,p,r)|json!({"name":name,"description":description(name),"inputSchema":{"type":"object","properties":p,"required":r,"additionalProperties":false}})).collect()
 }
 fn validate(name: &str, args: &Value) -> Result<(), String> {
     let (_, props, required) = definitions()
@@ -386,6 +407,15 @@ async fn call(s: &Server, scope: Scope, name: &str, args: Value) -> Result<Vec<V
                 .await?
         }
         "report_progress" => s.api.update(scope, None, args).await?,
+        "show_in_browser" => {
+            s.api
+                .show(
+                    scope,
+                    args["selector"].as_str().ok_or("selector")?.into(),
+                    args["message"].as_str().ok_or("message")?.into(),
+                )
+                .await?
+        }
         "request_browser_control"
         | "renew_browser_control"
         | "release_browser_control"

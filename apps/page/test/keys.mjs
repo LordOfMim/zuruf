@@ -1,41 +1,25 @@
+// Key handling of the page agent, in a real Chromium.
+//   node test/keys.mjs dist/agent.js
+// Uses CHROMIUM (default /usr/bin/chromium), or a running shell's DevTools endpoint when
+// ZURUF_TEST_CDP is set, e.g. ZURUF_TEST_CDP=http://127.0.0.1:9333.
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 const content = readFileSync(process.argv[2], "utf8");
-const browser = await chromium.launch({
-  executablePath: "/usr/bin/chromium",
-  headless: true,
-});
-const page = await browser.newPage();
+const browser = process.env.ZURUF_TEST_CDP
+  ? await chromium.connectOverCDP(process.env.ZURUF_TEST_CDP)
+  : await chromium.launch({
+      executablePath: process.env.CHROMIUM ?? "/usr/bin/chromium",
+      headless: true,
+    });
+const context = browser.contexts()[0] ?? (await browser.newContext());
+// A shell hands out its tabs itself, so use the one that is there.
+const page = process.env.ZURUF_TEST_CDP
+  ? context.pages()[0]
+  : await context.newPage();
+// Stand in for the app: collect what the agent sends through its binding.
 await page.addInitScript(() => {
   window.__sent = [];
-  const bind = (action, code, mods = []) => ({
-    action,
-    scope: "page",
-    chord: { mods, code },
-  });
-  window.chrome = {
-    runtime: {
-      id: "x",
-      getURL: (p) => "data:text/css,",
-      onMessage: { addListener() {} },
-      sendMessage: async (m) => {
-        window.__sent.push(m);
-        if (m.type === "ready")
-          return {
-            payload: {
-              review: true,
-              bindings: [
-                bind("capture.viewport", "KeyW"),
-                bind("speech.toggle", "KeyR"),
-                bind("batch.dispatch", "KeyN", ["shift"]),
-                bind("panel.toggle", "KeyP", ["alt"]),
-              ],
-            },
-          };
-        return { ok: true };
-      },
-    },
-  };
+  window.__zurufSend = (json) => window.__sent.push(JSON.parse(json));
 });
 await page.addInitScript(content);
 await page.route("http://zuruf.test/", (r) =>
@@ -47,6 +31,26 @@ await page.route("http://zuruf.test/", (r) =>
   }),
 );
 await page.goto("http://zuruf.test/");
+// What the app answers when a document announces itself.
+await page.evaluate(() => {
+  const bind = (action, code, mods = []) => ({
+    action,
+    scope: "page",
+    chord: { mods, code },
+  });
+  window.__zurufReceive({
+    type: "configure",
+    payload: {
+      review: true,
+      bindings: [
+        bind("capture.viewport", "KeyW"),
+        bind("speech.toggle", "KeyR"),
+        bind("batch.dispatch", "KeyN", ["shift"]),
+        bind("panel.toggle", "KeyP", ["alt"]),
+      ],
+    },
+  });
+});
 page.on("pageerror", (e) => console.log("pageerror", e.message));
 await page.waitForTimeout(200);
 const actions = async () =>
@@ -113,6 +117,16 @@ check(
   "unbound Alt+X is left to the page",
   (await actions()).length === 0 && (await seen()).includes("keydown:KeyX"),
   [await actions(), await seen()],
+);
+await reset();
+await page.click("#app");
+await page.keyboard.press("w");
+const sent = await page.evaluate(() => window.__sent.map((m) => m.type));
+check(
+  "a capture key sends one capture request and no separate action",
+  sent.filter((type) => type === "capture.request").length === 1 &&
+    !sent.includes("action"),
+  sent,
 );
 console.log(out.join("\n"));
 await browser.close();

@@ -3,11 +3,17 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noEmit": true,
-    "types": ["chrome"]
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "../../packages/protocol/src/index.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../../packages/protocol/src/index.ts"
+  ]
 }

@@ -1,28 +1,30 @@
 # Zuruf – Architektur
 
-Verbindlich für alle Agenten. Grundlage: `docs/spec.md` und die verifizierten Befunde in `docs/feasibility/`. Wo dieses Dokument von der Spezifikation abweicht (Hyprland statt KDE, Rust statt Node, Solid statt React), gilt dieses Dokument.
+Verbindlich für alle Agenten. Grundlage: `docs/spec.md` und die verifizierten Befunde in `docs/feasibility/`. Wo dieses Dokument von der Spezifikation abweicht (Hyprland statt KDE, Rust statt Node, Solid statt React, eigener Browser statt Chromium mit Extension), gilt dieses Dokument.
 
 ## Leitlinien
 
-- **Performance und wenig Speicher.** Ein Rust-Binary `zuruf` (Daemon + CLI als Unterbefehle), kein Node zur Laufzeit, kein Electron. System-Chromium ist die einzige Browser-Engine.
+- **Performance und wenig Speicher.** Zwei Rust-Programme, kein Node zur Laufzeit, kein Electron: `zuruf` (Daemon + CLI als Unterbefehle) und `zuruf-shell`, Zurufs eigenes Browserfenster mit eingebettetem Chromium (CEF). Die CLI bleibt klein und startet sofort, weil nur die Shell gegen Chromium gelinkt ist.
+- **Ein Fenster, keine Reibung.** Die App sitzt im Browserfenster neben der geprüften Seite. Es gibt keine Extension, die geladen, verbunden oder aktuell gehalten werden muss: Alles, was in der Seite läuft, bringt die App selbst ein.
 - **Nichts blockiert die Aufnahme.** Jede Benutzeraktion wird sofort lokal bestätigt und persistiert; Transkription, Dispatch und T3-Abfragen laufen in Hintergrund-Tasks.
-- **Der Daemon ist die einzige Wahrheit.** UI, Seitenleiste, Extension und CLI sind dünne Clients über genau einen Vertrag: `packages/protocol/src/index.ts`. Rust spiegelt ihn mit serde (camelCase). Änderungen am Vertrag nur über den Projektleiter.
+- **Der Daemon ist die einzige Wahrheit.** UI, Seitenleiste, Browserfenster und CLI sind dünne Clients über genau einen Vertrag: `packages/protocol/src/index.ts`. Rust spiegelt ihn mit serde (camelCase). Änderungen am Vertrag nur über den Projektleiter.
 - **Ehrliche Zustände.** Unklare Remote-Zustände, Audiolücken und nicht erreichbare Seiten werden angezeigt, nie verschwiegen oder geraten.
 
 ## Prozesse
 
 ```text
 zuruf daemon  (systemd --user, 127.0.0.1:47600)
- ├─ HTTP/WS-API  /api/v1 …            ← UI-Fenster, Seitenleiste, CLI
- ├─ WS /ext                           ← Extension-Service-Worker je Browser-Session
+ ├─ HTTP/WS-API  /api/v1 …            ← App, Seitenleiste, CLI
  ├─ WS /cdp/<sessionId>               ← Agenten (Playwright MCP), gefiltert und an Kontrolle gebunden
  ├─ /mcp                              ← eigener MCP-Server für Agenten
- ├─ Chromium je Browser-Session       (eigenes Profil, eigene systemd-Scope, Extension geladen)
- ├─ Chromium --app für das UI-Fenster (eigenes kleines Profil, nie für Agenten erreichbar)
+ ├─ zuruf-shell je Browser-Session    (eigenes Profil, eigene systemd-Scope; stdin: Befehle, CDP: Seiten)
+ ├─ zuruf-shell --zuruf-app-only      App-Fenster, solange keine Session die App trägt
  ├─ Sprach-Pipeline                   (Aufnahme + voxtype)
  └─ T3-Client                         (MCP über HTTP, CLI als Fallback)
 zuruf <befehl>   kurzlebige CLI → spricht mit dem Daemon (Hyprland-Hotkeys rufen `zuruf action <id>`)
 ```
+
+Der Daemon besitzt alle Fenster. `zuruf open` fragt nur an (`POST /app/open`): Läuft eine Session und ist „Ein Fenster“ eingestellt (Standard), holt der Daemon deren Fenster nach vorn; sonst zeigt er die App in einem eigenen Shell-Fenster. Startet eine Session im Ein-Fenster-Modus, schließt der Daemon das eigene App-Fenster. Endet der Daemon, endet die Befehlsleitung der Shells (stdin) und sie schließen sich selbst – es bleiben keine verwaisten Browser zurück.
 
 ## Repository
 
@@ -30,20 +32,21 @@ zuruf <befehl>   kurzlebige CLI → spricht mit dem Daemon (Hyprland-Hotkeys ruf
 crates/
   zuruf-core      Domänentypen (= Protokoll), Zustandsautomaten für Batch/Task/Kontrolle, Manifest, Redaktion. Rein, ohne IO.
   zuruf-store     SQLite (rusqlite, Migrationen, WAL) + Asset-Dateiablage, atomare Schreibvorgänge.
-  zuruf-browser   Chromium-Start, CDP-Client, Capture-Pipeline, Kontroll-Arbitration, CDP-Proxy, Extension-Protokoll.
+  zuruf-browser   Shell-Start, CDP-Client, Seiten-Brücke, Capture-Pipeline, Kontroll-Arbitration, CDP-Proxy.
+  zuruf-shell     Das Browserfenster: eingebettetes Chromium (CEF), App-Panel, Tabs, Adressleiste. Eigenes Programm.
   zuruf-speech    SpeechAdapter + Voxtype-Backends.
   zuruf-t3        T3Adapter: MCP/OAuth primär, CLI-Fallback, Capability Detection.
   zuruf-hypr      Hyprland: globale Binds (Lua/Legacy erkennen), Fenster finden/anordnen.
   zuruf-mcp       Eigener MCP-Server (Tools aus Spec §9).
-  zuruf           Binary: Daemon (axum), Dispatch-Queue, Verdrahtung, CLI-Unterbefehle, eingebettete UI/Extension.
+  zuruf           Binary: Daemon (axum), Dispatch-Queue, Verdrahtung, CLI-Unterbefehle, eingebettete UI.
 apps/
-  extension       MV3-Extension (TypeScript): Content-Script-Overlay, Service Worker, Panel-Hülle.
-  ui              Oberfläche (SolidJS + Vite): App-Fenster und Seitenleiste aus einer Codebasis.
+  page            Seiten-Agent (TypeScript): Overlay, Hotkeys, Element- und Bereichsauswahl. Ein Skript, in `zuruf-browser` eingebettet.
+  ui              Oberfläche (SolidJS + Vite): App-Fenster und Seitenleiste aus einer Codebasis, vom Daemon ausgeliefert.
 packages/
   protocol        Der Vertrag (TypeScript-Typen + Routenliste).
 ```
 
-Abhängigkeiten schlank halten: tokio, axum, serde, rusqlite (bundled), tokio-tungstenite, reqwest (rustls), uuid (v7), time, png, thiserror/anyhow, tracing, clap, rust-embed. Kein chromiumoxide/headless_chrome – der CDP-Client ist ein kleiner eigener JSON-RPC-Client über WebSocket.
+Abhängigkeiten schlank halten: tokio, axum, serde, rusqlite (bundled), tokio-tungstenite, reqwest (rustls), uuid (v7), time, png, thiserror/anyhow, tracing, clap, rust-embed. Kein chromiumoxide/headless_chrome – der CDP-Client ist ein kleiner eigener JSON-RPC-Client über WebSocket. Nur `zuruf-shell` hängt von `cef` ab; dessen Build lädt die passende Chromium-Laufzeit (CEF) und braucht `cmake` und `ninja`.
 
 ## Datenablage
 
@@ -54,9 +57,9 @@ Abhängigkeiten schlank halten: tokio, axum, serde, rusqlite (bundled), tokio-tu
     batch.json                   Manifest (Spec §8.3, schemaVersion "1.0"), beim Versiegeln geschrieben
     assets/ann-<n>.png, ann-<n>-original.png, ann-<n>-crop.png
     transcripts/segment-<n>.txt
-  sessions/<sessionId>/profile/  Chromium-Profil
-  sessions/<sessionId>/extension/ Laufzeitkopie der Extension inkl. bootstrap.json
-  ui-profile/                    Profil des App-Fensters
+  sessions/<sessionId>/profile/  Browserprofil der Session
+  sessions/<sessionId>/shell.log Chromium-Protokoll des letzten Starts
+  app-window/profile/            Profil des eigenen App-Fensters
 ~/.local/state/zuruf/            (0700) token, t3-credentials.json, Logs
 ~/.config/zuruf/settings.json    lesbare Einstellungen inkl. Tastenbelegung
 ```
@@ -66,20 +69,28 @@ Entitäten wie in Spec §12 mit UUIDv7, Zeitstempeln, Statushistorie (`task_even
 ## Authentifizierung (lokal)
 
 - Daemon bindet nur `127.0.0.1`. Ein zufälliges Token liegt in `~/.local/state/zuruf/token` (0600).
-- CLI liest die Datei. Das UI-Fenster erhält über `zuruf open` einen Einmalcode im URL-Fragment und tauscht ihn gegen das Token (`POST /auth/exchange`). Die Extension bekommt Port und ein sessiongebundenes Token über `bootstrap.json` in ihrer Laufzeitkopie; die Seitenleiste (Extension-Seite) liest es von dort.
-- Alle HTTP-Aufrufe tragen `Authorization: Bearer`; WebSockets senden als erste Nachricht `{type:"auth",token}`. Origin wird geprüft (`chrome-extension://<id>` bzw. eigener Ursprung). Agenten-Token für `/cdp` und `/mcp` sind getrennte, widerrufbare Token mit Session-Bindung.
+- CLI liest die Datei. App-Fenster und Seitenleiste lädt der Daemon selbst in die Shell und gibt dabei einen Einmalcode im URL-Fragment mit, den die Seite gegen das Token tauscht (`POST /auth/exchange`). Es gibt kein zweites, sessiongebundenes Token mehr.
+- Alle HTTP-Aufrufe tragen `Authorization: Bearer`; WebSockets senden als erste Nachricht `{type:"auth",token}`. Origin wird geprüft: nur der eigene Ursprung, keine CORS-Freigaben. Agenten-Token für `/cdp` und `/mcp` sind getrennte, widerrufbare Token mit Session-Bindung.
 
 ## Browser
 
-- Je Session ein Chromium-Prozess: `/usr/bin/chromium --ozone-platform=wayland --user-data-dir=… --load-extension=… --remote-debugging-port=0` (Loopback), gestartet in einer eigenen systemd-Scope mit Speichergrenze. Der rohe CDP-Port wird nie herausgegeben. Ausbaustufe: `--remote-debugging-pipe`, sobald der Proxy alle Clients multiplexen kann.
-- **Extension ↔ Daemon:** Service Worker hält einen authentifizierten WebSocket zu `/ext` (Heartbeat, Resume nach Worker-Schlaf, Quittungen, Dedup per `requestId`). Content Scripts (isolated world, `document_start`, alle Frames) liefern Tastendrücke, Zeigerposition, Picker- und Rechteck-Ergebnisse. Webseiten können keine Daemon-Befehle auslösen.
-- **Hotkeys in der Seite:** Capture-Phase auf `window`; aktiv nur im Review-Modus; nie bei Fokus in input/textarea/select/contenteditable/ARIA-Textbox/Editor-Containern oder unbekannten fokussierten Custom Elements (geschlossene Shadow Roots → konservativ unterdrücken). Belegung kommt vom Daemon (`Binding[]`, Scope `page`) und wird live aktualisiert.
-- **Capture-Pipeline:** Aktion → an aktiven Batch binden → Overlay ausblenden (quittiert) → Metriken lesen → `Page.captureScreenshot` (Region: Clip = (Rechteck + visualViewport-Offset) × Browserzoom, `scale:1`) → Rohbild atomar schreiben → Ringkopie mit dem `png`-Crate → Annotation + Assets in einer Transaktion → Event. Ziel: Annotation erscheint < 150 ms nach Tastendruck in der UI (Platzhalter sofort, Bild folgt).
+- **Shell.** Je Session ein `zuruf-shell`-Prozess mit eigenem Profil (`--zuruf-profile`), gestartet in einer eigenen systemd-Scope mit Speichergrenze, wo es eine systemd-Benutzersitzung gibt. Ein Fenster: links das App-Panel (`--zuruf-panel`, vom Daemon ausgeliefert), rechts Tab-Leiste, Adressleiste und die sichtbare Seite. Unter Wayland wählt die Shell selbst die Wayland-Plattform; ihr Fenster trägt die App-ID `zuruf`. Seiten, die ein Fenster öffnen, bekommen einen Tab und behalten ihren Opener.
+- **Befehle an die Shell:** eine JSON-Zeile je Befehl auf stdin (`open`, `focus`, `panel`, `theme`, `page-width`, `quit`), Ereignisse als Zeilen auf stdout (`ready`, `closed`). Schließt der Mensch das Fenster, meldet die Shell `closed` und die Session gilt als gestoppt; verschwindet sie ohne Meldung, gilt sie als abgestürzt. In beiden Fällen lässt sie sich einfach neu starten.
+- **Seiten erreicht der Daemon über CDP** (Loopback-Port, den der Daemon wählt und nie herausgibt). Das eigene App-Fenster hat keinen Debugging-Endpunkt.
+- **Seiten-Agent statt Extension:** `apps/page` ist ein einzelnes Skript, das der Daemon über CDP in eine isolierte Welt jedes Frames einbringt (`Page.addScriptToEvaluateOnNewDocument`, Welt `zuruf`), auch in Frames anderer Prozesse. Es meldet Tastendrücke, Zeigerposition, Titel sowie Picker- und Rechteck-Ergebnisse über ein Binding, das nur in dieser Welt existiert; Befehle kommen per Auswertung in derselben Welt zurück. Webseiten können den Agenten weder sehen noch aufrufen. Jedes Dokument hat eine Kennung (der Ausführungskontext); eine Aufnahme ist an sie gebunden und wird verworfen, wenn die Seite inzwischen gewechselt hat.
+- **Hotkeys in der Seite:** Capture-Phase auf `window`; aktiv nur im Review-Modus; nie bei Fokus in input/textarea/select/contenteditable/ARIA-Textbox/Editor-Containern oder unbekannten fokussierten Custom Elements (geschlossene Shadow Roots → konservativ unterdrücken). Belegung kommt vom Daemon (`Binding[]`, Scope `page`) und wird live aktualisiert; ein neu geladenes Dokument bekommt sie zusammen mit Aufnahmestatus und Kontrollbesitzer.
+- **Seitenbreite:** Die Shell kann die Seite mittig in fester Breite zeigen (`page-width`: voll, 1024, 768, 390 oder ein eigener Wert). Sie verkleinert dafür die Fläche der Seite selbst, keine Emulation – der Viewport ist echt, und die Aufnahme hält ihn in `viewport` fest.
+- **Meldungen der Seite:** Die Brücke sammelt je Tab Konsolenfehler und -warnungen (`Runtime.consoleAPICalled`), unbehandelte Ausnahmen (`Runtime.exceptionThrown`) und das Protokoll des Browsers, vor allem fehlgeschlagene Anfragen (`Log.entryAdded`) – ohne die Netzwerk-Domain einzuschalten. Höchstens 50 werden gehalten, gleiche hintereinander gezählt, mit dem nächsten Dokument beginnt die Liste neu. Jede Aufnahme nimmt die letzten 20 als `Annotation.diagnostics` mit; sie stehen im Manifest und in der UI.
+- **Erst wählen, dann aufnehmen:** Nur der Viewport wird beim Tastendruck sofort aufgenommen. Für Element und Bereich wechselt der Seiten-Agent in eine Auswahl: Das Element unter dem Zeiger wird farbig markiert und per Klick oder Enter bestätigt; ein Bereich wird auf abgedunkelter Seite aufgezogen. Währenddessen erreichen Zeigerereignisse die Seite nicht. Die Auswahl gilt für alle Frames des Tabs – der Agent meldet `mode`, die Brücke reicht es an die übrigen Frames weiter.
+- **Zusammenarbeit:** Der Proxy meldet Mausbefehle eines Agenten (`Input.dispatchMouseEvent`) an die Brücke; die Seite zeichnet seinen Zeiger und Klicks. `report_progress` erscheint zusätzlich in der Seite, und über das MCP-Werkzeug `show_in_browser` markiert ein Agent ein Element samt Nachricht für den Menschen. Alles davon ist reine Anzeige im Overlay und braucht keine Kontroll-Lease.
+- **Fenster-Kurzbefehle** gehören der Shell: Strg+T/W/L, Strg+Tab, Strg+R/F5, Alt+←/→, Strg+Plus/Minus/0, F12 (Entwicklerwerkzeuge in eigenem Fenster).
+- **Capture-Pipeline:** Aktion → an aktiven Batch binden → Overlay ausblenden (von jedem Frame bestätigt) → Metriken lesen → `Page.captureScreenshot` (Region: Clip = (Rechteck + visualViewport-Offset) × Browserzoom aus `Page.getLayoutMetrics`, `scale:1`) → Rohbild atomar schreiben → Ringkopie mit dem `png`-Crate → Annotation + Assets in einer Transaktion → Event. Ziel: Annotation erscheint < 150 ms nach Tastendruck in der UI (Platzhalter sofort, Bild folgt).
 - **DOM-Capture:** Locator-Kandidaten in der Reihenfolge Test-ID, Rolle+Name, eindeutiger Text, CSS, XPath, jeweils mit `stable` und Begründung; Accessible Name über CDP `Accessibility.getPartialAXTree` validiert; Attribut-Allowlist; Frame-/Shadow-Pfad; nicht auflösbare Pfade als solche markiert.
-- **Gemeinsame Steuerung:** `ControlState` je Session. Agenten erreichen den Browser nur über `/cdp/<sessionId>`; der Proxy lässt ausschließlich Seiten-Targets der Session durch (keine Extension-/Panel-Targets, kein `Browser.close`), serialisiert Eingaben je Tab und prüft vor jedem Befehl Besitzer und Lease.
+- **Gemeinsame Steuerung:** `ControlState` je Session. Agenten erreichen den Browser nur über `/cdp/<sessionId>`; der Proxy lässt ausschließlich Seiten-Targets der Session durch (nie das App-Panel, kein `Browser.close`), serialisiert Eingaben je Tab und prüft vor jedem Befehl Besitzer und Lease. `Target.createTarget` eines Agenten öffnet einen Tab im Session-Fenster; der Proxy meldet die neue Seite, bevor er antwortet – so funktioniert unverändertes Playwright (`connectOverCDP`, `newPage`).
 - **Takeover (Produktentscheidung):** Der Mensch gewinnt immer und sofort. Neue Agentenbefehle werden ab diesem Moment abgewiesen, die Lease ist widerrufen. Bereits laufende Befehle dürfen bis zu 500 ms auslaufen (`settling: true`), danach `Page.stopLoading`; kein `Runtime.terminateExecution` als Standard. Abgewiesene Befehle werden nie nachgeholt. Kontrolle geht erst wieder an einen Agenten, wenn der Mensch sie freigibt.
-- **Seitenleiste:** Extension-Seite als `sidePanel`; öffnet sich durch die Toolbar-Schaltfläche, den Shortcut `panel.toggle` oder den ersten Tastendruck im Review-Modus (Benutzergeste erforderlich). Sie lädt das Panel-Bundle der UI, das mit dem Daemon spricht.
+- **Seitenleiste:** das App-Panel der Shell. Im Ein-Fenster-Modus trägt es die ganze App, sonst nur das Review-Werkzeug. `panel.toggle` blendet es ein und aus; die Seite bekommt dann die volle Breite.
 - **Isolated** = eigenes Profilverzeichnis. Auth-Klon nur explizit und nie automatisch.
+- **Bewusst nicht enthalten:** Downloads, Berechtigungsabfragen (Kamera, Mikrofon, Standort) und Passwortverwaltung. Das Fenster ist ein Review-Browser, kein Alltagsbrowser.
 
 ## Sprache
 
@@ -107,14 +118,18 @@ Primär der dokumentierte Orchestrator-MCP über HTTP (`http://127.0.0.1:3773/mc
 
 Eine Aktionsliste (`ActionId`), zwei Geltungsbereiche:
 
-- `page`: im Review-Browser, vom Content Script ausgewertet; Einzeltasten erlaubt.
+- `page`: im Review-Browser, vom Seiten-Agenten ausgewertet; Einzeltasten erlaubt.
 - `global`: desktopweit über Hyprland (`hyprctl eval 'hl.bind(…)'` bzw. Legacy-Syntax nach Erkennung), ruft `zuruf action <id>`; braucht einen Modifier. Binds werden beim Daemon-Start und nach Hyprland-Reload neu gesetzt und beim Beenden exakt wieder entfernt. Die Hyprland-Konfiguration des Nutzers wird nicht verändert.
 
 Jede Änderung wird geprüft (`BindingIssue`: Duplikat, fehlender Modifier, vom System belegt). Standard: W/S/D/E/R, Shift+N, Esc im Scope `page`; `review.toggle`, `control.takeover`, `app.open` global.
 
 ## Installation
 
-`./install.sh`: Release-Build, Binary nach `~/.local/bin/zuruf`, `systemd --user`-Unit `zuruf.service`, Starter `~/.local/share/applications/zuruf.desktop` mit Icon. UI- und Extension-Bundles sind ins Binary eingebettet. `zuruf open` startet bei Bedarf den Daemon und öffnet das App-Fenster. `./uninstall.sh` entfernt alles außer den Daten.
+`./install.sh`: Release-Build, `zuruf` nach `~/.local/bin`, die Shell mit Chromiums Laufzeit (`libcef.so`, Ressourcen, deutsche und englische Sprachdateien) nach `~/.local/lib/zuruf/`, `systemd --user`-Unit `zuruf.service`, Starter `~/.local/share/applications/zuruf.desktop` mit Icon. Die UI ist ins Binary eingebettet, der Seiten-Agent in die Browser-Bibliothek. `zuruf` findet die Shell neben sich oder unter `../lib/zuruf` (`ZURUF_SHELL` überschreibt das); die Shell findet ihre Bibliothek neben sich. `zuruf open` startet bei Bedarf den Daemon und zeigt die App. `./uninstall.sh` entfernt alles außer den Daten.
+
+Die Chromium-Laufzeit lädt der Build einmal je Version nach `~/.cache/zuruf/cef` (`CEF_PATH`). Hinter einem TLS-prüfenden Proxy erledigt das `tools/dev/fetch-cef.mjs`. `tools/dev/` enthält außerdem einen Linux-Build-Container, in dem sich alles ohne Desktop bauen und unter einem virtuellen Bildschirm (X11 oder Wayland) testen lässt.
+
+Zielplattform ist Linux. Die Shell selbst ist plattformneutral geschrieben; Daemon und Adapter (`zuruf-store`, `zuruf-t3`, `zuruf-speech`, `zuruf-hypr`) verwenden Unix-Schnittstellen. Ein Windows-Port steht aus.
 
 ## Zuständigkeiten
 
@@ -122,6 +137,6 @@ Jede Änderung wird geprüft (`BindingIssue`: Duplikat, fehlender Modifier, vom 
 |---|---|
 | Vertrag, Architektur, UX, `apps/ui`, Overlay-Gestaltung, Abnahme | Projektleiter (Claude) |
 | `zuruf-core`, `zuruf-store`, `zuruf` (Daemon, Dispatch, CLI) | Codex-Agent „Kern“ |
-| `zuruf-browser`, `apps/extension` (Funktion) | Codex-Agent „Browser“ |
+| `zuruf-browser`, `zuruf-shell`, `apps/page` (Funktion) | Codex-Agent „Browser“ |
 | `zuruf-t3`, `zuruf-speech`, `zuruf-hypr` | Codex-Agent „Adapter“ |
 | Verdrahtung, `zuruf-mcp`, Installation, End-to-End-Tests | zweite Welle |
