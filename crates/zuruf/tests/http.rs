@@ -555,45 +555,35 @@ fn manifest_redacts_sensitive_metadata_and_rejects_traversal() {
 }
 
 #[tokio::test]
-async fn panel_cors_allows_only_the_built_extension() {
+async fn only_the_apps_own_origin_may_call_the_api() {
+    // The panel is served by the daemon itself, so nothing needs cross-origin access.
     let h = Harness::new().await;
-    let origin = zuruf::real::extension_origin();
     let client = reqwest::Client::new();
-    let preflight = client
-        .request(
-            reqwest::Method::OPTIONS,
-            format!("{}/api/v1/settings", h.base),
-        )
-        .header("origin", &origin)
-        .header("access-control-request-method", "PUT")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(preflight.status(), 204);
-    assert_eq!(preflight.headers()["access-control-allow-origin"], origin);
-    let allowed = client
+    let own = client
         .get(format!("{}/api/v1/state", h.base))
         .bearer_auth(&h.token)
-        .header("origin", &origin)
+        .header("origin", &h.base)
         .send()
         .await
         .unwrap();
-    assert!(allowed.status().is_success());
-    assert_eq!(allowed.headers()["access-control-allow-origin"], origin);
-    let denied = client
-        .get(format!("{}/api/v1/state", h.base))
-        .bearer_auth(&h.token)
-        .header("origin", "chrome-extension://untrusted")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(denied.status(), 403);
-    assert!(
-        denied
-            .headers()
-            .get("access-control-allow-origin")
-            .is_none()
-    );
+    assert!(own.status().is_success());
+    assert!(own.headers().get("access-control-allow-origin").is_none());
+    for foreign in ["chrome-extension://untrusted", "http://localhost:5173"] {
+        let denied = client
+            .get(format!("{}/api/v1/state", h.base))
+            .bearer_auth(&h.token)
+            .header("origin", foreign)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), 403, "{foreign}");
+        assert!(
+            denied
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none()
+        );
+    }
 }
 
 #[tokio::test]

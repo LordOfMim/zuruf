@@ -88,7 +88,7 @@ function createDemoSnapshot(): Snapshot {
       theme: "system",
       language: "de",
       openPanelOnReviewStart: true,
-      browser: new URLSearchParams(location.search).has("docked") ? "integrated" : "separate",
+      browser: new URLSearchParams(location.search).has("separate") ? "separate" : "integrated",
     },
     dataDir: "~/.local/share/zuruf",
   };

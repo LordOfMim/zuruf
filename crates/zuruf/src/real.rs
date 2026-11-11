@@ -3,7 +3,7 @@ use crate::*;
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::PathBuf;
 use tokio::sync::Mutex as AsyncMutex;
-use zuruf_browser::{Browser, SessionConfig, extension::ExtensionHub};
+use zuruf_browser::{AppWindow, Browser, SessionConfig};
 
 fn convert<T: Serialize, U: DeserializeOwned>(value: T) -> std::result::Result<U, AdapterError> {
     serde_json::from_value(serde_json::to_value(value).map_err(io)?).map_err(io)
@@ -601,11 +601,12 @@ impl DesktopHotkeys for Hotkeys {
 
 tokio::task_local! {
     pub(crate) static ACTION_SESSION: String;
-    static CAPTURE_ENVELOPE: std::cell::RefCell<Option<zuruf_browser::extension::Envelope>>;
+    static CAPTURE_ENVELOPE: std::cell::RefCell<Option<zuruf_browser::bridge::Envelope>>;
 }
 pub struct Browsers {
     pub sessions: AsyncMutex<BTreeMap<String, Arc<Browser>>>,
-    pub hubs: AsyncMutex<BTreeMap<String, ExtensionHub>>,
+    /// The app in a window of its own, while no session window carries it.
+    app_window: AsyncMutex<Option<AppWindow>>,
     bindings: AsyncMutex<Vec<Binding>>,
     review: AsyncMutex<bool>,
     paths: Paths,
@@ -613,7 +614,92 @@ pub struct Browsers {
     app: std::sync::OnceLock<std::sync::Weak<Inner>>,
     tabs: AsyncMutex<BTreeMap<String, String>>,
 }
+/// The theme's name as the shell understands it.
+fn theme_name(theme: SettingsUiTheme) -> &'static str {
+    match theme {
+        SettingsUiTheme::System => "system",
+        SettingsUiTheme::Dark => "dark",
+        SettingsUiTheme::Light => "light",
+    }
+}
+/// Ask the compositor to raise a window. The shell asks too, but Wayland compositors may
+/// ignore a window that activates itself.
+async fn raise_window(pid: Option<u32>) {
+    let (Some(pid), Ok(binary)) = (pid, std::env::current_exe()) else {
+        return;
+    };
+    if let Ok(desktop) = zuruf_hypr::Hyprland::detect(binary).await
+        && let Ok(Some(address)) = desktop.find_window(pid).await
+    {
+        let _ = desktop.focus(&address).await;
+    }
+}
 impl Browsers {
+    /// Show the app: in the running session's window when it is docked there, otherwise in a
+    /// window of its own. Returns which of the two it was.
+    pub async fn open_app(
+        &self,
+        daemon: &Daemon,
+        view: &str,
+    ) -> std::result::Result<&'static str, AdapterError> {
+        let snapshot = daemon.snapshot().await.map_err(io)?;
+        if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated {
+            let sessions = self.sessions.lock().await;
+            let browser = snapshot
+                .status
+                .active_session_id
+                .as_ref()
+                .and_then(|id| sessions.get(id))
+                .or_else(|| sessions.values().next())
+                .cloned();
+            drop(sessions);
+            if let Some(browser) = browser {
+                let _ = browser.show_panel(Some(true)).await;
+                let _ = browser.focus().await;
+                raise_window(browser.pid()).await;
+                return Ok("session");
+            }
+        }
+        let mut window = self.app_window.lock().await;
+        if let Some(existing) = window.as_ref()
+            && existing.alive().await
+        {
+            let _ = existing.focus().await;
+            raise_window(existing.pid()).await;
+            return Ok("app");
+        }
+        let code = daemon.mint_code().await.map_err(io)?;
+        let url = format!("http://127.0.0.1:{}/#code={code}&view={view}", self.port);
+        let defaults = SessionConfig::new(PathBuf::new());
+        let started = AppWindow::start(
+            &defaults.shell_path,
+            &self.paths.data.join("app-window"),
+            &url,
+            theme_name(snapshot.settings.ui.theme),
+            &defaults.shell_args,
+        )
+        .await
+        .map_err(io)?;
+        *window = Some(started);
+        Ok("app")
+    }
+    /// Dress every window's own controls in the app's theme.
+    pub async fn set_theme(&self, theme: SettingsUiTheme) {
+        let name = theme_name(theme);
+        let browsers: Vec<_> = self.sessions.lock().await.values().cloned().collect();
+        for browser in browsers {
+            let _ = browser.set_theme(name).await;
+        }
+        if let Some(window) = self.app_window.lock().await.as_ref() {
+            let _ = window.set_theme(name).await;
+        }
+    }
+    /// Close the app's own window, if there is one.
+    pub async fn close_app(&self) {
+        if let Some(window) = self.app_window.lock().await.take() {
+            window.stop().await;
+        }
+    }
     async fn get(&self, id: &str) -> std::result::Result<Arc<Browser>, AdapterError> {
         self.sessions
             .lock()
@@ -698,13 +784,19 @@ impl Browsers {
                             .await;
                     }
                 }
-                zuruf_browser::BrowserEvent::Extension(envelope) => {
-                    use zuruf_browser::extension::Message;
+                zuruf_browser::BrowserEvent::Page(envelope) => {
+                    use zuruf_browser::bridge::Message;
                     let action = match &envelope.message {
                         Message::Action { action } => Some(action.clone()),
                         Message::Capture { kind, .. } => Some(format!("capture.{kind}")),
                         _ => None,
                     };
+                    // The panel belongs to this session's window; the shell shows or hides it.
+                    if action.as_deref() == Some("panel.toggle")
+                        && let Ok(browser) = self.get(&session).await
+                    {
+                        let _ = browser.show_panel(None).await;
+                    }
                     if let Some(action) = action {
                         let app = app.clone();
                         let sid = session.clone();
@@ -728,7 +820,7 @@ impl Browsers {
                                     .scope(session_for_action, app.action(&action))
                                     .await
                                 {
-                                    tracing::warn!(error=%e,"extension action failed");
+                                    tracing::warn!(error=%e,"page action failed");
                                 }
                             },
                         ));
@@ -752,21 +844,26 @@ impl BrowserController for BrowserAdapter {
             if self.sessions.lock().await.contains_key(&s.id) {
                 return Ok(s);
             }
-            let hub = ExtensionHub::new(Browser::bootstrap(self.port, s.id.clone()));
-            self.hubs.lock().await.insert(s.id.clone(), hub.clone());
-            let mut config = SessionConfig::new(
-                self.paths.data.join("sessions").join(&s.id),
-                self.paths.data.join("extension-bundle"),
-            );
+            let mut config =
+                SessionConfig::new(self.paths.data.join("sessions").join(&s.id));
             config.session_id = s.id.clone();
-            let integrated = match self.app.get().and_then(std::sync::Weak::upgrade) {
-                Some(inner) => {
-                    Daemon(inner).snapshot().await.map_err(io)?.settings.ui.browser
-                        == SettingsUiBrowser::Integrated
-                }
-                None => false,
-            };
-            config.panel_left = integrated;
+            let daemon = self
+                .app
+                .get()
+                .and_then(std::sync::Weak::upgrade)
+                .map(Daemon);
+            let mut integrated = false;
+            if let Some(daemon) = &daemon {
+                let ui = daemon.snapshot().await.map_err(io)?.settings.ui;
+                integrated = ui.browser == SettingsUiBrowser::Integrated;
+                config.theme = theme_name(ui.theme).into();
+                // The app docks beside the page; a one-time code signs it in.
+                let code = daemon.mint_code().await.map_err(io)?;
+                config.panel_url = Some(format!(
+                    "http://127.0.0.1:{}/panel.html#code={code}",
+                    self.port
+                ));
+            }
             config.urls = s.tabs.iter().map(|t| t.url.clone()).collect();
             if config.urls.is_empty() {
                 let start = if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) {
@@ -787,7 +884,7 @@ impl BrowserController for BrowserAdapter {
                         .unwrap_or_else(|| "about:blank".into()),
                 );
             }
-            let browser = Arc::new(Browser::start(config, hub).await.map_err(io)?);
+            let browser = Arc::new(Browser::start(config).await.map_err(io)?);
             browser
                 .push_bindings(convert(self.bindings.lock().await.clone())?)
                 .await
@@ -800,27 +897,10 @@ impl BrowserController for BrowserAdapter {
                 .await
                 .map_err(io)?;
             let rx = browser.events();
-            // The panel belongs next to the page from the start; the worker needs a moment.
-            let opener = browser.clone();
-            tokio::spawn(async move {
-                for _ in 0..40 {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    match opener.open_panel().await {
-                        Ok(true) => {
-                            // One window: the app now lives in this browser's panel.
-                            if integrated {
-                                let _ = tokio::process::Command::new("systemctl")
-                                    .args(["--user", "stop", "zuruf-app.service"])
-                                    .output()
-                                    .await;
-                            }
-                            break;
-                        }
-                        Err(_) => break,
-                        Ok(false) => {}
-                    }
-                }
-            });
+            // One window: the app now lives in this session's window.
+            if integrated {
+                self.close_app().await;
+            }
             self.sessions.lock().await.insert(s.id.clone(), browser);
             s.state = BrowserSessionState::Running;
             s.control = ControlState {
@@ -839,7 +919,6 @@ impl BrowserController for BrowserAdapter {
             if let Some(b) = self.sessions.lock().await.remove(&session) {
                 b.stop().await.map_err(io)?;
             }
-            self.hubs.lock().await.remove(&session);
             if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade)
                 && let Some(runtime) = inner.real.get()
                 && let Some(access) = runtime.access.lock().await.remove(&session)
@@ -956,10 +1035,10 @@ impl BrowserController for BrowserAdapter {
         Box::pin(async move {
             self.get(&session)
                 .await?
-                .extension
-                .send(zuruf_browser::extension::Message::Saved, None, None)
-                .await
-                .map_err(io)
+                .page
+                .send(zuruf_browser::bridge::Message::Saved, None, None)
+                .await;
+            Ok(())
         })
     }
     fn complete_capture(&self, result: CaptureResult) -> AdapterFuture<'_, Vec<CaptureImage>> {
@@ -1073,25 +1152,11 @@ impl BrowserController for BrowserAdapter {
     }
 }
 
-#[derive(rust_embed::RustEmbed)]
-#[folder = "$OUT_DIR/extension"]
-struct Extension;
 impl Daemon {
     pub async fn real(paths: Paths, port: u16) -> Result<Self> {
         let setup_paths = paths.clone();
         let settings = tokio::task::spawn_blocking(move || -> Result<_> {
-            let store = Store::open(setup_paths.clone())?;
-            for file in Extension::iter() {
-                if let Some(bytes) = Extension::get(&file) {
-                    zuruf_store::atomic_write(
-                        &setup_paths
-                            .data
-                            .join("extension-bundle")
-                            .join(file.as_ref()),
-                        &bytes.data,
-                    )?;
-                }
-            }
+            let store = Store::open(setup_paths)?;
             Ok(store.settings()?)
         })
         .await
@@ -1125,7 +1190,7 @@ impl Daemon {
             .unwrap_or_default();
         let browsers = Arc::new(Browsers {
             sessions: AsyncMutex::default(),
-            hubs: AsyncMutex::default(),
+            app_window: AsyncMutex::default(),
             bindings: AsyncMutex::new(settings.bindings),
             review: AsyncMutex::new(false),
             paths: paths.clone(),
@@ -1191,154 +1256,11 @@ pub struct Runtime {
     pub access: AsyncMutex<BTreeMap<String, zuruf_browser::proxy::AgentAccess>>,
 }
 
-pub const EXTENSION_ID: &str = "feobfmepfalncljcihpilkecpgkcpmej";
-pub fn extension_origin() -> String {
-    format!("chrome-extension://{EXTENSION_ID}")
-}
 pub async fn authorized(app: &Daemon, token: &str) -> bool {
-    if token == app.0.token {
-        return true;
-    }
-    if let Some(runtime) = app.0.real.get() {
-        return runtime
-            .browsers
-            .hubs
-            .lock()
-            .await
-            .values()
-            .any(|h| h.bootstrap.token == token);
-    }
-    false
-}
-pub async fn cors(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
-    let origin = request.headers().get("origin").cloned();
-    let extension = origin
-        .as_ref()
-        .is_some_and(|o| o == extension_origin().as_str());
-    if request.method() == Method::OPTIONS && extension {
-        return (
-            StatusCode::NO_CONTENT,
-            [
-                ("access-control-allow-origin", extension_origin()),
-                (
-                    "access-control-allow-methods",
-                    "GET, POST, PUT, PATCH, DELETE, OPTIONS".into(),
-                ),
-                (
-                    "access-control-allow-headers",
-                    "authorization, content-type".into(),
-                ),
-                ("vary", "Origin".into()),
-            ],
-        )
-            .into_response();
-    }
-    let mut response = next.run(request).await;
-    if extension {
-        response
-            .headers_mut()
-            .insert("access-control-allow-origin", origin.unwrap());
-        response
-            .headers_mut()
-            .insert("vary", "Origin".parse().unwrap());
-    }
-    response
+    !token.is_empty() && token == app.0.token
 }
 
 // Raw upgrades let the browser crate retain ownership of its WS protocol.
-pub async fn extension_ws(
-    State(app): State<Daemon>,
-    mut request: axum::extract::Request,
-) -> Result<Response> {
-    let origin = request
-        .headers()
-        .get("origin")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_owned();
-    if origin != extension_origin() || app.0.real.get().is_none() {
-        return Err(Error::Api(
-            StatusCode::FORBIDDEN,
-            "extension origin rejected".into(),
-        ));
-    }
-    let key = request
-        .headers()
-        .get("sec-websocket-key")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| invalid("websocket key required"))?;
-    let accept = tokio_tungstenite::tungstenite::handshake::derive_accept_key(key.as_bytes());
-    let upgrade = hyper::upgrade::on(&mut request);
-    tokio::spawn(async move {
-        use futures_util::{SinkExt, StreamExt};
-        let Ok(upgraded) = upgrade.await else {
-            return;
-        };
-        let mut ws = tokio_tungstenite::WebSocketStream::from_raw_socket(
-            hyper_util::rt::TokioIo::new(upgraded),
-            tokio_tungstenite::tungstenite::protocol::Role::Server,
-            None,
-        )
-        .await;
-        let Ok(Some(Ok(first))) = tokio::time::timeout(Duration::from_secs(3), ws.next()).await
-        else {
-            return;
-        };
-        let Ok(auth) = serde_json::from_str::<Value>(first.to_text().unwrap_or("")) else {
-            return;
-        };
-        let Some(runtime) = app.0.real.get() else {
-            return;
-        };
-        let hub = runtime
-            .browsers
-            .hubs
-            .lock()
-            .await
-            .values()
-            .find(|h| auth["type"] == "auth" && auth["token"] == h.bootstrap.token)
-            .cloned();
-        let Some(hub) = hub else {
-            return;
-        };
-        // Hub consumes its own auth frame: bridge only this already validated socket.
-        let (left, right) = tokio::io::duplex(256 * 1024);
-        let server = tokio_tungstenite::WebSocketStream::from_raw_socket(
-            left,
-            tokio_tungstenite::tungstenite::protocol::Role::Server,
-            None,
-        )
-        .await;
-        let mut client = tokio_tungstenite::WebSocketStream::from_raw_socket(
-            right,
-            tokio_tungstenite::tungstenite::protocol::Role::Client,
-            None,
-        )
-        .await;
-        let serving = async {
-            let _ = hub.serve(server, &origin, EXTENSION_ID).await;
-        };
-        let forwarding = async {
-            if client.send(first).await.is_err() {
-                return;
-            }
-            loop {
-                tokio::select! { frame = ws.next() => match frame { Some(Ok(f)) => if client.send(f).await.is_err() { break; }, _ => break }, frame = client.next() => match frame { Some(Ok(f)) => if ws.send(f).await.is_err() { break; }, _ => break } }
-            }
-        };
-        tokio::select! { _ = serving => {}, _ = forwarding => {} }
-    });
-    Ok((
-        StatusCode::SWITCHING_PROTOCOLS,
-        [
-            ("upgrade", "websocket"),
-            ("connection", "Upgrade"),
-            ("sec-websocket-accept", &accept),
-        ],
-    )
-        .into_response())
-}
-
 pub async fn agent_access(
     State(app): State<Daemon>,
     Path(session): Path<String>,

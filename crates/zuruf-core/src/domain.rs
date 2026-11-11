@@ -395,7 +395,7 @@ impl Default for Settings {
                 theme: SettingsUiTheme::System,
                 language: SettingsUiLanguage::De,
                 open_panel_on_review_start: true,
-                browser: SettingsUiBrowser::Separate,
+                browser: SettingsUiBrowser::Integrated,
             },
             data_dir: String::new(),
         }

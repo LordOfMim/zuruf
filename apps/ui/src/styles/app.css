@@ -633,7 +633,7 @@ button.entry-thumb:hover {
   padding: 0;
   resize: none;
   overflow: hidden;
-  /* The app only ever runs in the managed Chromium, which sizes the field to its text natively. */
+  /* The app only ever runs in Zuruf's own Chromium shell, which sizes the field to its text natively. */
   field-sizing: content;
   background: none;
   border: 0;

@@ -31,18 +31,12 @@ export interface Bootstrap {
 const TOKEN_KEY = "zuruf.token";
 
 /**
- * Finds the daemon and a token:
- * - side panel inside the extension: bootstrap.json next to the panel page
- * - app window: one-time code in the URL fragment (#code=…), exchanged once
+ * Finds the daemon and a token. The daemon serves both the app window and the panel docked in a
+ * session window, so they sign in the same way:
+ * - one-time code in the URL fragment (#code=…), exchanged once
  * - afterwards: token kept in sessionStorage for reloads
  */
 export async function loadBootstrap(): Promise<Bootstrap | null> {
-  if (location.protocol === "chrome-extension:") {
-    const response = await fetch("../bootstrap.json");
-    const data = (await response.json()) as { port: number; token: string };
-    return { origin: `http://127.0.0.1:${data.port}`, token: data.token };
-  }
-
   const fragment = new URLSearchParams(location.hash.slice(1));
   const code = fragment.get("code");
   if (code) {

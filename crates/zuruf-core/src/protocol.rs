@@ -722,9 +722,10 @@ pub struct SettingsUi {
 /// Where the session browser lives: next to the app in one window, or in a window of its own.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SettingsUiBrowser {
-    #[default]
     #[serde(rename = "separate")]
     Separate,
+    /// The default: one window carries the app and the pages under review.
+    #[default]
     #[serde(rename = "integrated")]
     Integrated,
 }

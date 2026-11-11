@@ -388,7 +388,7 @@ export interface Settings {
     theme: "system" | "dark" | "light";
     language: "de" | "en";
     openPanelOnReviewStart: boolean;
-    /** integrated: Zuruf docks into the session browser's window; separate: two windows. */
+    /** integrated (default): the app docks into the session window; separate: it keeps a window of its own. */
     browser?: "separate" | "integrated";
   };
   dataDir: string;

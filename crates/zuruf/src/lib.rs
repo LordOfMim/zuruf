@@ -160,7 +160,6 @@ impl Daemon {
     }
     pub fn router(&self) -> Router {
         Router::new()
-            .route("/ext", get(real::extension_ws))
             .route("/cdp/{session}", get(real::cdp_ws))
             .route(
                 "/api/v1/sessions/{session}/agent-access",
@@ -170,7 +169,6 @@ impl Daemon {
             .route("/events", get(events))
             .route("/api/v1/{*path}", any(api))
             .fallback(get(ui))
-            .layer(axum::middleware::from_fn(real::cors))
             .with_state(self.clone())
             .merge(mcp_mount::router(self))
     }
@@ -193,6 +191,9 @@ impl Daemon {
         let mut failure = self.0.speech.cancel().await.err().map(Error::from);
         if let Err(e) = self.0.hotkeys.clear().await {
             failure.get_or_insert(e.into());
+        }
+        if let Some(runtime) = self.0.real.get() {
+            runtime.browsers.close_app().await;
         }
         for session in self.snapshot().await?.sessions {
             if let Err(e) = self.0.browser.stop_session(session.id).await {
@@ -1312,8 +1313,6 @@ fn origin_ok(headers: &HeaderMap) -> bool {
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("");
             origin == format!("http://{host}")
-                || origin == real::extension_origin()
-                || std::env::var("ZURUF_EXTENSION_ORIGIN").is_ok_and(|allowed| allowed == origin)
         })
     })
 }
@@ -1587,6 +1586,9 @@ async fn api(
                     settings.speech.clone();
             }
             app.0.hotkeys.apply(settings.bindings.clone()).await?;
+            if let Some(runtime) = app.0.real.get() {
+                runtime.browsers.set_theme(settings.ui.theme).await;
+            }
             app.0
                 .browser
                 .push_bindings(settings.bindings.clone())
@@ -1822,34 +1824,11 @@ async fn api(
                 .0
                 .events
                 .send(json!({"type":"app.open_requested","payload":{"view":view}}));
-            // In one-window mode the app is the panel of the running session browser.
-            let snapshot = app.snapshot().await?;
-            let mut window = "app";
-            if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated
-                && let Some(runtime) = app.0.real.get()
-            {
-                let sessions = runtime.browsers.sessions.lock().await;
-                let browser = snapshot
-                    .status
-                    .active_session_id
-                    .as_ref()
-                    .and_then(|id| sessions.get(id))
-                    .or_else(|| sessions.values().next())
-                    .cloned();
-                drop(sessions);
-                if let Some(browser) = browser
-                    && let Some(pid) = browser.pid()
-                    && let Ok(desktop) =
-                        zuruf_hypr::Hyprland::detect(std::env::current_exe().map_err(StoreError::from)?)
-                            .await
-                    && let Ok(Some(address)) = desktop.find_window(pid).await
-                {
-                    let _ = browser.open_panel().await;
-                    if desktop.focus(&address).await.is_ok() {
-                        window = "session";
-                    }
-                }
-            }
+            // The daemon owns the windows: the running session's, or the app's own.
+            let window = match app.0.real.get() {
+                Some(runtime) => runtime.browsers.open_app(&app, view).await?,
+                None => "app",
+            };
             json!({"ok":true,"window":window})
         }
         ("POST", "tasks", _, "cancel") => {

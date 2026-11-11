@@ -103,8 +103,8 @@ export function Sessions(props: { store: AppStore }) {
         <Show when={store.settings()}>
           {(settings) => (
             <Segmented
-              label="Browser"
-              value={settings().ui.browser ?? "separate"}
+              label="Fenster"
+              value={settings().ui.browser ?? "integrated"}
               options={[
                 { value: "integrated", label: "Ein Fenster" },
                 { value: "separate", label: "Getrennt" },
