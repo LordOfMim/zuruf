@@ -54,7 +54,8 @@ impl SessionConfig {
     }
 }
 
-/// Where the shell is installed: `ZURUF_SHELL`, next to this executable, or in `../lib/zuruf`.
+/// Where the shell is: `ZURUF_SHELL`, next to this executable, in `../lib/zuruf`, or one
+/// directory up.
 pub fn default_shell_path() -> PathBuf {
     let name = format!("zuruf-shell{}", std::env::consts::EXE_SUFFIX);
     if let Some(path) = std::env::var_os("ZURUF_SHELL") {
@@ -66,7 +67,10 @@ pub fn default_shell_path() -> PathBuf {
     if let Some(directory) = beside {
         let candidates = [
             directory.join(&name),
+            // Installed layout: bin/zuruf and lib/zuruf/zuruf-shell.
             directory.join("../lib/zuruf").join(&name),
+            // Tests and examples run from a subdirectory of the build directory.
+            directory.join("..").join(&name),
         ];
         if let Some(found) = candidates.into_iter().find(|path| path.exists()) {
             // A plain path reads better in diagnostics and in the process list.

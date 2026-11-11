@@ -3,7 +3,7 @@
 //! Needs the built shell and a display, so it is ignored by default:
 //!
 //! ```sh
-//! ZURUF_SHELL=target/debug/zuruf-shell cargo test -p zuruf-browser --test shell -- --ignored
+//! cargo build -p zuruf-shell && cargo test -p zuruf-browser --test shell -- --ignored
 //! ```
 //!
 //! Everything an agent does here goes through the same filtered proxy as in production.
@@ -167,7 +167,7 @@ fn binding(action: &str, code: &str) -> Binding {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the built shell (ZURUF_SHELL) and a display"]
+#[ignore = "needs the built shell and a display"]
 async fn session_in_shell_window() {
     let origin = serve_fixture().await;
     let directory = tempfile::tempdir().unwrap();

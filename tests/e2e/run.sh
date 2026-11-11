@@ -19,7 +19,14 @@ run() {
   local name=$1; shift
   limited "$@" > ".spike/acceptance/$name.log" 2>&1
   local status=$?
-  if (( status == 0 )); then echo "PASS $name"; else echo "FAIL $name ($status): .spike/acceptance/$name.log"; failed=$((failed+1)); fi
+  if (( status == 0 )); then
+    echo "PASS $name"
+  else
+    # Keep the evidence: the next run overwrites the plain log.
+    cp ".spike/acceptance/$name.log" ".spike/acceptance/$name.failed-$(date +%H%M%S).log"
+    echo "FAIL $name ($status): .spike/acceptance/$name.log"
+    failed=$((failed+1))
+  fi
 }
 cargo=(cargo)
 if command -v mise >/dev/null; then cargo=(mise exec rust@stable -- cargo); fi

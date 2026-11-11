@@ -207,13 +207,13 @@ async fn run() -> Result<(), Error> {
 }
 
 /// Listen on the daemon's loopback port. The port lies in the range the system also hands to
-/// outgoing connections, so one of those can hold it for a moment; that is worth a short wait
-/// rather than a failed start.
+/// outgoing connections, and a daemon that has just stopped may not have let go of it yet;
+/// that is worth a wait of up to fifteen seconds rather than a failed start.
 async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
     let mut attempts = 0;
     loop {
         match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
-            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && attempts < 20 => {
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && attempts < 60 => {
                 attempts += 1;
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
@@ -305,7 +305,8 @@ async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
     if !started {
         return Err(Error::Join("Daemon konnte nicht gestartet werden".into()));
     }
-    for _ in 0..100 {
+    // Longer than the daemon is willing to wait for its port.
+    for _ in 0..200 {
         if client.get(base).send().await.is_ok() {
             return Ok(());
         }

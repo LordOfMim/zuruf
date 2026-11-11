@@ -53,7 +53,7 @@ Zwei Eigenheiten der Rust-Bindings, die man kennen muss: Eine nicht beantwortete
 
 ## Bauen und ausprobieren
 
-Der Build braucht `cmake` und `ninja` und lädt beim ersten Mal die Chromium-Laufzeit; `CEF_PATH` legt fest, wohin. Zum Start müssen `libcef.so` und Chromiums Ressourcen neben dem Programm liegen – `install.sh` richtet das ein, im Container erledigen es Verknüpfungen im Target-Verzeichnis.
+Der Build braucht `cmake` und `ninja` und lädt beim ersten Mal die Chromium-Laufzeit; `CEF_PATH` legt fest, wohin. Zum Start müssen `libcef.so` und Chromiums Ressourcen neben dem Programm liegen: Im Target-Verzeichnis legt der Build sie selbst dorthin, für die Installation erledigt es `install.sh`.
 
 ```sh
 tools/dev/run-shell.sh --zuruf-url=http://127.0.0.1:8700/index.html      # X11 unter Xvfb

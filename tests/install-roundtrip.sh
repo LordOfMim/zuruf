@@ -36,11 +36,12 @@ if [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
   export ZURUF_PORT=47642 ZURUF_DATA_DIR ZURUF_STATE_DIR ZURUF_CONFIG_DIR
   "$PREFIX/bin/zuruf" open >/dev/null || { cat "$ZURUF_STATE_DIR/daemon.log" >&2; exit 1; }
   # The daemon answered, so the app window was started from the installed shell.
-  for _ in $(seq 50); do
+  # A first start reads the whole Chromium library from disk; give it time.
+  for _ in $(seq 200); do
     pgrep -f "$lib/zuruf-shell" >/dev/null && break
     sleep 0.1
   done
-  pgrep -f "$lib/zuruf-shell" >/dev/null || { echo 'App-Fenster wurde nicht gestartet' >&2; exit 1; }
+  pgrep -f "$lib/zuruf-shell" >/dev/null || { echo 'App-Fenster wurde nicht gestartet' >&2; cat "$ZURUF_STATE_DIR/daemon.log" >&2; exit 1; }
   "$PREFIX/bin/zuruf" stop >/dev/null
   for _ in $(seq 80); do
     pgrep -f "$lib/zuruf-shell" >/dev/null || break
