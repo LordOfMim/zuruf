@@ -19,9 +19,26 @@ pub fn authenticate(authorization: Option<&str>, token: &str) -> Result<()> {
 pub fn page_target(info: &Value) -> bool {
     info["type"] == "page"
         && info["url"].as_str().is_some_and(|url| {
-            url.starts_with("http://") || url.starts_with("https://") || url == "about:blank"
+            // A tab that was just opened has no address yet; what it loads is checked again
+            // before every command.
+            url.is_empty()
+                || url.starts_with("http://")
+                || url.starts_with("https://")
+                || url == "about:blank"
         })
 }
+/// A page an agent may see: a web page that is not one of the app's own, such as its panel.
+fn agent_page(info: &Value, private: &HashSet<String>) -> bool {
+    page_target(info)
+        && !info["targetId"]
+            .as_str()
+            .is_some_and(|id| private.contains(id))
+}
+/// Opens a tab in the session's window and resolves to its target id. Chromium's own
+/// `Target.createTarget` would open a separate window outside the app.
+pub type TabOpener = std::sync::Arc<
+    dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<String>> + Send>> + Send + Sync,
+>;
 /// Browser-wide commands are default-denied. Flat page commands use an allow-list
 /// of domains; experimental browser, IO, storage and extension domains stay private.
 pub fn allowed(method: &str, attached: bool) -> bool {
@@ -109,11 +126,14 @@ pub(crate) async fn serve<S>(
     auth: AgentAccess,
     authorization: Option<&str>,
     control: Arbitration,
+    private: HashSet<String>,
+    opener: Option<TabOpener>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     authenticate(authorization, &auth.token)?;
+    let private = std::sync::Arc::new(private);
     let cdp = Cdp::connect(upstream).await?;
     let mut events = cdp.subscribe();
     let (mut sink, mut stream) = ws.split();
@@ -123,9 +143,11 @@ where
     let mut pages = HashSet::<String>::new();
     let mut browser_sessions = HashSet::<String>::new();
     let mut event_parents = HashMap::<String, String>::new();
+    // Whether the agent asked to be attached to new pages automatically.
+    let mut auto_attach = false;
     let initial = cdp.call("Target.getTargets", json!({}), None).await?;
     if let Some(infos) = initial["targetInfos"].as_array() {
-        for info in infos.iter().filter(|v| page_target(v)) {
+        for info in infos.iter().filter(|v| agent_page(v, &private)) {
             if let Some(id) = info["targetId"].as_str() {
                 pages.insert(id.into());
             }
@@ -216,6 +238,9 @@ where
                     continue;
                 }
                 if method == "Target.setAutoAttach" || method == "Target.setDiscoverTargets" {
+                    if method == "Target.setAutoAttach" && target.is_none() {
+                        auto_attach = params["autoAttach"] == true;
+                    }
                     params["filter"] = json!([{"type":"page","exclude":false},{"exclude":true}]);
                     if method == "Target.setAutoAttach" {
                         params["flatten"] = json!(true);
@@ -233,6 +258,40 @@ where
                         | "Target.setDiscoverTargets"
                 ) {
                     let result = match control.check(&auth.agent_id).await {
+                        Ok(_) if method == "Target.createTarget" && opener.is_some() => {
+                            let url = params["url"].as_str().unwrap_or("about:blank").to_owned();
+                            let opened = match &opener {
+                                Some(open) => open(url).await,
+                                None => Err(Error::Closed),
+                            };
+                            if let Ok(id) = &opened
+                                && auto_attach
+                            {
+                                // A client that attaches automatically, such as Playwright,
+                                // expects the page's attach event ahead of this reply.
+                                let deadline =
+                                    tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+                                while let Ok(Ok(event)) =
+                                    tokio::time::timeout_at(deadline, events.recv()).await
+                                {
+                                    let announced = event["method"] == "Target.attachedToTarget"
+                                        && event["params"]["targetInfo"]["targetId"] == id.as_str();
+                                    if let Some(event) = visible_event(
+                                        event,
+                                        &mut sessions,
+                                        &mut pages,
+                                        &event_parents,
+                                        &private,
+                                    ) {
+                                        sink.send(event.to_string().into()).await?;
+                                    }
+                                    if announced {
+                                        break;
+                                    }
+                                }
+                            }
+                            opened.map(|id| json!({"targetId": id}))
+                        }
                         Ok(_) => {
                             cdp.call(
                                 method,
@@ -250,7 +309,7 @@ where
                         if method == "Target.getTargets"
                             && let Some(infos) = value["targetInfos"].as_array_mut()
                         {
-                            infos.retain(page_target);
+                            infos.retain(|info| agent_page(info, &private));
                         }
                         if method == "Target.attachToTarget"
                             && let (Some(id), Some(target)) = (value["sessionId"].as_str(), explicit.as_deref())
@@ -294,6 +353,7 @@ where
                         let gate = control.clone();
                         let agent = auth.agent_id.clone();
                         let access = auth.clone();
+                        let private = private.clone();
                         tokio::spawn(async move {
                             while let Some((command, params, generation)) = jobs.recv().await {
                                 if replies.is_closed() {
@@ -307,7 +367,9 @@ where
                                     }
                                     if tab!="browser" {
                                         let info=backend.call("Target.getTargetInfo",json!({"targetId":tab}),None).await?;
-                                        if !page_target(&info["targetInfo"]){return Err(Error::Denied("target is no longer a page"));}
+                                        if !agent_page(&info["targetInfo"], &private) {
+                                            return Err(Error::Denied("target is no longer a page"));
+                                        }
                                     }
                                     access.check()?;
                                     if gate.check(&agent).await?!=generation{return Err(Error::Denied("revoked before dispatch"));}
@@ -349,65 +411,84 @@ where
                 }
             },
             event=events.recv()=> {
-                let Ok(mut event) = event else {
+                let Ok(event) = event else {
                     break;
                 };
-                let method = event["method"].as_str().unwrap_or_default();
-                let info = &event["params"]["targetInfo"];
-                if method == "Target.attachedToTarget" {
-                    if !page_target(info) {
-                        continue;
-                    }
-                    if let (Some(session), Some(target)) = (
-                        event["params"]["sessionId"].as_str(),
-                        info["targetId"].as_str(),
-                    ) {
-                        sessions.insert(session.into(), target.into());
-                        pages.insert(target.into());
-                    }
-                } else if matches!(method, "Target.targetCreated" | "Target.targetInfoChanged") {
-                    if !page_target(info) {
-                        if let Some(id) = info["targetId"].as_str() {
-                            pages.remove(id);
-                            sessions.retain(|_, target| target != id);
-                        }
-                        continue;
-                    }
-                    if let Some(id) = info["targetId"].as_str() {
-                        pages.insert(id.into());
-                    }
-                } else if method == "Target.targetDestroyed" {
-                    if !event["params"]["targetId"]
-                        .as_str()
-                        .is_some_and(|id| pages.remove(id))
-                    {
-                        continue;
-                    }
-                } else if method.starts_with("Target.") {
-                    if !event["params"]["sessionId"]
-                        .as_str()
-                        .is_some_and(|id| sessions.contains_key(id))
-                    {
-                        continue;
-                    }
-                } else if !event["sessionId"]
-                    .as_str()
-                    .is_some_and(|id| sessions.contains_key(id))
-                {
+                let Some(event) =
+                    visible_event(event, &mut sessions, &mut pages, &event_parents, &private)
+                else {
                     continue;
-                }
-                if method == "Target.attachedToTarget"
-                    && let Some(parent) = event["params"]["sessionId"]
-                        .as_str()
-                        .and_then(|id| event_parents.get(id))
-                {
-                    event["sessionId"] = json!(parent);
-                }
+                };
                 sink.send(event.to_string().into()).await?;
             }
         }
     }
     Ok(())
+}
+/// Decide whether a browser event may reach the agent, and remember what it reveals about
+/// pages and sessions. Returns the event as the agent should see it.
+fn visible_event(
+    mut event: Value,
+    sessions: &mut HashMap<String, String>,
+    pages: &mut HashSet<String>,
+    event_parents: &HashMap<String, String>,
+    private: &HashSet<String>,
+) -> Option<Value> {
+    let method = event["method"].as_str().unwrap_or_default().to_owned();
+    let info = event["params"]["targetInfo"].clone();
+    if method == "Target.attachedToTarget" {
+        if !agent_page(&info, private) {
+            return None;
+        }
+        if let (Some(session), Some(target)) = (
+            event["params"]["sessionId"].as_str(),
+            info["targetId"].as_str(),
+        ) {
+            sessions.insert(session.into(), target.into());
+            pages.insert(target.into());
+        }
+    } else if matches!(
+        method.as_str(),
+        "Target.targetCreated" | "Target.targetInfoChanged"
+    ) {
+        if !agent_page(&info, private) {
+            if let Some(id) = info["targetId"].as_str() {
+                pages.remove(id);
+                sessions.retain(|_, target| target != id);
+            }
+            return None;
+        }
+        if let Some(id) = info["targetId"].as_str() {
+            pages.insert(id.into());
+        }
+    } else if method == "Target.targetDestroyed" {
+        if !event["params"]["targetId"]
+            .as_str()
+            .is_some_and(|id| pages.remove(id))
+        {
+            return None;
+        }
+    } else if method.starts_with("Target.") {
+        if !event["params"]["sessionId"]
+            .as_str()
+            .is_some_and(|id| sessions.contains_key(id))
+        {
+            return None;
+        }
+    } else if !event["sessionId"]
+        .as_str()
+        .is_some_and(|id| sessions.contains_key(id))
+    {
+        return None;
+    }
+    if method == "Target.attachedToTarget"
+        && let Some(parent) = event["params"]["sessionId"]
+            .as_str()
+            .and_then(|id| event_parents.get(id))
+    {
+        event["sessionId"] = json!(parent);
+    }
+    Some(event)
 }
 fn reply(id: u64, session: Option<String>, result: Result<Value>) -> Value {
     match result {
@@ -496,6 +577,8 @@ mod integration_tests {
                 AgentAccess::new("test".into(), "test".into()),
                 Some("Bearer test"),
                 gate,
+                HashSet::new(),
+                None,
             )
             .await
         });

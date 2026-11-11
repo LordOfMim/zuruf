@@ -98,5 +98,6 @@ pub enum BrowserEvent {
     TabsChanged(Vec<BrowserTab>),
     Crashed,
     ControlChanged(ControlState),
-    Extension(Box<crate::extension::Envelope>),
+    /// A key press, picker result or other message from a page.
+    Page(Box<crate::bridge::Envelope>),
 }

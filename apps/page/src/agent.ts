@@ -4,7 +4,11 @@ import type {
   LocatorCandidate,
   Rect,
 } from "../../../packages/protocol/src/index";
-import type { Message, Point, Envelope } from "./protocol";
+import type { Incoming, Outgoing, Point, Reply } from "./protocol";
+import styles from "./overlay.css";
+
+// The app injects this file into an isolated world of every frame, before the page's own
+// scripts run. It never touches the page's globals, and the page cannot call into it.
 let review = false;
 let bindings: Binding[] = [];
 let cursor: Point = { x: 0, y: 0 };
@@ -18,9 +22,11 @@ let confirmation: HTMLElement | undefined;
 let hidden = false;
 let recording = false;
 let owner = "none";
+/** Pills speak for the whole tab, so embedded frames stay silent. */
+const isTop = window === window.top;
 function renderStatus(): void {
   if (status) {
-    status.hidden = !review;
+    status.hidden = !review || !isTop;
     // One word, one dot: the page stays the subject. State is carried by attributes for overlay.css.
     status.dataset.recording = String(recording);
     status.dataset.owner = owner;
@@ -32,10 +38,10 @@ function mount(): void {
   if (host || !document.documentElement) return;
   host = document.createElement("zuruf-overlay");
   const root = host.attachShadow({ mode: "closed" });
-  const sheet = document.createElement("link");
-  sheet.rel = "stylesheet";
-  sheet.href = chrome.runtime.getURL("overlay.css");
-  root.append(sheet);
+  // A constructed sheet is not subject to the page's Content Security Policy.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(styles);
+  root.adoptedStyleSheets = [sheet];
   overlay = document.createElement("div");
   overlay.className = "overlay";
   overlay.hidden = hidden;
@@ -44,7 +50,7 @@ function mount(): void {
   outline.hidden = true;
   status = document.createElement("div");
   status.className = "status";
-  status.hidden = !review;
+  status.hidden = !review || !isTop;
   status.textContent = "Review";
   confirmation = document.createElement("div");
   confirmation.className = "confirmation";
@@ -53,8 +59,21 @@ function mount(): void {
   root.append(overlay);
   document.documentElement.append(host);
 }
-function send(message: Message): void {
-  void chrome.runtime.sendMessage(message).catch(() => {});
+// Messages wait here until the app's binding exists in this world.
+const outbox: string[] = [];
+function flush(): void {
+  const post = globalThis.__zurufSend;
+  if (typeof post !== "function") {
+    if (outbox.length > 0) setTimeout(flush, 15);
+    return;
+  }
+  for (const json of outbox.splice(0)) post(json);
+}
+function send(message: Outgoing): void {
+  // Pointer positions are only worth their latest value.
+  if (message.type === "pointer" && outbox.length > 64) return;
+  outbox.push(JSON.stringify(message));
+  flush();
 }
 const guardSelector =
   'input,textarea,select,[role="textbox"],[role="combobox"],.monaco-editor,.cm-editor,.CodeMirror,[data-zuruf-ignore]';
@@ -260,23 +279,20 @@ function configure(payload: { review: boolean; bindings: Binding[] }): void {
   renderStatus();
   if (!review) cancel();
 }
-chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
+function receive(message: Incoming): Reply {
   if (message.type === "configure") configure(message.payload);
   if (message.type === "overlay.hide") {
     hidden = true;
     if (overlay) overlay.hidden = true;
-    reply({ hidden: true });
-    return;
+    return { hidden: true };
   }
   if (message.type === "overlay.show") {
     hidden = false;
     if (overlay) overlay.hidden = false;
   }
-  if (message.type === "dom.request") {
-    reply({ dom: domCapture(), cursor: topPoint(cursor) });
-    return;
-  }
-  if (message.type === "capture.failed") {
+  if (message.type === "dom.request")
+    return { dom: domCapture(), cursor: topPoint(cursor) };
+  if (message.type === "capture.failed" && isTop) {
     mount();
     if (confirmation) {
       const failed = confirmation;
@@ -288,7 +304,7 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
       }, 3200);
     }
   }
-  if (message.type === "capture.saved") {
+  if (message.type === "capture.saved" && isTop) {
     mount();
     if (confirmation) {
       confirmation.hidden = false;
@@ -319,18 +335,25 @@ chrome.runtime.onMessage.addListener((message: Envelope, _, reply) => {
     mount();
     renderStatus();
   }
-  reply({ ok: true });
-});
+  return { ok: true };
+}
+// The app hears about the pointer at most every 32 ms, but always about where it came to rest.
+const pointerInterval = 32;
 let lastPointer = 0;
+let pointerTimer: ReturnType<typeof setTimeout> | undefined;
+function reportPointer(): void {
+  pointerTimer = undefined;
+  lastPointer = performance.now();
+  send({ type: "pointer", payload: { cursor: topPoint(cursor) } });
+}
 window.addEventListener(
   "pointermove",
   (event) => {
     if (!event.isTrusted) return;
     cursor = { x: event.clientX, y: event.clientY };
-    if (performance.now() - lastPointer > 32) {
-      lastPointer = performance.now();
-      send({ type: "pointer", payload: { cursor: topPoint(cursor) } });
-    }
+    const wait = pointerInterval - (performance.now() - lastPointer);
+    if (wait <= 0) reportPointer();
+    else pointerTimer ??= setTimeout(reportPointer, wait);
     if (!review) return;
     if (origin)
       box({
@@ -473,12 +496,14 @@ window.addEventListener(
       cancel();
       return;
     }
-    // This also permits the worker to open the panel in this user gesture.
-    send({ type: "action", payload: { action } });
     if (action === "capture.region") {
+      // The capture is requested once a region has been dragged.
       region = true;
       return;
     }
+    // Captures travel as a request with their geometry; everything else is a plain action.
+    if (action !== "capture.viewport" && action !== "capture.dom")
+      send({ type: "action", payload: { action } });
     if (action === "capture.viewport" || action === "capture.dom")
       send({
         type: "capture.request",
@@ -492,21 +517,50 @@ window.addEventListener(
   },
   true,
 );
-if (document.documentElement) mount();
-else
-  new MutationObserver((_, observer) => {
-    if (document.documentElement) {
-      mount();
-      observer.disconnect();
-    }
-  }).observe(document, { childList: true });
-void chrome.runtime
-  .sendMessage({ type: "ready" })
-  .then(
-    (
-      reply: { payload: { review: boolean; bindings: Binding[] } } | undefined,
-    ) => {
-      if (reply) configure(reply.payload);
-    },
-  )
-  .catch(() => {});
+/** The browser does not announce title changes of a tab, so its top document does. */
+function watchTitle(): void {
+  let reported: string | undefined;
+  const report = (): void => {
+    if (document.title === reported) return;
+    reported = document.title;
+    send({ type: "title", payload: { title: reported } });
+  };
+  const observe = (): void => {
+    report();
+    // The title lives in the head; watching only that keeps busy pages cheap.
+    if (document.head)
+      new MutationObserver(report).observe(document.head, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+  };
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", observe, { once: true });
+  else observe();
+  window.addEventListener("load", report, { once: true });
+}
+function start(): void {
+  globalThis.__zurufReceive = receive;
+  if (document.documentElement) mount();
+  else
+    new MutationObserver((_, observer) => {
+      if (document.documentElement) {
+        mount();
+        observer.disconnect();
+      }
+    }).observe(document, { childList: true });
+  const visible = (): boolean => document.visibilityState === "visible";
+  if (window === window.top) {
+    document.addEventListener("visibilitychange", () => {
+      send({ type: "visibility", payload: { visible: visible() } });
+    });
+    watchTitle();
+  }
+  // The app answers with the current configuration, recording state and control owner.
+  send({
+    type: "ready",
+    payload: { top: window === window.top, visible: visible() },
+  });
+}
+start();

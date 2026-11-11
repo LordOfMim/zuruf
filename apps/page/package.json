@@ -1,17 +1,16 @@
 {
-  "name": "@zuruf/extension",
+  "name": "@zuruf/page",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
     "check": "tsc --noEmit",
-    "test": "node test/keys.mjs dist/content.js",
-    "lint": "eslint src && prettier --check src static build.mjs"
+    "test": "node test/keys.mjs dist/agent.js",
+    "lint": "eslint src && prettier --check src build.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/mcp": "^0.0.68",
-    "@types/chrome": "^0.1.32",
     "esbuild": "^0.27.0",
     "eslint": "^10.14.0",
     "playwright-core": "^1.58.0",

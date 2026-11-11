@@ -37,7 +37,8 @@ impl Cdp {
         let (mut sink, mut stream) = ws.split();
         let (tx, mut rx) = mpsc::channel::<Value>(256);
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
-        let (events, _) = broadcast::channel(512);
+        // Generous: the page bridge must not miss execution-context events during a burst.
+        let (events, _) = broadcast::channel(4096);
         let client = Self {
             tx,
             pending: pending.clone(),
