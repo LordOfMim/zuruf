@@ -35,6 +35,14 @@ let browser;
 let lastSession;
 let log = "";
 const viaLauncher = process.platform === "win32";
+function alive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+async function appWindows() {
+  const contents = log + await readFile(join(env.ZURUF_STATE_DIR, "daemon.log"), "utf8").catch(() => "");
+  const plain = contents.replace(/\u001b\[[0-9;]*m/g, "");
+  return [...plain.matchAll(/app window started pid=(\d+)/g)].map((match) => Number(match[1]));
+}
 async function api(method, path, body) {
   const response = await fetch(`${base}/api/v1${path}`, {
     method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -89,11 +97,16 @@ try {
     await until("the restored width", async () => await page.evaluate(() => innerWidth) === 390);
     await browser.close(); browser = undefined;
   }
+  const windowsBeforeStop = (await appWindows()).length;
   assert.equal((await api("POST", `/sessions/${session.id}/stop`, {})).state, "stopped");
+  const appPid = await until("the standalone app after stopping the last session", async () =>
+    (await appWindows()).slice(windowsBeforeStop).find(alive));
   await sleep(600);
   assert.equal((await current()).state, "stopped");
+  assert(alive(appPid), "stopping a session must keep the application open");
   // Updates use this CLI while windows are still open. It must wait for browser cleanup.
   await api("POST", `/sessions/${session.id}/start`, {});
+  await until("the standalone app to dock into the new session", () => !alive(appPid));
   const stop = spawn(join(prefix, `bin/zuruf${process.platform === "win32" ? ".exe" : ""}`), ["stop"], { env, windowsHide: true, stdio: "ignore" });
   const stopped = new Promise((done, reject) => {
     stop.once("error", reject);
@@ -101,7 +114,7 @@ try {
   });
   await stopped;
   await assert.rejects(fetch(base, { signal: AbortSignal.timeout(1000) }), "CLI stop must wait for shutdown");
-  console.log("PASS packaged native browser: start, click, screenshot, filtered CDP, width, profile recovery, deliberate stop and update shutdown");
+  console.log("PASS packaged native browser: start, click, screenshot, filtered CDP, width, profile recovery, session stop keeps app open, redocking and update shutdown");
 } catch (error) {
   const redact = (text) => text.replace(/([#?](?:code|token)=)[^\s"<>]+/g, "$1<redacted>").replace(/Bearer\s+\S+/g, "Bearer <redacted>");
   if (lastSession) {

@@ -669,6 +669,9 @@ impl Browsers {
             }
         }
         let mut window = self.app_window.lock().await;
+        if *self.shutting_down.borrow() {
+            return Err(AdapterError::Unavailable("Anwendung wird beendet".into()));
+        }
         if let Some(existing) = window.as_ref()
             && existing.alive().await
         {

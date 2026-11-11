@@ -107,6 +107,8 @@ Das Fenster ist ein Review-Browser, kein Alltagsbrowser: Downloads, Berechtigung
 
 Wird das Sitzungsfenster geschlossen, stürzt der Browser ab oder reagiert er nicht mehr, öffnet Zuruf ihn automatisch erneut. Die zuletzt gespeicherten Tab-Adressen, das Sitzungsprofil und die über die App eingestellte Seitenbreite bleiben erhalten. Falls ein Start fehlschlägt, versucht Zuruf es mit wachsendem Abstand erneut. Unter „Sitzungen“ beendet **Stoppen** die Sitzung einschließlich aller ausstehenden Startversuche dauerhaft. Auch nach einem Dienstneustart werden aktive Sitzungen wiederhergestellt; gestoppte bleiben beendet. Nicht gespeicherte Formulareingaben sind kein Bestandteil dieser Wiederherstellung.
 
+**Stoppen** lässt Zuruf geöffnet: Ohne weitere laufende Sitzung erscheint das eigenständige App-Fenster mit der Sitzungsübersicht. Läuft noch eine andere Sitzung, bleibt die App dort sichtbar. `zuruf stop` beendet dagegen den Dienst und alle Zuruf-Fenster.
+
 ## Ein Fenster oder zwei
 
 Unter „Sitzungen“ legt der Schalter „Ein Fenster / Getrennt“ fest, wo Zuruf lebt. „Ein Fenster“ ist der Standard: Zuruf sitzt mit allen Bereichen links im Sitzungsfenster, die Seite füllt den Rest; das eigene App-Fenster schließt sich beim Start der Sitzung, `zuruf open` holt das Sitzungsfenster nach vorn. Ohne laufende Sitzung öffnet sich das App-Fenster. „Getrennt“: Im Sitzungsfenster sitzt nur das Review-Werkzeug, die übrige App behält ihr eigenes Fenster. Die Wahl gilt ab dem nächsten Start einer Sitzung.

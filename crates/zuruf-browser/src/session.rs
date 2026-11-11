@@ -926,6 +926,7 @@ fn shell_command(shell: &Path, scope: &Scope, memory: &str) -> Command {
 /// Set once the shell reports that its window was closed, by the user or on request.
 #[derive(Clone, Default)]
 struct ShellSignals {
+    ready: Arc<std::sync::atomic::AtomicBool>,
     closed: Arc<std::sync::atomic::AtomicBool>,
     failed: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -959,6 +960,11 @@ fn spawn_shell(
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let event = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_default();
+                if event["event"] == "ready" {
+                    signals
+                        .ready
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 if event["event"] == "closed" {
                     signals
                         .closed
@@ -1014,7 +1020,21 @@ impl AppWindow {
             .arg(format!("--zuruf-theme={theme}"))
             .arg("--zuruf-app-only")
             .args(args);
-        let (child, stdin, _signals) = spawn_shell(command, shell, directory)?;
+        let (mut child, stdin, signals) = spawn_shell(command, shell, directory)?;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                if child.try_wait()?.is_some() {
+                    return Err(Error::Closed);
+                }
+                if signals.ready.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .map_err(|_| Error::Timeout("app window startup"))??;
+        tracing::info!(pid = child.id().unwrap_or_default(), "app window started");
         Ok(Self {
             pid: child.id(),
             child: Mutex::new(child),

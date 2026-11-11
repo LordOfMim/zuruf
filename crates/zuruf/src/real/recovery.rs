@@ -149,9 +149,16 @@ impl Browsers {
         self: Arc<Self>,
         session: &str,
     ) -> std::result::Result<(), AdapterError> {
+        let carried_app = self.sessions.lock().await.contains_key(session);
         let life = self.lifecycle(session).await?;
         let requested = life.request(false, true);
-        life.wait(requested).await
+        life.wait(requested).await?;
+        if carried_app && *life.intent.borrow() == requested && !*self.shutting_down.borrow() {
+            // Closing the session also removes its docked panel. Keep the application
+            // visible in another running session, or reopen its standalone window.
+            self.open_app(&self.daemon()?, "sessions").await?;
+        }
+        Ok(())
     }
 
     pub(crate) fn cancel_recovery(&self) {
