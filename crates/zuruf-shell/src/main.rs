@@ -87,6 +87,10 @@ fn main() {
     };
     if let Some(profile) = &options.profile {
         settings.root_cache_path = CefString::from(profile.as_str());
+        // root_cache_path only selects the process lock. An empty cache_path
+        // makes CEF's global request context incognito and loses logins/storage.
+        settings.cache_path = CefString::from(profile.as_str());
+        settings.persist_session_cookies = 1;
     }
     let mut app = ShellApp::new(options);
     let started = initialize(
