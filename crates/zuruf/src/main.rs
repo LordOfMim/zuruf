@@ -228,7 +228,11 @@ async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
         return Ok(());
     }
     let binary = std::env::current_exe().map_err(StoreError::from)?;
-    let systemd = cfg!(target_os = "linux")
+    // Installer and desktop smoke tests have their own state and port. They must
+    // never start the user's installed service, which has a different environment.
+    let isolated = std::env::var("ZURUF_INSTALL_TEST").as_deref() == Ok("1");
+    let systemd = !isolated
+        && cfg!(target_os = "linux")
         && std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|runtime| {
             std::path::Path::new(&runtime)
                 .join("systemd/private")

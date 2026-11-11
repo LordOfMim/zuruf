@@ -13,8 +13,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import assert from "node:assert/strict";
 
+const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, "../..");
 const target = process.env.CARGO_TARGET_DIR ?? join(root, "target");
 const binary = process.env.ZURUF_E2E_BINARY ?? join(target, "debug/zuruf");
@@ -72,7 +74,12 @@ const state = () => api("GET", "/state");
 let daemon;
 let browser;
 let log = "";
+let existingWindows = new Set();
 try {
+  if (process.env.HYPRLAND_INSTANCE_SIGNATURE) {
+    const { stdout } = await exec("hyprctl", ["clients", "-j"]);
+    existingWindows = new Set(JSON.parse(stdout).map((window) => window.address));
+  }
   daemon = spawn(binary, ["daemon"], { cwd: root, env, stdio: ["ignore", "ignore", "pipe"] });
   daemon.stderr.on("data", (chunk) => (log += chunk));
   await until("the daemon", async () => {
@@ -284,13 +291,26 @@ try {
 
   // Closing the window is an ordinary ending, not a crash. Only the compositor can ask a
   // window to close the way a person does, so this needs one we know how to talk to.
+  let ownWindow;
+  if (process.env.HYPRLAND_INSTANCE_SIGNATURE) {
+    const { stdout } = await exec("hyprctl", ["clients", "-j"]);
+    const windows = JSON.parse(stdout).filter(
+      (window) => window.class === "zuruf" && !existingWindows.has(window.address),
+    );
+    assert.equal(windows.length, 1, "close only the test's session window");
+    ownWindow = windows[0].address;
+    assert.match(ownWindow, /^0x[0-9a-f]+$/i);
+  }
   const closeRequest = process.env.SWAYSOCK
     ? ["swaymsg", ["[app_id=zuruf]", "kill"]]
     : process.env.HYPRLAND_INSTANCE_SIGNATURE
-      ? ["hyprctl", ["dispatch", "closewindow", "class:zuruf"]]
+      ? ["hyprctl", ["dispatch", `hl.dsp.window.close({ window = "address:${ownWindow}" })`]]
       : null;
   if (closeRequest) {
-    await new Promise((done) => execFile(closeRequest[0], closeRequest[1], done));
+    await exec(closeRequest[0], closeRequest[1]).catch(async (error) => {
+      if (closeRequest[0] !== "hyprctl") throw error;
+      await exec("hyprctl", ["dispatch", "closewindow", `address:${ownWindow}`]);
+    });
     await until("the closed window to be noticed", async () => (await sessionState()) === "stopped");
     passed("closing the window stops the session");
   } else {
