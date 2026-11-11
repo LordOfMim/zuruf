@@ -29,6 +29,12 @@ pub(super) struct SessionLife {
     task: AsyncMutex<Option<JoinHandle<()>>>,
 }
 
+struct LaunchedSession {
+    browser: Arc<Browser>,
+    model: BrowserSession,
+    events: tokio::sync::broadcast::Receiver<zuruf_browser::BrowserEvent>,
+}
+
 impl SessionLife {
     fn new() -> Self {
         Self {
@@ -247,12 +253,15 @@ impl Browsers {
                 continue;
             };
             match launched {
-                Ok((browser, model)) => {
+                Ok(LaunchedSession {
+                    browser,
+                    model,
+                    events,
+                }) => {
                     if *wanted.borrow() != intent || *shutdown.borrow() {
                         let _ = browser.stop().await;
                         continue;
                     }
-                    let rx = browser.events();
                     self.sessions
                         .lock()
                         .await
@@ -269,7 +278,7 @@ impl Browsers {
                     life.report(intent, Phase::Ready);
                     let up_since = Instant::now();
                     tokio::select! {
-                        _ = self.clone().listen(session.clone(), rx) => {},
+                        _ = self.clone().listen(session.clone(), events) => {},
                         _ = async {
                             loop {
                                 tokio::time::sleep(Duration::from_secs(5)).await;
@@ -313,10 +322,7 @@ impl Browsers {
         life.report(intent, Phase::Stopped);
     }
 
-    async fn launch(
-        &self,
-        sid: &str,
-    ) -> std::result::Result<(Arc<Browser>, BrowserSession), AdapterError> {
+    async fn launch(&self, sid: &str) -> std::result::Result<LaunchedSession, AdapterError> {
         let mut session = self.model(sid).await?;
         let daemon = self.daemon()?;
         let snapshot = daemon.snapshot().await.map_err(io)?;
@@ -341,6 +347,9 @@ impl Browsers {
             );
         }
         let browser = Arc::new(Browser::start(config).await.map_err(io)?);
+        // A cached page can become scriptable while configuration and the initial tab
+        // snapshot are prepared. Subscribe first so that readiness cannot fall in a gap.
+        let events = browser.events();
         let bindings = self.bindings.lock().await.clone();
         browser
             .push_bindings(convert(bindings.clone())?)
@@ -363,7 +372,11 @@ impl Browsers {
         if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated {
             self.close_app().await;
         }
-        Ok((browser, session))
+        Ok(LaunchedSession {
+            browser,
+            model: session,
+            events,
+        })
     }
 
     pub(super) async fn set_page_width(

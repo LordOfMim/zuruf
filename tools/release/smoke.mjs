@@ -32,6 +32,7 @@ async function until(name, probe, timeout = 25000) {
 let token;
 let daemon;
 let browser;
+let lastSession;
 let log = "";
 const viaLauncher = process.platform === "win32";
 async function api(method, path, body) {
@@ -62,7 +63,7 @@ try {
   if (viaLauncher) await until("the GUI launcher to finish opening the app", () => daemon.exitCode === 0);
   const project = await api("POST", "/projects", { name: "Release fixture", repositoryPath: directory, baseUrl: url });
   const session = await api("POST", "/sessions", { projectId: project.id, name: "Release smoke", mode: "shared", agentAccess: true });
-  const current = async () => (await api("GET", "/state")).sessions.find((entry) => entry.id === session.id);
+  const current = async () => (lastSession = (await api("GET", "/state")).sessions.find((entry) => entry.id === session.id));
   const connect = async () => {
     const access = await api("POST", `/sessions/${session.id}/agent-access`, { agentId: "release-smoke" });
     await api("POST", `/sessions/${session.id}/control`, { action: "grant", agentId: "release-smoke", leaseSeconds: 120 });
@@ -80,12 +81,14 @@ try {
   await api("POST", `/sessions/${session.id}/page-width`, { width: 390 });
   await until("the real page viewport", async () => await page.evaluate(() => innerWidth) === 390);
   await browser.close(); browser = undefined;
-  assert.equal((await api("POST", `/sessions/${session.id}/restart`, {})).state, "running");
-  await until("the restored fixture", async () => (await current()).tabs.some((tab) => tab.scriptable && tab.url === url));
-  page = await connect();
-  assert.equal(await page.evaluate(() => localStorage.getItem("release-check")), "persisted");
-  await until("the restored width", async () => await page.evaluate(() => innerWidth) === 390);
-  await browser.close(); browser = undefined;
+  for (let restart = 0; restart < 3; restart++) {
+    assert.equal((await api("POST", `/sessions/${session.id}/restart`, {})).state, "running");
+    await until(`the restored fixture after restart ${restart + 1}`, async () => (await current()).tabs.some((tab) => tab.scriptable && tab.url === url));
+    page = await connect();
+    assert.equal(await page.evaluate(() => localStorage.getItem("release-check")), "persisted");
+    await until("the restored width", async () => await page.evaluate(() => innerWidth) === 390);
+    await browser.close(); browser = undefined;
+  }
   assert.equal((await api("POST", `/sessions/${session.id}/stop`, {})).state, "stopped");
   await sleep(600);
   assert.equal((await current()).state, "stopped");
@@ -100,7 +103,26 @@ try {
   await assert.rejects(fetch(base, { signal: AbortSignal.timeout(1000) }), "CLI stop must wait for shutdown");
   console.log("PASS packaged native browser: start, click, screenshot, filtered CDP, width, profile recovery, deliberate stop and update shutdown");
 } catch (error) {
-  console.error(log.split("\n").slice(-12).join("\n").replace(/([#?](?:code|token)=)[^\s"<>]+/g, "$1<redacted>"));
+  const redact = (text) => text.replace(/([#?](?:code|token)=)[^\s"<>]+/g, "$1<redacted>").replace(/Bearer\s+\S+/g, "Bearer <redacted>");
+  if (lastSession) {
+    const tabs = lastSession.tabs.map((tab) => {
+      let safeUrl = "<invalid>";
+      try {
+        const url = new URL(tab.url);
+        url.username = ""; url.password = ""; url.search = ""; url.hash = "";
+        safeUrl = url.href;
+      } catch {}
+      return { url: safeUrl, scriptable: tab.scriptable, active: tab.active };
+    });
+    console.error("Last observed session:", JSON.stringify({ state: lastSession.state, tabs }));
+  }
+  const browserLogs = [join(env.ZURUF_DATA_DIR, "app-window/shell.log")];
+  if (lastSession) browserLogs.push(join(env.ZURUF_DATA_DIR, "sessions", lastSession.id, "shell.log"));
+  for (const path of browserLogs) {
+    const contents = await readFile(path, "utf8").catch(() => "");
+    if (contents) console.error("Native browser log:", redact(contents.split("\n").slice(-12).join("\n")));
+  }
+  console.error(redact(log.split("\n").slice(-12).join("\n")));
   throw error;
 } finally {
   await browser?.close().catch(() => {});
