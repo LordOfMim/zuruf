@@ -20,7 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        include:
+          - os: ubuntu-22.04
+            native-shell: bash
+          - os: windows-2022
+            native-shell: pwsh
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
@@ -69,13 +73,14 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Rust tests
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+        # Git Bash prepends its unrelated link.exe ahead of the MSVC linker.
+        shell: ${{ matrix.native-shell }}
         run: cargo test --workspace --locked -j 4
       - name: Rust lint
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+        shell: ${{ matrix.native-shell }}
         run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
       - name: Build release
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+        shell: ${{ matrix.native-shell }}
         run: cargo build --workspace --release --locked -j 4
       - name: Fetch license source metadata for all platforms
         run: cargo fetch --locked
