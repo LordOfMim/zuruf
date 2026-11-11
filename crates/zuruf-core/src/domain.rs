@@ -263,7 +263,7 @@ pub fn build_manifest(
     )
 }
 pub fn build_prompt(absolute_manifest_path: &str) -> Result<String, DomainError> {
-    if !absolute_manifest_path.starts_with('/') {
+    if !std::path::Path::new(absolute_manifest_path).is_absolute() {
         return Err(DomainError::Path);
     }
     Ok(format!(
@@ -546,8 +546,9 @@ mod tests {
     #[test]
     fn prompt() {
         assert!(build_prompt("relative").is_err());
+        let path = std::env::temp_dir().join("safe/batch.json");
         assert!(
-            build_prompt("/safe/batch.json")
+            build_prompt(&path.to_string_lossy())
                 .unwrap()
                 .contains("je Annotation")
         );

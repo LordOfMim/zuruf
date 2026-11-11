@@ -54,7 +54,10 @@ fn protect(path: &Path, directory: bool) -> io::Result<()> {
         "D:P(A;;FA;;;OW)(A;;FA;;;SY)"
     };
     let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
-    let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Rust's filesystem supports long paths. Pass its verbatim Windows path to Win32 too,
+    // otherwise nested batch/screenshot paths exceed the legacy MAX_PATH limit here.
+    let canonical = fs::canonicalize(path)?;
+    let path: Vec<u16> = canonical.as_os_str().encode_wide().chain(Some(0)).collect();
     let mut descriptor = ptr::null_mut();
     // SAFETY: Both strings are NUL-terminated; the descriptor is freed with LocalFree.
     unsafe {
@@ -155,5 +158,18 @@ mod tests {
         assert_eq!(first.len(), 64);
         assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert_ne!(first, random_token().unwrap());
+    }
+
+    #[test]
+    fn private_files_support_long_nested_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut path = directory.path().to_owned();
+        for _ in 0..4 {
+            path.push("nested-state-".repeat(6));
+        }
+        path.push("credential.json");
+        assert!(path.as_os_str().len() > 260);
+        atomic_write(&path, b"private state").unwrap();
+        assert_eq!(fs::read(path).unwrap(), b"private state");
     }
 }
