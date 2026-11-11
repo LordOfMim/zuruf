@@ -77,11 +77,13 @@ if (sha1 !== file.sha1) {
 }
 
 console.log("unpacking");
-// Git Bash's GNU tar interprets a Windows drive letter as a remote host.
-const tar = process.platform === "win32"
-  ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
-  : "tar";
-execFileSync(tar, ["-xjf", archive, "-C", location], { stdio: "inherit" });
+// Git Bash's tar interprets drive letters as remote hosts. Python's extractor
+// handles native paths and long CEF filenames consistently on Windows.
+if (process.platform === "win32") {
+  execFileSync("python", ["-c", "import sys, tarfile; tarfile.open(sys.argv[1], 'r:bz2').extractall(sys.argv[2], filter='data')", archive, location], { stdio: "inherit" });
+} else {
+  execFileSync("tar", ["-xjf", archive, "-C", location], { stdio: "inherit" });
+}
 const extracted = join(location, file.name.replace(/\.tar\.bz2$/, ""));
 rmSync(target, { recursive: true, force: true });
 renameSync(join(extracted, "Release"), target);

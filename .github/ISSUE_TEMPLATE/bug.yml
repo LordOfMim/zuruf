@@ -1,0 +1,38 @@
+name: Fehler melden
+description: Ein Fehler in der App, im Installer oder im Browser
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Bitte Beispieldaten verwenden. Keine Tokens, Browserprofile oder unbearbeiteten Crash-Dumps hochladen. Sicherheitslücken bitte privat melden.
+  - type: input
+    id: version
+    attributes:
+      label: Zuruf-Version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Betriebssystem und Installationsart
+      placeholder: Windows 11 / Setup-EXE oder Ubuntu 24.04 / Debian-Paket
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Schritte und beobachtetes Verhalten
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Verhalten
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Bereinigte Logs oder Screenshots
+      description: Vertrauliche Inhalte vorher entfernen.

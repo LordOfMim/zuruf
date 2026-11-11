@@ -1,0 +1,15 @@
+[Unit]
+Description=Zuruf lokaler Review-Dienst
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart="@BINARY@" daemon
+Restart=on-failure
+RestartSec=3
+MemoryMax=3G
+MemorySwapMax=1G
+
+[Install]
+WantedBy=graphical-session.target

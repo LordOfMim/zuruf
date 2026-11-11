@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke privat melden
+    url: https://github.com/LordOfMim/zuruf/security/advisories/new
+    about: Bitte keine Zugangsdaten oder Exploits öffentlich melden.

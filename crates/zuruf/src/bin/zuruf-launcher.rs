@@ -2,11 +2,18 @@
 
 fn main() {
     let result = (|| -> std::io::Result<bool> {
-        let binary = std::env::current_exe()?.with_file_name(if cfg!(windows) {
-            "zuruf.exe"
+        let current = std::env::current_exe()?;
+        let filename = if cfg!(windows) { "zuruf.exe" } else { "zuruf" };
+        let nested = current
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("bin")
+            .join(filename);
+        let binary = if nested.is_file() {
+            nested
         } else {
-            "zuruf"
-        });
+            current.with_file_name(filename)
+        };
         let mut command = std::process::Command::new(binary);
         zuruf_platform::background(&mut command);
         Ok(command

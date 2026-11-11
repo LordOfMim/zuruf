@@ -26,3 +26,7 @@ tools/dev/*.png
 .cef/
 artifacts/
 .release-stage/
+.release-tools/
+
+__pycache__/
+*.pyc

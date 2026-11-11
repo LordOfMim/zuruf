@@ -1,0 +1,20 @@
+name: Verbesserung vorschlagen
+description: Ein konkretes Problem oder ein neuer Anwendungsfall
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem soll gelöst werden?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Gewünschtes Verhalten
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Betroffene Plattform

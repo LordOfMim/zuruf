@@ -1,144 +1,119 @@
 # Zuruf
 
-Zuruf ist ein lokales Review-Werkzeug für Webanwendungen: ein eigenes Browserfenster, in dem die App neben der geprüften Seite sitzt. Man markiert per Tastendruck, was nicht stimmt, spricht oder tippt dazu und schickt alles gesammelt als Aufgabe an einen Coding-Agenten in [T3 Code](https://app.t3.codes).
+**Webseiten prüfen. Feedback festhalten. Coding-Agenten gezielt weiterarbeiten lassen.**
 
-![Zuruf-Fenster: links die App, rechts die geprüfte Seite](docs/bilder/fenster.png)
+[![Build und Tests](https://github.com/LordOfMim/zuruf/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/LordOfMim/zuruf/actions/workflows/build.yml)
+[![Downloads](https://img.shields.io/github/v/release/LordOfMim/zuruf)](https://github.com/LordOfMim/zuruf/releases/latest)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-*Die Bilder zeigen die Beispieldaten der Oberfläche.*
+Zuruf ist eine lokale Desktop-App für Browser-Reviews: Links sitzt das Review-Werkzeug, rechts die geprüfte Website in einem integrierten Chromium-Browser. Du markierst einen Fehler, sprichst oder schreibst einen Kommentar dazu und übergibst die gesammelten Hinweise als Aufgabe an einen Coding-Agenten in [T3 Code](https://app.t3.codes).
 
-## Was es kann
+Rust für App und Browser-Shell, Solid für die Oberfläche. Keine Browser-Extension, kein Electron und kein Node zur Laufzeit.
 
-- **Ein Fenster.** Chromium ist eingebaut. Es gibt keine Browser-Extension und kein zweites Programm, zwischen dem man wechselt.
-- **Aufnehmen per Taste.** `W` nimmt die ganze Ansicht sofort auf. `D` lässt ein Element wählen, `S` einen Bereich aufziehen.
-- **Diktieren.** Was man nach einer Aufnahme sagt, gehört zu dieser Aufnahme (über Voxtype).
-- **Fehler der Seite reisen mit.** Konsolenfehler, unbehandelte Ausnahmen und fehlgeschlagene Anfragen hängen automatisch an jeder Aufnahme und gehen mit an den Agenten.
-- **Seitenbreiten.** Ein Knopf zeigt die Seite in voller Breite, 1024, 768 oder 390 Pixel – mit echtem Viewport.
-- **Zusammenarbeit mit Agenten.** Ein Agent kann den Browser steuern; man sieht seinen Zeiger, seine Fortschrittsmeldungen und was er einem zeigen will. Übernehmen geht jederzeit und gewinnt sofort.
+![Zuruf: Review-Werkzeug neben der geprüften Seite](docs/bilder/fenster.png)
 
-| Element wählen (`D`) | Bereich aufziehen (`S`) | Agent bei der Arbeit |
-|---|---|---|
-| ![Ein Element ist farbig markiert](docs/bilder/element-waehlen.png) | ![Ein Bereich ist aus der abgedunkelten Seite ausgeschnitten](docs/bilder/bereich-aufziehen.png) | ![Zeiger, Rückfrage und Fortschrittsmeldung eines Agenten](docs/bilder/agent.png) |
+*Die Screenshots zeigen Beispieldaten.*
 
-## Voraussetzungen
+## Herunterladen
 
-Zuruf ist für **Linux** gebaut und auf Arch mit Hyprland (Wayland) ausgerichtet; X11 funktioniert ebenfalls. Windows und macOS werden nicht unterstützt.
+Die [aktuelle Veröffentlichung](https://github.com/LordOfMim/zuruf/releases/latest) enthält fertige Programme mit Chromium. Du brauchst zum Installieren weder Rust noch Node.
 
-Zum Betrieb:
+| System | Download | Installation |
+| --- | --- | --- |
+| Windows 10/11, x64 | [Windows-Installer](https://github.com/LordOfMim/zuruf/releases/latest/download/Zuruf-Setup-windows-x64.exe) | Starten und dem Assistenten folgen. Keine Administratorrechte erforderlich. |
+| Windows, portabel | [ZIP-Paket](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-windows-x64.zip) | Entpacken und `Zuruf.exe` öffnen. |
+| Ubuntu / Debian, x64 | [Debian-Paket](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-linux-amd64.deb) | Über die Paketverwaltung öffnen oder `sudo apt install ./zuruf-linux-amd64.deb`. |
+| Arch / andere Linux-Distributionen, x64 | [Linux-Bundle](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-linux-x64.tar.gz) | Entpacken und `./install.sh` ausführen. Installiert in deinen Benutzerbereich. |
 
-- [T3 Code](https://app.t3.codes), lokal laufend – dorthin gehen die Aufgaben
-- Voxtype und PipeWire – nur für das Diktat; ohne sie bleibt Tippen
-- Hyprland – nur für die desktopweiten Kurzbefehle
+Linux benötigt glibc ab 2.35 sowie die üblichen GTK-/NSS-/Audio-Bibliotheken von Chromium. Das Debian-Paket bringt die passenden Paketabhängigkeiten mit. Unter Arch: `gtk3 nss nspr alsa-lib libxss`. X11 und Wayland werden unterstützt. ARM und macOS sind derzeit keine Release-Ziele.
 
-Zum Bauen:
+Die Release-Seite enthält SHA-256-Prüfsummen und Lizenzhinweise. Der Windows-Installer ist derzeit nicht Authenticode-signiert. Veröffentlichungen werden aus dem zugehörigen Git-Tag auf GitHub gebaut; Details stehen unter [Releases und Builds](docs/releases.md).
 
-- Rust stable (empfohlen über [mise](https://mise.jdx.dev))
-- Node 26 und pnpm 11
-- `cmake`, `ninja` und `python3` (das Installationsskript benutzt es)
-- rund 2 GB freier Plattenplatz und 4 GB Arbeitsspeicher für den Build
+## Was Zuruf kann
 
-Auf Arch:
+- **Feedback dort festhalten, wo es entsteht.** Ganze Ansichten aufnehmen, ein Element auswählen oder einen Bereich aufziehen. Screenshot, Kommentar, URL und Elementkontext bleiben zusammen.
+- **Kontext statt Rätsel.** Konsolenfehler, unbehandelte Ausnahmen und fehlgeschlagene Anfragen der Seite gehen mit der Aufnahme an den Agenten.
+- **Echte Seitenbreiten.** Vollbild, 1024, 768 oder 390 Pixel: Die Seite bekommt einen echten Viewport in dieser Breite.
+- **Mit dem Agenten zusammenarbeiten.** Im Browser sind sein Zeiger, Fortschrittsmeldungen und Rückfragen sichtbar. Du kannst die Steuerung jederzeit übernehmen.
+- **Aufgaben übersichtlich halten.** Auch abgebrochene oder fehlgeschlagene Aufgaben lassen sich abschließen und später wieder öffnen. Der ursprüngliche Status bleibt erhalten.
+- **Nach Unterbrechungen weiterarbeiten.** Geschlossene Fenster, Prozessabbrüche und Hänger lösen die Wiederherstellung der aktiven Browser-Sitzung aus. Gespeicherte Tab-Adressen und Profildaten bleiben erhalten.
+- **Eigene Tastenkürzel.** Die Belegung lässt sich in der App ändern. Desktopweite Hotkeys stehen unter Hyprland zur Verfügung.
 
-```sh
-sudo pacman -S --needed base-devel cmake ninja python nodejs pnpm mise
-mise use -g rust@stable
-```
+| Element auswählen | Bereich aufziehen | Mit einem Agenten arbeiten |
+| --- | --- | --- |
+| ![Ausgewähltes Element](docs/bilder/element-waehlen.png) | ![Aufgezogener Bereich](docs/bilder/bereich-aufziehen.png) | ![Agenten-Zeiger und Rückfrage](docs/bilder/agent.png) |
 
-## Installieren
+## Erste Schritte
+
+1. **T3 Code starten und verbinden.** In Zuruf auf „Verbinden“ klicken und die Paarung in T3 bestätigen. T3 und die dort eingerichteten Modellanbieter werden separat benötigt.
+2. **Projekt hinzufügen.** Den vorhandenen Repository-Ordner und die URL deiner laufenden Webanwendung auswählen, etwa `http://localhost:5173`.
+3. **Agentenprofil wählen.** Anbieter und Modell kommen aus dem Katalog deiner T3-Installation.
+4. **Sitzung starten und Review einschalten.** Die Website öffnet sich direkt neben dem Review-Werkzeug.
+5. **Aufnehmen, kommentieren, senden.** Aufnahmen werden als Aufgabe an den gewählten Agenten übergeben. Freigaben erteilst du weiterhin in T3.
+
+T3 wird nicht mitinstalliert. Browser und lokale App lassen sich vorher öffnen; Aufgabenversand setzt die Verbindung zu T3 und einen eingerichteten Anbieter voraus.
+
+## Tastenkürzel
+
+Im Review-Modus außerhalb von Textfeldern:
+
+| Taste | Aktion |
+| --- | --- |
+| `W` | Ganze Ansicht aufnehmen |
+| `D` | Element auswählen; Klick oder Enter bestätigt |
+| `S` | Bereich aufziehen |
+| `E` | Kommentar schreiben |
+| `R` | Diktat ein/aus, wenn verfügbar |
+| `Umschalt+N` | Gesammelte Einträge senden |
+| `Esc` | Auswahl abbrechen |
+
+In Textfeldern bleibt das Tippen unbeeinflusst. Mit `Alt` dazu, etwa `Alt+W`, kannst du auch dort eine Aufnahme auslösen. Die Belegung ist einstellbar.
+
+Der Browser kennt `Strg+T`, `Strg+W`, `Strg+L`, `Strg+R`, `Alt+←/→`, Zoom und `F12`.
+
+## Plattformen und Grenzen
+
+| Funktion | Linux | Windows |
+| --- | --- | --- |
+| Integrierter Browser, Screenshots, Kommentare | Ja | Ja |
+| T3-Anbindung, Aufgaben, Browsersteuerung durch Agenten | Ja | Ja |
+| Wiederherstellung nach Browser-Unterbrechungen | Ja | Ja |
+| Diktat | Mit Voxtype und PipeWire | Derzeit nicht verfügbar |
+| Desktopweite Tastenkürzel | Hyprland | Derzeit nicht verfügbar |
+| Tastenkürzel in der geprüften Seite | Ja | Ja |
+
+Der Browser ist für Reviews gedacht. Downloads, Passwortverwaltung und Kamera-/Mikrofon-Berechtigungsdialoge einer Website gehören derzeit nicht zum Umfang. Wiederhergestellt werden gespeicherte Daten und Tab-Adressen; ungespeicherte Formulareingaben gehören nicht dazu. Die Oberfläche ist deutsch.
+
+## Daten und Datenschutz
+
+Projekte, Screenshots, Aufgaben und Browserprofile liegen lokal. Jede Sitzung verwendet ein eigenes Profil. Agenten erhalten einen widerrufbaren Zugang zu ihrer Aufgabe und nur bei Freigabe Browserkontrolle. Menschliches Übernehmen hat Vorrang.
+
+Beim **Senden** geht dein Feedback über T3 an den dort gewählten Anbieter. Unter Linux kann Voxtype je nach deiner bestehenden Konfiguration lokal oder über einen Remote-Endpunkt transkribieren. „Lokal“ bedeutet daher keine pauschale Zusage, dass übergebene Inhalte den Rechner nie verlassen.
+
+| System | Persönliche Daten |
+| --- | --- |
+| Linux | `~/.local/share/zuruf`, `~/.local/state/zuruf`, `~/.config/zuruf` beziehungsweise deine XDG-Pfade |
+| Windows | `%LOCALAPPDATA%\Zuruf\data`, `state` und `config` |
+
+Updates und die normalen Deinstallationsprogramme erhalten diese Daten. Tokens und Zugangsdaten gehören weder in Issues noch in Screenshots. [Sicherheitsprobleme melden](SECURITY.md).
+
+## Aus dem Quellcode bauen
+
+Für die normale Nutzung sind die Downloads oben vorgesehen. Zum Entwickeln werden Rust 1.99.1, Node 26, pnpm 11, Python 3.12, CMake und Ninja benötigt; unter Windows zusätzlich die Visual Studio C++ Build Tools und ein Windows SDK.
 
 ```sh
 git clone https://github.com/LordOfMim/zuruf.git
 cd zuruf
-./install.sh
+pnpm install --frozen-lockfile
+pnpm --filter @zuruf/ui build
+pnpm --filter @zuruf/page build
+cargo build --release --workspace --locked
 ```
 
-`install.sh` baut Oberfläche, Seiten-Agent und die Rust-Programme und installiert alles in den Benutzerbereich – ohne `sudo`:
+Cargo lädt die festgelegte Chromium-Laufzeit bei Bedarf. Der Build braucht mehrere GB freien Speicherplatz und rund 4 GB Arbeitsspeicher. Unter Linux installiert `./install.sh` einen selbst gebauten Stand. Für Windows verwendet der Browser den offiziellen CEF-Bootstrap mit einer Rust-DLL; deshalb zum Starten das [Release-Bundle erstellen](docs/releases.md), nicht die ungebündelte Shell-EXE verwenden.
 
-| Was | Wohin |
-|---|---|
-| `zuruf` (Dienst und Kommandozeile) | `~/.local/bin/zuruf` |
-| Browserfenster mit Chromium-Laufzeit, rund 330 MB | `~/.local/lib/zuruf/` |
-| systemd-Benutzerdienst | `~/.config/systemd/user/zuruf.service` |
-| Starter und Icon | `~/.local/share/applications/zuruf.desktop` |
-
-Beim ersten Build lädt Cargo die Chromium-Laufzeit (CEF, rund 140 MB) nach `~/.cache/zuruf/cef`; das dauert einige Minuten. Die Installation startet und aktiviert nichts von selbst.
-
-Danach:
-
-```sh
-zuruf doctor                                   # prüft, was da ist und was fehlt
-systemctl --user daemon-reload
-systemctl --user enable --now zuruf.service    # Dienst dauerhaft starten
-zuruf open                                     # Fenster öffnen
-```
-
-`~/.local/bin` muss im `PATH` liegen. Wer den Dienst nicht dauerhaft einrichten will, lässt die beiden `systemctl`-Zeilen weg: `zuruf open` startet ihn bei Bedarf selbst.
-
-## Erste Schritte
-
-1. **T3 Code verbinden:** im Fenster unter „Einrichten“ auf „Verbinden“, oder `zuruf t3 pair --origin http://127.0.0.1:3773`. Die Freigabe bestätigt man in T3.
-2. **Projekt anlegen:** das Verzeichnis des Repositorys und die Adresse, unter der die Anwendung lokal läuft (zum Beispiel `http://localhost:5173`).
-3. **Agentenprofil wählen** – Anbieter und Modell aus dem Katalog von T3.
-4. **Sitzung starten:** unter „Sitzungen“. Das Fenster zeigt jetzt links Zuruf und rechts die Seite.
-5. **Review einschalten** und loslegen.
-
-## Bedienung
-
-Im Review-Modus, solange der Fokus nicht in einem Textfeld steht:
-
-| Taste | Wirkung |
-|---|---|
-| `W` | ganze Ansicht sofort aufnehmen |
-| `D` | Element wählen: es leuchtet unter dem Zeiger auf, Klick oder Enter nimmt es auf |
-| `S` | Bereich aufziehen, Loslassen nimmt auf |
-| `E` | Kommentar tippen |
-| `R` | Diktat ein und aus |
-| `Umschalt+N` | gesammelte Einträge als Aufgabe senden |
-| `Esc` | Auswahl abbrechen |
-
-In Textfeldern bleiben die Tasten normale Eingaben; mit `Alt` dazu (etwa `Alt+W`) wirken sie auch dort. Alle Tasten lassen sich in den Einstellungen ändern.
-
-Das Fenster selbst kennt die üblichen Browser-Kurzbefehle: `Strg+T`, `Strg+W`, `Strg+L`, `Strg+R`, `Alt+←/→`, `Strg+Plus/Minus`, `F12` für die Entwicklerwerkzeuge.
-
-Alles Weitere steht im [Benutzerhandbuch](docs/benutzerhandbuch.md).
-
-## Aktualisieren und Entfernen
-
-```sh
-git pull && ./install.sh        # aktualisieren
-./uninstall.sh                  # entfernen, Daten bleiben
-./uninstall.sh --purge          # entfernen samt Daten, nach Rückfrage
-```
-
-Die Daten liegen unter `~/.local/share/zuruf`, `~/.local/state/zuruf` und `~/.config/zuruf`.
-
-## Wenn etwas nicht geht
-
-- **`zuruf doctor`** zeigt, welche Voraussetzung fehlt.
-- **Der Build findet `cmake` oder `ninja` nicht:** beide installieren (siehe oben).
-- **Der Download der Chromium-Laufzeit scheitert** (etwa hinter einem Proxy, der TLS aufbricht): `node tools/dev/fetch-cef.mjs 156.0.26 ~/.cache/zuruf/cef` lädt sie mit den Zertifikaten des Systems.
-- **Das Fenster erscheint nicht:** Chromiums Protokoll des letzten Starts steht in `~/.local/share/zuruf/sessions/<Sitzung>/shell.log` beziehungsweise `~/.local/share/zuruf/app-window/shell.log`.
-- **Hyprland-Regeln:** Alle Zuruf-Fenster tragen die App-ID `zuruf`.
-
-## Entwickeln
-
-```sh
-pnpm install
-pnpm --filter @zuruf/ui build && pnpm --filter @zuruf/page build
-cargo build
-cargo test --workspace
-bash tests/e2e/run.sh          # alle Abnahmeläufe, braucht einen Bildschirm
-```
-
-Ohne Linux-Desktop – auf einem fremden Rechner oder in CI – lässt sich alles im Container bauen und unter einem virtuellen Bildschirm testen: [tools/dev/README.md](tools/dev/README.md).
-
-Aufbau und Entscheidungen: [docs/architecture.md](docs/architecture.md). Regeln für Mitwirkende und Agenten: [AGENTS.md](AGENTS.md).
-
-## Stand
-
-Gebaut und geprüft wurde der aktuelle Stand in einem Linux-Container unter X11 und Wayland. Auf einem echten Hyprland-Rechner stehen noch aus: Fensterfokus und globale Kurzbefehle, GPU-Darstellung, Chromiums Sandbox, das Diktat mit Voxtype und die Anbindung an T3. Einzelheiten in [docs/abnahme.md](docs/abnahme.md).
-
-Das Fenster ist ein Review-Browser, kein Alltagsbrowser: Downloads, Berechtigungsabfragen und eine Passwortverwaltung gibt es nicht.
+[Mitwirken](CONTRIBUTING.md) · [Benutzerhandbuch](docs/benutzerhandbuch.md) · [Architektur](docs/architecture.md) · [Builds und Veröffentlichungen](docs/releases.md)
 
 ## Lizenz
 
-MIT.
+Zuruf steht unter der [MIT-Lizenz](LICENSE). Chromium, CEF, Rust-Abhängigkeiten, Solid und Schriftarten behalten ihre jeweiligen Lizenzen; die fertigen Pakete enthalten die zugehörigen Lizenztexte und Hinweise.
