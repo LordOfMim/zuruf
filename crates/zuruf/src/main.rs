@@ -305,7 +305,9 @@ async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
             .map_err(StoreError::from)?;
         let log =
             std::fs::File::create(paths.state.join("daemon.log")).map_err(StoreError::from)?;
-        tokio::process::Command::new(&binary)
+        let mut command = tokio::process::Command::new(&binary);
+        zuruf_platform::background(command.as_std_mut());
+        command
             .arg("daemon")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())

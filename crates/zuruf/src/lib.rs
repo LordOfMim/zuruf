@@ -111,13 +111,7 @@ impl Daemon {
             let token = if token_path.exists() {
                 std::fs::read_to_string(&token_path).map_err(StoreError::from)?
             } else {
-                use std::io::Read;
-                let mut bytes = [0u8; 32];
-                std::fs::File::open("/dev/urandom")
-                    .map_err(StoreError::from)?
-                    .read_exact(&mut bytes)
-                    .map_err(StoreError::from)?;
-                let token = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+                let token = zuruf_platform::random_token().map_err(StoreError::from)?;
                 zuruf_store::atomic_write(&token_path, token.as_bytes())?;
                 token
             };
@@ -320,6 +314,7 @@ impl Daemon {
         .await
     }
     pub async fn recover(&self) -> Result<()> {
+        let speech_unavailable = cfg!(target_os = "windows") && self.0.real.get().is_some();
         // The page side starts switched off; bring it in line with what the app shows.
         let review = self.snapshot().await?.status.review_mode;
         self.0.browser.set_review_mode(review).await?;
@@ -331,7 +326,7 @@ impl Daemon {
             Ok(())
         })
         .await?;
-        self.mutate(|s, _| {
+        self.mutate(move |s, _| {
             // Free dictation used to be collected invisibly on the batch; show it as an entry.
             let notes: Vec<(Id, String)> = s
                 .batches
@@ -345,7 +340,13 @@ impl Daemon {
             }
             // No recording survives a restart; a stale "on" would make the next toggle a no-op.
             s.settings.speech.enabled = false;
-            s.status.speech.state = SpeechStateState::Idle;
+            s.status.speech.state = if speech_unavailable {
+                s.status.speech.error =
+                    Some("Diktat ist derzeit unter Linux mit Voxtype verfügbar.".into());
+                SpeechStateState::Unavailable
+            } else {
+                SpeechStateState::Idle
+            };
             for segment in &mut s.segments {
                 if matches!(
                     segment.state,

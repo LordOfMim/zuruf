@@ -581,6 +581,9 @@ impl DesktopHotkeys for Hotkeys {
     }
     fn check_conflicts(&self, bindings: Vec<Binding>) -> AdapterFuture<'_, Vec<BindingIssue>> {
         Box::pin(async move {
+            if !self.0.lock().await.available() {
+                return Ok(Vec::new());
+            }
             let output = tokio::process::Command::new("hyprctl")
                 .args(["binds", "-j"])
                 .output()
@@ -1175,35 +1178,38 @@ impl Daemon {
             speech,
             access: AsyncMutex::default(),
         });
-        let weak = Arc::downgrade(&app.0);
-        let reload = tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            while let Ok(path) = zuruf_hypr::event_socket() {
-                if let Ok(stream) = tokio::net::UnixStream::connect(path).await {
-                    let mut lines = BufReader::new(stream).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if line.starts_with("configreloaded>>") {
-                            let Some(inner) = weak.upgrade() else {
-                                return;
-                            };
-                            let daemon = Daemon(inner);
-                            if let Ok(snapshot) = daemon.snapshot().await
-                                && let Err(error) =
-                                    daemon.0.hotkeys.apply(snapshot.settings.bindings).await
-                            {
-                                let _ = daemon.0.events.send(json!({"type":"notice","payload":{"level":"warning","code":"bindings.reload_conflict","detail":error.to_string()}}));
+        #[cfg(unix)]
+        {
+            let weak = Arc::downgrade(&app.0);
+            let reload = tokio::spawn(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                while let Ok(path) = zuruf_hypr::event_socket() {
+                    if let Ok(stream) = tokio::net::UnixStream::connect(path).await {
+                        let mut lines = BufReader::new(stream).lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            if line.starts_with("configreloaded>>") {
+                                let Some(inner) = weak.upgrade() else {
+                                    return;
+                                };
+                                let daemon = Daemon(inner);
+                                if let Ok(snapshot) = daemon.snapshot().await
+                                    && let Err(error) =
+                                        daemon.0.hotkeys.apply(snapshot.settings.bindings).await
+                                {
+                                    let _ = daemon.0.events.send(json!({"type":"notice","payload":{"level":"warning","code":"bindings.reload_conflict","detail":error.to_string()}}));
+                                }
                             }
                         }
                     }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        });
-        app.0
-            .handles
-            .lock()
-            .map_err(|_| Error::Join("worker lock".into()))?
-            .push(reload.abort_handle());
+            });
+            app.0
+                .handles
+                .lock()
+                .map_err(|_| Error::Join("worker lock".into()))?
+                .push(reload.abort_handle());
+        }
         Ok(app)
     }
 }

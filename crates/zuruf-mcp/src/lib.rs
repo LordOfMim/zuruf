@@ -12,7 +12,6 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     future::Future,
-    io::Read,
     pin::Pin,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
@@ -58,12 +57,7 @@ impl AgentAuth {
     /// Called by dispatch after validating task/project/session relationships.
     /// Never put the returned token in a prompt, manifest, log or repository.
     pub fn issue(&self, scope: Scope, port: u16, ttl: Duration) -> std::io::Result<Handoff> {
-        let mut random = [0u8; 32];
-        std::fs::File::open("/dev/urandom")?.read_exact(&mut random)?;
-        let token = random
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
+        let token = zuruf_platform::random_token()?;
         let mut grants = self
             .0
             .write()

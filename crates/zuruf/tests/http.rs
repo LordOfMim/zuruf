@@ -599,6 +599,7 @@ async fn only_the_apps_own_origin_may_call_the_api() {
 
 #[tokio::test]
 async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     let h = Harness::new().await;
     let sid = h.state().await["status"]["activeSessionId"]
@@ -622,6 +623,7 @@ async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    #[cfg(unix)]
     assert_eq!(
         std::fs::metadata(&credential).unwrap().permissions().mode() & 0o777,
         0o600
