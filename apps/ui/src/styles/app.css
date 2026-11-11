@@ -891,6 +891,10 @@ button.entry-thumb:hover {
   color: var(--text-3);
 }
 
+.task.is-done .task-state {
+  color: var(--text-3);
+}
+
 .task-detail {
   display: grid;
   gap: var(--s3);

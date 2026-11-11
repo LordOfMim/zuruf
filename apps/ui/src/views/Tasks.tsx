@@ -1,22 +1,17 @@
-import type { Task } from "@zuruf/protocol";
 import { For, Show, createMemo } from "solid-js";
 import { TaskRow } from "../components/TaskRow";
 import type { AppStore } from "../lib/store";
-
-const NEEDS_YOU = new Set<Task["status"]>(["needs_approval", "needs_review", "failed", "unknown_remote_state"]);
-const DONE = new Set<Task["status"]>(["completed", "cancelled"]);
+import { taskGroup } from "../lib/tasks";
 
 /** The board, ordered by what it asks of the user: first what waits on them, then what runs, then what is done. */
 export function Tasks(props: { store: AppStore }) {
   // Fixed groups: deriving them as fresh objects would remount every row on each update.
   const all = () => props.store.tasks();
   const groups = [
-    { title: "Braucht dich", tasks: createMemo(() => all().filter((task) => NEEDS_YOU.has(task.status))) },
-    {
-      title: "Läuft",
-      tasks: createMemo(() => all().filter((task) => !NEEDS_YOU.has(task.status) && !DONE.has(task.status))),
-    },
-    { title: "Fertig", tasks: createMemo(() => all().filter((task) => DONE.has(task.status))) },
+    { title: "Braucht dich", tasks: createMemo(() => all().filter((task) => taskGroup(task) === "attention")) },
+    { title: "Läuft", tasks: createMemo(() => all().filter((task) => taskGroup(task) === "active")) },
+    { title: "Fertig", tasks: createMemo(() => all().filter((task) => taskGroup(task) === "finished")) },
+    { title: "Abgeschlossen", tasks: createMemo(() => all().filter((task) => taskGroup(task) === "settled")) },
   ];
 
   return (

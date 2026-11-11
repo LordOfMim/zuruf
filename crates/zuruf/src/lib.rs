@@ -1832,6 +1832,7 @@ async fn api(
                     }
                     store.clear_receipt(&t.id)?;
                     t.status = TaskStatus::Queued;
+                    t.marked_done = false;
                     t.error = None;
                     // A retry follows a correction: use the profile as it is now.
                     if let Some(profile) = profiles.iter().find(|p| p.id == t.profile.id) {
@@ -1916,6 +1917,7 @@ async fn api(
                     if t.status != TaskStatus::UnknownRemoteState {
                         return Err(invalid("task not ambiguous"));
                     }
+                    t.marked_done = false;
                     match r.resolution {
                         ResolveRequestResolution::NotSent => {
                             t.status = TaskStatus::Queued;
@@ -2012,6 +2014,7 @@ async fn api(
                         .ok_or_else(missing)?;
                     t.status = TaskStatus::Queued;
                     t.finished_at = None;
+                    t.marked_done = false;
                     t.error = None;
                     t.pending_request = None;
                     t.last_message = None;

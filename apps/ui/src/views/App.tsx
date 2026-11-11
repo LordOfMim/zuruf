@@ -2,6 +2,7 @@ import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { Icon, type IconName } from "../components/basics";
 import { Menu } from "../components/Menu";
 import type { AppStore } from "../lib/store";
+import { taskGroup } from "../lib/tasks";
 import { noticeMessage } from "../lib/text";
 import { Panel } from "./Panel";
 import { Sessions } from "./Sessions";
@@ -72,9 +73,7 @@ export function App(props: { store: AppStore; docked?: boolean }) {
     () =>
       store
         .tasks()
-        .filter((task) =>
-          ["needs_approval", "needs_review", "failed", "unknown_remote_state"].includes(task.status),
-        ).length,
+        .filter((task) => taskGroup(task) === "attention").length,
   );
 
   return (

@@ -382,6 +382,8 @@ Ein kompaktes, modernes Interface mit:
 
 Fehler-/Sonderzustände: `needs_review`, `needs_approval`, `failed`, `cancelled`, `unknown_remote_state`.
 
+Aufgaben lassen sich unabhängig von einem erfolgreichen Ergebnis lokal abschließen (`markedDone`): auch nach Abbruch, Fehler, Rückfrage oder bei unklarem Zustand. Sie bleiben mit ihrem ursprünglichen Ausführungsstatus unter „Abgeschlossen“ erhalten und zählen nicht mehr als offener Handlungsbedarf. Die Markierung ist dauerhaft gespeichert und über „Wieder öffnen“ umkehrbar. Explizites erneutes Senden, Zuordnen oder ein Nachtrag entfernt die Markierung automatisch. Noch aktiv ausgeführte Aufgaben können zunächst abgebrochen werden.
+
 Ein Agenten-Thread kann weiterlaufen, wenn der Benutzer eine andere Browser-Session öffnet oder einen neuen Batch aufnimmt. Die Anwendung darf den Fokus nicht unfreiwillig auf T3 Code verlagern.
 
 ---

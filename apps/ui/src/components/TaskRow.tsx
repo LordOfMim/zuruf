@@ -2,12 +2,13 @@ import type { Task } from "@zuruf/protocol";
 import { Match, Show, Switch, createSignal } from "solid-js";
 import type { AppStore } from "../lib/store";
 import { strategyLabel, taskStatusLabel, timeAgo } from "../lib/text";
+import { canSettleTask } from "../lib/tasks";
 import { Button, Icon, StatusGlyph, taskTone } from "./basics";
 
 /** What the row says on the right: the state in words, or who is working. */
 function stateLine(task: Task): string {
   if (task.status === "running") return `${task.providerDisplayName ?? "Agent"} arbeitet`;
-  if (task.status === "completed" && task.markedDone) return "Erledigt";
+  if (task.status === "completed" && task.markedDone) return "Abgeschlossen";
   return taskStatusLabel[task.status];
 }
 
@@ -29,7 +30,7 @@ export function TaskRow(props: { task: Task; store: AppStore; compact?: boolean 
   const [adoptId, setAdoptId] = createSignal("");
   const commands = props.store.commands;
   const task = () => props.task;
-  const settled = () => task().status === "completed" || task().status === "cancelled";
+  const finished = () => task().status === "completed" || task().status === "cancelled";
 
   const sendFollowUp = async () => {
     const text = followUp().trim();
@@ -130,12 +131,12 @@ export function TaskRow(props: { task: Task; store: AppStore; compact?: boolean 
                 <Icon name="retry" size={14} /> Erneut senden
               </Button>
             </Show>
-            <Show when={task().status === "completed"}>
+            <Show when={canSettleTask(task())}>
               <Button size="sm" onClick={() => commands.patchTask(task().id, { markedDone: !task().markedDone })}>
-                <Icon name="check" size={14} /> {task().markedDone ? "Wieder öffnen" : "Erledigt"}
+                <Icon name="check" size={14} /> {task().markedDone ? "Wieder öffnen" : "Abschließen"}
               </Button>
             </Show>
-            <Show when={!settled() && task().status !== "unknown_remote_state" && task().status !== "failed"}>
+            <Show when={!finished() && task().status !== "unknown_remote_state" && task().status !== "failed"}>
               <Button size="sm" variant="ghost" onClick={() => commands.cancelTask(task().id)}>
                 Abbrechen
               </Button>

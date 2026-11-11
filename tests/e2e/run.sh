@@ -32,6 +32,7 @@ cargo=(cargo)
 if command -v mise >/dev/null; then cargo=(mise exec rust@stable -- cargo); fi
 run workspace "${cargo[@]}" test --workspace -j 4
 run mcp-sdk node tests/mcp/client.mjs
+run task-settle node tests/e2e/task-settle.mjs
 run browser-session "${cargo[@]}" test -p zuruf-browser --test shell -j 4 -- --ignored
 run native-buttons node tests/e2e/native-buttons.mjs
 run recovery node tests/e2e/recovery.mjs
