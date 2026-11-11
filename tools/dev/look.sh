@@ -8,7 +8,7 @@ name=$2
 shift 2
 export DISPLAY=:99
 pkill -x zuruf-shell
-pgrep -x Xvfb >/dev/null || (Xvfb :99 -screen 0 1600x1000x24 >/tmp/xvfb.log 2>&1 &)
+bash "$here/display.sh" || exit 1
 pgrep -f '[s]tatic-server.mjs' >/dev/null || {
     (node "$here/static-server.mjs" "$here/../../tests/browser/fixture" 8700 >/dev/null 2>&1 &)
     (node "$here/static-server.mjs" "$here/../../apps/ui/dist" 8701 >/dev/null 2>&1 &)

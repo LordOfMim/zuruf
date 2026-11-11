@@ -12,13 +12,24 @@ import styles from "./overlay.css";
 let review = false;
 let bindings: Binding[] = [];
 let cursor: Point = { x: 0, y: 0 };
-let region = false;
+/**
+ * What the next click or drag selects. A viewport capture has nothing to choose and is taken at
+ * once; an element or a region is picked first.
+ */
+type Mode = "none" | "element" | "region";
+let mode: Mode = "none";
 let origin: Point | undefined;
 let host: HTMLElement | undefined;
 let overlay: HTMLElement | undefined;
 let outline: HTMLElement | undefined;
+let tag: HTMLElement | undefined;
+let shade: HTMLElement | undefined;
+let hint: HTMLElement | undefined;
 let status: HTMLElement | undefined;
 let confirmation: HTMLElement | undefined;
+let agentCursor: HTMLElement | undefined;
+let agentNote: HTMLElement | undefined;
+let agentMark: HTMLElement | undefined;
 let hidden = false;
 let recording = false;
 let owner = "none";
@@ -45,9 +56,24 @@ function mount(): void {
   overlay = document.createElement("div");
   overlay.className = "overlay";
   overlay.hidden = hidden;
-  outline = document.createElement("div");
-  outline.className = "outline";
-  outline.hidden = true;
+  const part = (name: string): HTMLElement => {
+    const element = document.createElement("div");
+    element.className = name;
+    element.hidden = true;
+    return element;
+  };
+  // The shade covers the page while a region is drawn; it is the only part that takes clicks.
+  shade = part("shade");
+  outline = part("outline");
+  tag = document.createElement("span");
+  tag.className = "tag";
+  outline.append(tag);
+  hint = part("hint");
+  agentMark = part("agent-mark");
+  agentMark.append(document.createElement("span"));
+  agentCursor = part("agent-cursor");
+  agentCursor.textContent = "Agent";
+  agentNote = part("agent-note");
   status = document.createElement("div");
   status.className = "status";
   status.hidden = !review || !isTop;
@@ -55,7 +81,16 @@ function mount(): void {
   confirmation = document.createElement("div");
   confirmation.className = "confirmation";
   confirmation.hidden = true;
-  overlay.append(outline, status, confirmation);
+  overlay.append(
+    shade,
+    outline,
+    agentMark,
+    agentCursor,
+    hint,
+    agentNote,
+    status,
+    confirmation,
+  );
   root.append(overlay);
   document.documentElement.append(host);
 }
@@ -123,16 +158,29 @@ function topPoint(point: Point): Point {
   const offset = topOffset().point;
   return { x: point.x + offset.x, y: point.y + offset.y };
 }
-function box(rect: Rect): void {
+function place(element: HTMLElement, rect: Rect): void {
+  // Named one by one: a DOMRect keeps its values on the prototype, where enumeration finds none.
+  element.style.setProperty("--zuruf-x", `${rect.x}px`);
+  element.style.setProperty("--zuruf-y", `${rect.y}px`);
+  element.style.setProperty("--zuruf-width", `${rect.width}px`);
+  element.style.setProperty("--zuruf-height", `${rect.height}px`);
+}
+/** Draw the selection with a short description of what it holds. */
+function box(rect: Rect, label: string): void {
   mount();
-  if (!outline) return;
+  if (!outline || !tag) return;
   outline.hidden = false;
-  for (const [key, value] of Object.entries(rect))
-    outline.style.setProperty(`--zuruf-${key}`, `${value}px`);
+  place(outline, rect);
+  tag.textContent = label;
+  // Near the top edge the label moves inside, so it stays readable.
+  tag.dataset.inside = String(rect.y < 22);
 }
 function under(): Element | null {
-  let element = document.elementFromPoint(cursor.x, cursor.y);
-  if (element === host) return null;
+  // Our own shade lies on top while a region is drawn; look through it.
+  let element =
+    document
+      .elementsFromPoint(cursor.x, cursor.y)
+      .find((candidate) => candidate !== host) ?? null;
   while (element?.shadowRoot) {
     const next = element.shadowRoot.elementFromPoint(cursor.x, cursor.y);
     if (!next || next === element) break;
@@ -267,20 +315,146 @@ function domCapture(): DomCapture | null {
       .map((e) => e.localName),
   };
 }
-function cancel(): void {
-  region = false;
+const HINTS: Record<Mode, string> = {
+  none: "",
+  element: "Element wählen – Klick nimmt auf · Esc bricht ab",
+  region: "Bereich aufziehen · Esc bricht ab",
+};
+/**
+ * Enter or leave a selection. Every frame of the tab follows, because the key may be pressed in
+ * one frame while the pointer is over another.
+ */
+function setMode(next: Mode, announce: boolean): void {
+  mode = next;
   origin = undefined;
+  mount();
+  if (overlay) {
+    overlay.dataset.mode = next;
+    overlay.dataset.dragging = "false";
+  }
   if (outline) outline.hidden = true;
+  // A region is drawn in the tab's own coordinates, so only the top document shades.
+  if (shade) shade.hidden = !(next === "region" && isTop);
+  if (hint) {
+    hint.hidden = next === "none" || !isTop;
+    hint.textContent = HINTS[next];
+  }
+  if (next === "element") highlight();
+  if (announce) send({ type: "mode", payload: { mode: next } });
+}
+// Whether the pointer is over this document; in a tab with frames it is over one of them.
+let pointerHere = false;
+/** Mark the element under the pointer as the one a click would capture. */
+function highlight(): void {
+  const element = pointerHere ? under() : null;
+  if (!element) {
+    if (outline) outline.hidden = true;
+    return;
+  }
+  const rect = element.getBoundingClientRect();
+  box(
+    rect,
+    `${element.localName} · ${Math.round(rect.width)} × ${Math.round(rect.height)}`,
+  );
+}
+function captureElement(): void {
+  const dom = domCapture();
+  setMode("none", true);
+  if (dom)
+    send({
+      type: "capture.request",
+      payload: { kind: "dom", cursor: topPoint(cursor), rect: null, dom },
+    });
 }
 function configure(payload: { review: boolean; bindings: Binding[] }): void {
   review = payload.review;
   bindings = payload.bindings;
   mount();
   renderStatus();
-  if (!review) cancel();
+  if (!review && mode !== "none") setMode("none", false);
 }
+
+// What an agent shows the person at the browser: where it acts, what it is doing, and what it
+// wants them to look at. Only the tab's top document draws these.
+let agentCursorTimer: ReturnType<typeof setTimeout> | undefined;
+function showAgentPointer(point: Point, pressed: boolean): void {
+  mount();
+  if (!agentCursor || !overlay) return;
+  agentCursor.hidden = false;
+  agentCursor.style.setProperty("--zuruf-x", `${point.x}px`);
+  agentCursor.style.setProperty("--zuruf-y", `${point.y}px`);
+  if (pressed) {
+    const ripple = document.createElement("div");
+    ripple.className = "agent-ripple";
+    ripple.style.setProperty("--zuruf-x", `${point.x}px`);
+    ripple.style.setProperty("--zuruf-y", `${point.y}px`);
+    overlay.append(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }
+  clearTimeout(agentCursorTimer);
+  agentCursorTimer = setTimeout(() => {
+    if (agentCursor) agentCursor.hidden = true;
+  }, 4000);
+}
+let agentNoteTimer: ReturnType<typeof setTimeout> | undefined;
+function showAgentNote(text: string): void {
+  mount();
+  if (!agentNote) return;
+  agentNote.hidden = false;
+  agentNote.textContent = text;
+  clearTimeout(agentNoteTimer);
+  agentNoteTimer = setTimeout(() => {
+    if (agentNote) agentNote.hidden = true;
+  }, 12000);
+}
+let marked: Element | undefined;
+let markTimer: ReturnType<typeof setTimeout> | undefined;
+function clearAgentMark(): void {
+  marked = undefined;
+  clearTimeout(markTimer);
+  if (agentMark) agentMark.hidden = true;
+}
+/** Keep the mark on its element while the page scrolls or reflows. */
+function followMark(): void {
+  if (!marked || !agentMark) return;
+  if (!marked.isConnected) {
+    clearAgentMark();
+    return;
+  }
+  place(agentMark, marked.getBoundingClientRect());
+  requestAnimationFrame(followMark);
+}
+function showAgentMark(selectorText: string, text: string): boolean {
+  mount();
+  let element: Element | null = null;
+  try {
+    element = document.querySelector(selectorText);
+  } catch {
+    return false;
+  }
+  if (!element || !agentMark) return false;
+  element.scrollIntoView({ block: "center", inline: "nearest" });
+  marked = element;
+  agentMark.hidden = false;
+  const caption = agentMark.firstElementChild;
+  if (caption) caption.textContent = text;
+  followMark();
+  clearTimeout(markTimer);
+  markTimer = setTimeout(clearAgentMark, 30000);
+  return true;
+}
+
 function receive(message: Incoming): Reply {
   if (message.type === "configure") configure(message.payload);
+  if (message.type === "mode") setMode(message.payload.mode, false);
+  if (message.type === "agent.pointer" && isTop)
+    showAgentPointer(message.payload, message.payload.pressed);
+  if (message.type === "agent.note" && isTop)
+    showAgentNote(message.payload.text);
+  if (message.type === "agent.point")
+    return {
+      found: isTop && showAgentMark(message.payload.selector, message.payload.text),
+    };
   if (message.type === "overlay.hide") {
     hidden = true;
     if (overlay) overlay.hidden = true;
@@ -346,44 +520,77 @@ function reportPointer(): void {
   lastPointer = performance.now();
   send({ type: "pointer", payload: { cursor: topPoint(cursor) } });
 }
+/** While something is being selected, the page must not react to the pointer. */
+function keepFromPage(event: Event): void {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+// The click that ends a selection arrives after the selection is over; it is still ours.
+let ignoreClicksUntil = 0;
 window.addEventListener(
   "pointermove",
   (event) => {
     if (!event.isTrusted) return;
     cursor = { x: event.clientX, y: event.clientY };
+    pointerHere = true;
     const wait = pointerInterval - (performance.now() - lastPointer);
     if (wait <= 0) reportPointer();
     else pointerTimer ??= setTimeout(reportPointer, wait);
-    if (!review) return;
-    if (origin)
-      box({
-        x: Math.min(cursor.x, origin.x),
-        y: Math.min(cursor.y, origin.y),
-        width: Math.abs(cursor.x - origin.x),
-        height: Math.abs(cursor.y - origin.y),
-      });
-    else {
-      const element = under();
-      if (element) box(element.getBoundingClientRect());
+    if (mode === "element") highlight();
+    if (mode === "region" && origin) {
+      const width = Math.abs(cursor.x - origin.x);
+      const height = Math.abs(cursor.y - origin.y);
+      box(
+        {
+          x: Math.min(cursor.x, origin.x),
+          y: Math.min(cursor.y, origin.y),
+          width,
+          height,
+        },
+        `${Math.round(width)} × ${Math.round(height)}`,
+      );
     }
+    if (mode !== "none") keepFromPage(event);
+  },
+  true,
+);
+window.addEventListener(
+  "pointerout",
+  (event) => {
+    // The pointer left this document: nothing here is under it any more.
+    if (event.relatedTarget) return;
+    pointerHere = false;
+    if (mode === "element" && outline) outline.hidden = true;
   },
   true,
 );
 window.addEventListener(
   "pointerdown",
   (event) => {
-    if (!event.isTrusted || !region) return;
-    origin = { x: event.clientX, y: event.clientY };
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    if (!event.isTrusted) return;
+    // Any click of the person dismisses what an agent pointed out.
+    if (marked) clearAgentMark();
+    if (mode === "none") return;
+    keepFromPage(event);
+    if (mode === "region" && isTop) {
+      origin = { x: event.clientX, y: event.clientY };
+      if (overlay) overlay.dataset.dragging = "true";
+    }
   },
   true,
 );
 window.addEventListener(
   "pointerup",
   (event) => {
-    if (!event.isTrusted || !origin) return;
+    if (!event.isTrusted || mode === "none") return;
+    keepFromPage(event);
+    ignoreClicksUntil = performance.now() + 400;
     cursor = { x: event.clientX, y: event.clientY };
+    if (mode === "element") {
+      captureElement();
+      return;
+    }
+    if (!origin) return;
     const start = topPoint(origin),
       end = topPoint(cursor);
     const rect = {
@@ -392,27 +599,31 @@ window.addEventListener(
       width: Math.abs(end.x - start.x),
       height: Math.abs(end.y - start.y),
     };
-    cancel();
-    if (rect.width > 0 && rect.height > 0)
-      send({
-        type: "capture.request",
-        payload: { kind: "region", cursor: end, rect, dom: null },
-      });
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  },
-  true,
-);
-window.addEventListener(
-  "click",
-  (event) => {
-    if (region) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
+    // A click without a drag selects nothing; the person can try again.
+    if (rect.width < 4 || rect.height < 4) {
+      origin = undefined;
+      if (outline) outline.hidden = true;
+      if (overlay) overlay.dataset.dragging = "false";
+      return;
     }
+    setMode("none", true);
+    send({
+      type: "capture.request",
+      payload: { kind: "region", cursor: end, rect, dom: null },
+    });
   },
   true,
 );
+for (const type of ["mousedown", "mouseup", "click", "auxclick", "contextmenu"])
+  window.addEventListener(
+    type,
+    (event) => {
+      if (!event.isTrusted) return;
+      if (mode !== "none" || performance.now() < ignoreClicksUntil)
+        keepFromPage(event);
+    },
+    true,
+  );
 function matches(
   event: KeyboardEvent,
   binding: Binding,
@@ -475,12 +686,27 @@ window.addEventListener(
     }
     if (!review || event.repeat || event.isComposing || event.keyCode === 229)
       return;
+    // During a selection Enter takes the highlighted element, whatever the bindings say.
+    if (mode === "element" && event.code === "Enter") {
+      taken.add(event.code);
+      swallow(event);
+      captureElement();
+      return;
+    }
     const binding = bindingFor(event);
     if (!binding) return;
-    taken.add(event.code);
-    event.preventDefault();
-    event.stopImmediatePropagation();
     const action = binding.action;
+    if (action === "action.cancel") {
+      // Only ours while there is something to cancel; otherwise the page keeps its Escape.
+      if (mode === "none" && !marked) return;
+      taken.add(event.code);
+      swallow(event);
+      clearAgentMark();
+      if (mode !== "none") setMode("none", true);
+      return;
+    }
+    taken.add(event.code);
+    swallow(event);
     if (
       action === "capture.viewport" ||
       action === "capture.dom" ||
@@ -492,28 +718,27 @@ window.addEventListener(
         }),
       );
     }
-    if (action === "action.cancel") {
-      cancel();
+    if (action === "capture.dom" || action === "capture.region") {
+      // Choose first: the same key again leaves the selection.
+      const wanted: Mode = action === "capture.dom" ? "element" : "region";
+      setMode(mode === wanted ? "none" : wanted, true);
       return;
     }
-    if (action === "capture.region") {
-      // The capture is requested once a region has been dragged.
-      region = true;
-      return;
-    }
-    // Captures travel as a request with their geometry; everything else is a plain action.
-    if (action !== "capture.viewport" && action !== "capture.dom")
-      send({ type: "action", payload: { action } });
-    if (action === "capture.viewport" || action === "capture.dom")
+    if (mode !== "none") setMode("none", true);
+    if (action === "capture.viewport") {
+      // The whole view has nothing to choose: take it at once.
       send({
         type: "capture.request",
         payload: {
-          kind: action === "capture.dom" ? "dom" : "viewport",
+          kind: "viewport",
           cursor: topPoint(cursor),
           rect: null,
-          dom: action === "capture.dom" ? domCapture() : null,
+          dom: null,
         },
       });
+      return;
+    }
+    send({ type: "action", payload: { action } });
   },
   true,
 );

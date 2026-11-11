@@ -184,14 +184,25 @@ try {
     await page.keyboard.press("w");
   });
   assert.equal(viewport.type, "viewport");
+  // Element and region are chosen first: the key starts a selection, Escape leaves it again,
+  // and the click that chooses never reaches the page.
+  const counter = page.getByTestId("counter");
+  const box = await counter.boundingBox();
+  const centre = [box.x + box.width / 2, box.y + box.height / 2];
+  const annotationsBefore = (await state()).annotations.length;
+  await page.keyboard.press("d");
+  await page.keyboard.press("Escape");
+  await page.mouse.click(...centre);
+  assert.equal(await counter.getAttribute("data-count"), "2", "after Escape the page gets its clicks back");
+  await sleep(300);
+  assert.equal((await state()).annotations.length, annotationsBefore, "Escape captures nothing");
   const element = await capture("element", async () => {
-    const box = await page.getByTestId("counter").boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await sleep(150);
     await page.keyboard.press("d");
+    await page.mouse.click(...centre);
   });
   assert.equal(element.dom?.tag, "button");
   assert.equal(element.dom?.role, "button");
+  assert.equal(await counter.getAttribute("data-count"), "2", "the choosing click stays with Zuruf");
   const region = await capture("region", async () => {
     await page.keyboard.press("s");
     await page.mouse.move(420, 370);
@@ -200,7 +211,7 @@ try {
     await page.mouse.up();
   });
   assert.equal(region.type, "region");
-  passed("review hotkeys capture viewport, element and region");
+  passed("viewport is captured at once; element and region are chosen first");
 
   // What the page reports on its own is attached to the capture and reaches the agent.
   await page.evaluate(() => {

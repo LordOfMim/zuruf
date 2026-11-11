@@ -5,7 +5,9 @@
 //!   cargo run -p zuruf-browser --example session -- http://localhost:5173/
 //! ```
 //!
-//! W, S and D capture the viewport, the element under the pointer and a dragged region.
+//! W captures the viewport at once; D lets you choose an element, S draw a region.
+//! `ZURUF_LAB_PANEL=<address>` docks a page as the app panel. `ZURUF_LAB_AGENT=1` shows what an
+//! agent at work looks like: its pointer, a progress note and an element it points out.
 //! Screenshots are written to the directory printed at start; Ctrl+C ends the session.
 use std::time::Duration;
 use zuruf_browser::{
@@ -32,19 +34,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !urls.is_empty() {
         config.urls = urls;
     }
+    config.panel_url = std::env::var("ZURUF_LAB_PANEL").ok();
+    if let Ok(theme) = std::env::var("ZURUF_LAB_THEME") {
+        config.theme = theme;
+    }
     let browser = Browser::start(config).await?;
     browser
         .set_review_mode(
             true,
             vec![
                 binding("capture.viewport", "KeyW"),
-                binding("capture.dom", "KeyS"),
-                binding("capture.region", "KeyD"),
+                binding("capture.region", "KeyS"),
+                binding("capture.dom", "KeyD"),
                 binding("action.cancel", "Escape"),
             ],
         )
         .await?;
     println!("screenshots: {}", directory.display());
+    if std::env::var_os("ZURUF_LAB_AGENT").is_some() {
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        browser
+            .grant("lab".into(), Duration::from_secs(600))
+            .await?;
+        browser
+            .agent_note("Ich prüfe, ob der Zähler nach dem Klick hochzählt.")
+            .await;
+        browser
+            .agent_point("[data-testid=counter]", "Meinst du diesen Knopf?")
+            .await?;
+        if let Some(tab) = browser.list_tabs().await?.first() {
+            browser
+                .page
+                .agent_pointer(&tab.id, 330.0, 250.0, true)
+                .await;
+        }
+    }
 
     let mut events = browser.events();
     let mut count = 0;

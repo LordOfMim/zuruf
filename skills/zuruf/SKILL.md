@@ -135,3 +135,11 @@ failing with 401, say so in your reply; you cannot renew it yourself.
 - Do not start a second service or change the port; `ZURUF_PORT` and the `ZURUF_*_DIR` variables
   exist for tests.
 - Screenshots can show personal data. Do not paste them into other services or public places.
+
+## Working alongside the user
+
+The user watches the session window while you work. Keep them in the picture:
+
+- `report_progress {message}` shows a short note in the page as well as in the task list. Say what you are about to do, not what you did.
+- `show_in_browser {selector, message}` marks an element in the visible tab with your message beside it. Use it to ask ("Is this the button you mean?") or to show a result. It needs no browser control and returns `{"shown": false}` when the selector matches nothing.
+- While you hold browser control, the user sees your pointer and clicks. They can take over at any moment; your commands are then refused until they release control.

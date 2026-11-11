@@ -193,6 +193,8 @@ async fn session_in_shell_window() {
             true,
             vec![
                 binding("capture.viewport", "KeyW"),
+                binding("capture.dom", "KeyD"),
+                binding("action.cancel", "Escape"),
                 binding("speech.toggle", "KeyR"),
             ],
         )
@@ -289,6 +291,54 @@ async fn session_in_shell_window() {
         dom.locators.iter().any(|locator| locator.kind == "role"),
         "{dom:?}"
     );
+
+    // The element key does not capture at once: it starts a selection, and the click that
+    // chooses the element is kept from the page.
+    agent.press(&session, "d", "KeyD", 68).await;
+    for kind in ["mousePressed", "mouseReleased"] {
+        agent
+            .call(
+                "Input.dispatchMouseEvent",
+                json!({"type": kind, "x": point["x"], "y": point["y"], "button": "left", "clickCount": 1}),
+                Some(&session),
+            )
+            .await;
+    }
+    let chosen = next_page_message(&mut events, |m| matches!(m, Message::Capture { .. })).await;
+    let Message::Capture {
+        kind,
+        dom: chosen_dom,
+        ..
+    } = &chosen.message
+    else {
+        unreachable!();
+    };
+    assert_eq!(kind, "dom");
+    assert_eq!(
+        chosen_dom.as_ref().map(|dom| dom.tag.as_str()),
+        Some("button")
+    );
+    let clicks = agent
+        .call(
+            "Runtime.evaluate",
+            json!({"expression": "document.querySelector('button').dataset.count ?? '0'", "returnByValue": true}),
+            Some(&session),
+        )
+        .await;
+    assert_eq!(
+        clicks["result"]["result"]["value"], "0",
+        "the page must not see the choosing click"
+    );
+
+    // An agent can point something out to the person, and say what it is doing.
+    assert!(
+        browser
+            .agent_point("[data-testid=counter]", "Meinst du diesen Knopf?")
+            .await
+            .unwrap()
+    );
+    assert!(!browser.agent_point("#gibt-es-nicht", "…").await.unwrap());
+    browser.agent_note("Ich prüfe den Zähler.").await;
 
     // What the page reports on its own travels with the next capture.
     agent

@@ -13,6 +13,7 @@ Browser-Sitzungen für den Daemon, ohne Abhängigkeit auf `zuruf-core` und ohne 
 | Aufnahme | `capture_request(&Envelope, Ring)` für einen Hotkey (prüft die Dokumentkennung), `capture(target, kind, rect, ring)` direkt; `capture_raw`-Varianten liefern nur das maskierte Rohbild |
 | Review-Modus, Belegung | `set_review_mode(on, bindings)`, `push_bindings`, `set_recording(bool)` |
 | Kontrolle | `grant(agent, lease)`, `renew`, `release`, `takeover` |
+| Zusammenarbeit | `agent_note(text)`, `agent_point(selector, text)`; der Zeiger des Agenten folgt aus seinen Proxybefehlen von selbst |
 | Ereignisse | `events()` → `BrowserEvent::{TabsChanged, Crashed, Closed, ControlChanged, Page}` |
 | Agenten | `serve_agent(ws, AgentAccess, authorization)` hinter `/cdp/<sessionId>`; `proxy::authenticate` vor dem Upgrade |
 | App-Fenster ohne Sitzung | `AppWindow::start(shell, directory, url, theme, args)`, `focus`, `set_theme`, `alive`, `stop` |
@@ -27,7 +28,7 @@ Browser-Sitzungen für den Daemon, ohne Abhängigkeit auf `zuruf-core` und ohne 
 2. `Runtime.addBinding` mit `executionContextName: "zuruf"`: Die Funktion `__zurufSend` existiert nur in der isolierten Welt des Agenten.
 3. `Page.addScriptToEvaluateOnNewDocument` mit `worldName: "zuruf"` und `runImmediately`: Der Agent (`apps/page`, zur Bauzeit eingebettet) läuft in jedem Frame, vor den Skripten der Seite.
 
-Der Agent meldet `ready`, `visibility`, `title`, `pointer`, `action` und `capture.request`. Die Brücke ordnet jede Meldung über ihren Ausführungskontext einem Tab, einem Frame und einem Dokument zu. Befehle (`configure`, `status`, `control.changed`, `overlay.hide`/`show`, `capture.saved`/`failed`, `dom.request`) wertet sie in derselben Welt aus. Ein neu geladenes Dokument erhält auf `ready` sofort Belegung, Aufnahmestatus und Kontrollbesitzer.
+Der Agent meldet `ready`, `visibility`, `title`, `pointer`, `mode`, `action` und `capture.request`. Die Brücke ordnet jede Meldung über ihren Ausführungskontext einem Tab, einem Frame und einem Dokument zu. Befehle (`configure`, `status`, `control.changed`, `mode`, `overlay.hide`/`show`, `capture.saved`/`failed`, `dom.request`, `agent.pointer`, `agent.note`, `agent.point`) wertet sie in derselben Welt aus. Ein neu geladenes Dokument erhält auf `ready` sofort Belegung, Aufnahmestatus und Kontrollbesitzer.
 
 Was Chromium selbst nicht meldet, liefert der Agent: Titeländerungen eines Tabs und welcher Tab sichtbar ist.
 

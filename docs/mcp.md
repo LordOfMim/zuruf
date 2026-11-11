@@ -20,9 +20,13 @@ Taskabschluss, Remote-Interrupt, Cancel und Shutdown rufen `revoke_mcp_task` auf
 
 Die Übergabe unterstützt einen Session-Scope. Gemischte Mehrsessionbatches werden abgewiesen. Reine Textbatches ohne Session bekommen keinen Browserzugang.
 
+## Zeigen statt nur berichten
+
+`report_progress` setzt wie bisher die letzte Meldung der Aufgabe und zeigt sie nun auch in der Seite der zugewiesenen Session. `show_in_browser {selector, message}` markiert dort das erste Element, auf das der CSS-Selektor im sichtbaren Tab passt, rollt es ins Bild und stellt die Nachricht (höchstens 400 Zeichen) daneben; die Antwort ist `{"shown": true|false}`. Beide Werkzeuge zeigen nur an, verändern die Seite nicht und brauchen keine Browserkontrolle. Ohne laufende Session schlägt `show_in_browser` fehl.
+
 ## Werkzeuge und lokale Tests
 
-15 Tools: `list_projects`, `list_sessions`, `get_session_context`, `list_reviews`, `list_annotations`, `get_annotation`, `get_annotation_asset`, `get_batch_manifest`, `update_annotation_status`, `list_tasks`, `report_progress`, `request_browser_control`, `renew_browser_control`, `release_browser_control`, `get_cdp_endpoint`.
+16 Tools: `list_projects`, `list_sessions`, `get_session_context`, `list_reviews`, `list_annotations`, `get_annotation`, `get_annotation_asset`, `get_batch_manifest`, `update_annotation_status`, `list_tasks`, `report_progress`, `show_in_browser`, `request_browser_control`, `renew_browser_control`, `release_browser_control`, `get_cdp_endpoint`.
 
 `POST /api/v1/mcp/credentials` ist ein authentifizierter lokaler Controllerendpunkt zum Ausstellen/Widerrufen; Antwort `no-store`. Credentials niemals protokollieren. `get_annotation_asset` liefert autorisierten PNG-Bildinhalt (maximal 20 MiB).
 

@@ -31,7 +31,7 @@ try {
  }
  client=new Client({name:'zuruf-verification',version:'1.0.0'});
  await client.connect(new StreamableHTTPClientTransport(new URL(credentials.url),{requestInit:{headers}}));
- const listed=await client.listTools();assert.equal(listed.tools.length,15);
+ const listed=await client.listTools();assert.equal(listed.tools.length,16);
  async function tool(name,args={},failure=false){const r=await client.callTool({name,arguments:args});assert.equal(r.isError??false,failure,name);return r;}
  for(const name of ['list_projects','list_sessions','get_session_context','list_reviews','get_batch_manifest','list_tasks','list_annotations'])await tool(name);
  const annotations=state.annotations.filter(a=>a.batchId===dispatched.task.batchId);
@@ -64,7 +64,7 @@ try {
  await tool('get_cdp_endpoint',{},true);await tool('request_browser_control',{},true);
  await api('mcp/credentials',{scope,revoke:true});
  const revoked=await fetch(`${base}/mcp`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'});assert.equal(revoked.status,401);
- console.log('PASS: official SDK initialize/list/all 15 tools, image, auth, task scope, revoke, lease/release/takeover; atomic renewal.');
+ console.log('PASS: official SDK initialize/list/all 16 tools, image, auth, task scope, revoke, lease/release/takeover; atomic renewal.');
 } finally {
  await client?.close().catch(()=>{});
  const stopped=once(daemon,'exit');daemon.kill('SIGTERM');await stopped;

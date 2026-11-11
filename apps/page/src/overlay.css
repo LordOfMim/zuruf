@@ -11,6 +11,7 @@
   --zuruf-text: #e8e7e3;
   --zuruf-muted: #9b9c98;
   --zuruf-line: rgba(255, 255, 255, 0.13);
+  --zuruf-shade: rgba(10, 11, 12, 0.42);
   --zuruf-ease: cubic-bezier(0.22, 1, 0.36, 1);
   all: initial;
   pointer-events: none;
@@ -29,14 +30,15 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.overlay[hidden],
-.outline[hidden],
-.confirmation[hidden],
-.status[hidden] {
+.overlay [hidden],
+.overlay[hidden] {
   display: none !important;
 }
 
-/* Target outline: vermilion hairline with a dark halo so it reads on light and dark pages alike. */
+/*
+ * Selecting. An element lights up in the signal colour; a region is cut out of a shaded page,
+ * the way a snipping tool does it. The label says what a click or release would capture.
+ */
 .outline {
   position: fixed;
   box-sizing: border-box;
@@ -44,12 +46,165 @@
   top: var(--zuruf-y);
   width: var(--zuruf-width);
   height: var(--zuruf-height);
-  border: 1.5px solid var(--zuruf-signal);
+  border: 2px solid var(--zuruf-signal);
   border-radius: 3px;
-  background: rgba(255, 90, 54, 0.06);
+  background: rgba(255, 90, 54, 0.16);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.overlay[data-mode="region"] .outline {
+  border-width: 1.5px;
+  border-radius: 0;
+  background: none;
+  /* Everything outside the selection stays shaded. */
+  box-shadow: 0 0 0 200vmax var(--zuruf-shade);
+}
+
+.shade {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  cursor: crosshair;
+  background: var(--zuruf-shade);
+}
+
+/* Once a region is being drawn, the outline carries the shade and leaves its inside clear. */
+.overlay[data-dragging="true"] .shade {
+  background: none;
+}
+
+.tag {
+  position: absolute;
+  left: -2px;
+  bottom: calc(100% + 4px);
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: var(--zuruf-signal);
+  color: #1a0b06;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tag[data-inside="true"] {
+  bottom: auto;
+  top: 4px;
+  left: 4px;
+}
+
+.hint {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 28px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  border-radius: 14px;
+  background: var(--zuruf-surface);
+  color: var(--zuruf-text);
+  box-shadow:
+    0 0 0 1px var(--zuruf-line),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  animation: zuruf-in 160ms var(--zuruf-ease);
+}
+
+/*
+ * An agent at work, in its own colour: where it points and clicks, what it says it is doing,
+ * and what it asks the person to look at.
+ */
+.agent-cursor {
+  position: fixed;
+  left: var(--zuruf-x);
+  top: var(--zuruf-y);
+  margin: 14px 0 0 12px;
+  padding: 3px 8px;
+  border-radius: 4px 10px 10px 10px;
+  background: var(--zuruf-agent);
+  color: #0d1330;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition:
+    left 90ms linear,
+    top 90ms linear;
+}
+
+/* The arrow tip sits exactly on the point the agent acts on. */
+.agent-cursor::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: -14px;
+  border: 7px solid transparent;
+  border-left-color: var(--zuruf-agent);
+  border-top-color: var(--zuruf-agent);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.agent-ripple {
+  position: fixed;
+  left: calc(var(--zuruf-x) - 14px);
+  top: calc(var(--zuruf-y) - 14px);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--zuruf-agent);
+  animation: zuruf-ripple 560ms var(--zuruf-ease) forwards;
+}
+
+.agent-mark {
+  position: fixed;
+  box-sizing: border-box;
+  left: calc(var(--zuruf-x) - 4px);
+  top: calc(var(--zuruf-y) - 4px);
+  width: calc(var(--zuruf-width) + 8px);
+  height: calc(var(--zuruf-height) + 8px);
+  border: 2px solid var(--zuruf-agent);
+  border-radius: 6px;
+  background: rgba(143, 168, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+
+.agent-mark span {
+  position: absolute;
+  left: -2px;
+  top: calc(100% + 6px);
+  width: max-content;
+  max-width: min(360px, 70vw);
+  padding: 7px 10px;
+  border-radius: 4px 10px 10px 10px;
+  background: var(--zuruf-agent);
+  color: #0d1330;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.agent-mark span:empty {
+  display: none;
+}
+
+.agent-note {
+  position: fixed;
+  right: 14px;
+  bottom: 48px;
+  max-width: min(380px, 70vw);
+  padding: 8px 11px;
+  border-radius: 10px 10px 4px 10px;
+  background: var(--zuruf-surface);
+  color: var(--zuruf-text);
+  line-height: 1.35;
+  box-shadow:
+    0 0 0 1px var(--zuruf-agent),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  animation: zuruf-in 160ms var(--zuruf-ease);
 }
 
 .status,
@@ -128,12 +283,30 @@
 @keyframes zuruf-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    translate: 0 4px;
+  }
+}
+
+@keyframes zuruf-ripple {
+  from {
+    opacity: 1;
+    scale: 0.4;
+  }
+  to {
+    opacity: 0;
+    scale: 1.9;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .confirmation {
+  .confirmation,
+  .hint,
+  .agent-note,
+  .agent-ripple {
     animation: none;
+  }
+
+  .agent-cursor {
+    transition: none;
   }
 }

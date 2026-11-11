@@ -79,6 +79,18 @@ pub enum Message {
     Tabs { tabs: Vec<PageTab> },
     #[serde(rename = "dom.request")]
     DomRequest,
+    /// A selection (`element`, `region`) was started or ended (`none`) in one frame of a tab.
+    #[serde(rename = "mode")]
+    Mode { mode: String },
+    /// Where an agent moved or clicked, in the tab's viewport.
+    #[serde(rename = "agent.pointer")]
+    AgentPointer { x: f64, y: f64, pressed: bool },
+    /// What an agent says it is doing.
+    #[serde(rename = "agent.note")]
+    AgentNote { text: String },
+    /// An element an agent wants the person to look at.
+    #[serde(rename = "agent.point")]
+    AgentPoint { selector: String, text: String },
 }
 
 /// What the agent sends through the binding.
@@ -93,6 +105,8 @@ enum FromPage {
     Title { title: String },
     #[serde(rename = "pointer")]
     Pointer { cursor: Point },
+    #[serde(rename = "mode")]
+    Mode { mode: String },
     #[serde(rename = "action")]
     Action { action: String },
     #[serde(rename = "capture.request")]
@@ -399,6 +413,40 @@ impl PageBridge {
     /// CDP session attached to a tab's page.
     pub async fn page_session(&self, target: &str) -> Option<String> {
         self.state.lock().await.targets.get(target)?.session.clone()
+    }
+    /// Show in a tab where an agent moved or clicked.
+    pub async fn agent_pointer(&self, target: &str, x: f64, y: f64, pressed: bool) {
+        let tab = self.state.lock().await.targets.get(target).map(|t| t.tab);
+        if let Some(tab) = tab {
+            self.send(Message::AgentPointer { x, y, pressed }, Some(tab), Some(0))
+                .await;
+        }
+    }
+    /// Show in every tab what an agent says it is doing.
+    pub async fn agent_note(&self, text: &str) {
+        self.send(Message::AgentNote { text: text.into() }, None, Some(0))
+            .await;
+    }
+    /// Mark an element in the visible tab for the person to look at, with a short message.
+    /// Returns false when the selector matches nothing there.
+    pub async fn agent_point(&self, selector: &str, text: &str) -> Result<bool> {
+        let world = {
+            let state = self.state.lock().await;
+            let tabs = state.tabs();
+            let tab = tabs
+                .iter()
+                .find(|tab| tab.active && tab.scriptable)
+                .or(tabs.iter().find(|tab| tab.scriptable))
+                .ok_or(Error::Denied("no scriptable tab"))?;
+            state.worlds(Some(tab.tab_id), Some(0)).into_iter().next()
+        };
+        let (session, context) = world.ok_or(Error::Denied("no scriptable tab"))?;
+        let message = Message::AgentPoint {
+            selector: selector.into(),
+            text: text.into(),
+        };
+        let value = self.evaluate(&session, context, &message).await?;
+        Ok(value["found"] == true)
     }
     /// What a tab's current document reported so far, oldest first.
     pub async fn diagnostics(&self, target: &str) -> Vec<Diagnostic> {
@@ -852,6 +900,11 @@ impl PageBridge {
                 rect,
                 dom,
             },
+            FromPage::Mode { mode } => {
+                // The key was pressed in one frame; the pointer may be over another.
+                self.send(Message::Mode { mode }, Some(tab), None).await;
+                return;
+            }
             FromPage::Visibility { .. } | FromPage::Title { .. } | FromPage::Pointer { .. } => {
                 return;
             }

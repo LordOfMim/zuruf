@@ -3,6 +3,11 @@ use super::*;
 use zuruf_mcp::{ApiFuture, Handoff, Scope, ZurufApi};
 
 impl Daemon {
+    /// The running browser of a session; none with fake adapters or while it is stopped.
+    async fn session_browser(&self, session: &str) -> Option<Arc<zuruf_browser::Browser>> {
+        let runtime = self.0.real.get()?;
+        runtime.browsers.sessions.lock().await.get(session).cloned()
+    }
     /// Dispatch hands this result to a private per-thread MCP credential channel.
     pub async fn mcp_handoff(&self, scope: Scope, port: u16) -> Result<Handoff> {
         let s = self.snapshot().await?;
@@ -159,44 +164,81 @@ impl ZurufApi for Daemon {
         value: Value,
     ) -> ApiFuture<'_, Value> {
         Box::pin(async move {
-            self.mutate(move |s, _| {
-                let t = s
-                    .tasks
-                    .iter_mut()
-                    .find(|t| t.id == scope.task_id && t.project_id == scope.project_id)
-                    .ok_or_else(missing)?;
-                if let Some(id) = annotation {
-                    let a = s
-                        .annotations
+            // A progress message is also shown where the person is looking: in the page.
+            let note = match &annotation {
+                None => value["message"].as_str().map(str::to_owned),
+                Some(_) => None,
+            };
+            let session = scope.session_id.clone();
+            let result: std::result::Result<Value, String> = self
+                .mutate(move |s, _| {
+                    let t = s
+                        .tasks
                         .iter_mut()
-                        .find(|a| {
-                            a.id == id
-                                && a.batch_id == t.batch_id
-                                && a.session_id
-                                    .as_deref()
-                                    .is_none_or(|id| id == scope.session_id)
-                        })
+                        .find(|t| t.id == scope.task_id && t.project_id == scope.project_id)
                         .ok_or_else(missing)?;
-                    a.status = serde_json::from_value(value)?;
-                    a.updated_at = now();
-                } else {
-                    t.last_message = Some(
-                        value["message"]
-                            .as_str()
-                            .ok_or_else(|| invalid("message"))?
-                            .into(),
-                    );
-                    if value["needsReview"] == true {
-                        t.status = t
-                            .status
-                            .transition(TaskStatus::NeedsReview)
-                            .map_err(|_| invalid("transition"))?;
+                    if let Some(id) = annotation {
+                        let a = s
+                            .annotations
+                            .iter_mut()
+                            .find(|a| {
+                                a.id == id
+                                    && a.batch_id == t.batch_id
+                                    && a.session_id
+                                        .as_deref()
+                                        .is_none_or(|id| id == scope.session_id)
+                            })
+                            .ok_or_else(missing)?;
+                        a.status = serde_json::from_value(value)?;
+                        a.updated_at = now();
+                    } else {
+                        t.last_message = Some(
+                            value["message"]
+                                .as_str()
+                                .ok_or_else(|| invalid("message"))?
+                                .into(),
+                        );
+                        if value["needsReview"] == true {
+                            t.status = t
+                                .status
+                                .transition(TaskStatus::NeedsReview)
+                                .map_err(|_| invalid("transition"))?;
+                        }
                     }
-                }
-                Ok(json!({"ok":true}))
-            })
-            .await
-            .map_err(|_| "update rejected".into())
+                    Ok(json!({"ok":true}))
+                })
+                .await
+                .map_err(|_| "update rejected".into());
+            if result.is_ok()
+                && let Some(note) = note
+                && let Some(browser) = self.session_browser(&session).await
+            {
+                let note: String = note.chars().take(400).collect();
+                browser.agent_note(&note).await;
+            }
+            result
+        })
+    }
+    fn show(&self, scope: Scope, selector: String, message: String) -> ApiFuture<'_, Value> {
+        Box::pin(async move {
+            let s = self.snapshot().await.map_err(|_| "snapshot")?;
+            if !s
+                .sessions
+                .iter()
+                .any(|s| s.id == scope.session_id && s.project_id == scope.project_id)
+            {
+                return Err("session".into());
+            }
+            let browser = self
+                .session_browser(&scope.session_id)
+                .await
+                .ok_or("browser")?;
+            let message: String = message.chars().take(400).collect();
+            let found = browser
+                .agent_point(&selector, &message)
+                .await
+                .map_err(|_| "browser")?;
+            Ok(json!({"shown": found}))
         })
     }
     fn control(&self, scope: Scope, action: String, seconds: u64) -> ApiFuture<'_, Value> {

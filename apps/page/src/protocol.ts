@@ -14,6 +14,8 @@ export type Outgoing =
   | { type: "title"; payload: { title: string } }
   | { type: "pointer"; payload: { cursor: Point } }
   | { type: "action"; payload: { action: string } }
+  /** A selection was started or ended in this frame; the app tells the tab's other frames. */
+  | { type: "mode"; payload: { mode: "none" | "element" | "region" } }
   | {
       type: "capture.request";
       payload: {
@@ -28,6 +30,13 @@ export type Outgoing =
 export type Incoming =
   | { type: "configure"; payload: { review: boolean; bindings: Binding[] } }
   | { type: "status"; payload: { recording: boolean } }
+  | { type: "mode"; payload: { mode: "none" | "element" | "region" } }
+  /** Where an agent moved or clicked, in the tab's viewport. */
+  | { type: "agent.pointer"; payload: { x: number; y: number; pressed: boolean } }
+  /** What an agent says it is doing. */
+  | { type: "agent.note"; payload: { text: string } }
+  /** An element an agent wants the person to look at. */
+  | { type: "agent.point"; payload: { selector: string; text: string } }
   | { type: "control.changed"; payload: ControlState }
   | { type: "overlay.hide" | "overlay.show" | "capture.saved" | "dom.request" }
   | { type: "capture.failed"; payload: { reason: string } };
@@ -36,6 +45,7 @@ export type Incoming =
 export type Reply =
   | { ok: true }
   | { hidden: true }
+  | { found: boolean }
   | { dom: DomCapture | null; cursor: Point };
 
 declare global {

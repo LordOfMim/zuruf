@@ -33,7 +33,7 @@ Provider, Modell, Optionen und Arbeitsverzeichnis werden pro Batch eingefroren. 
 
 ## Review und Sprache
 
-Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport, `S` einen gezogenen Ausschnitt, `D` das Element unter dem Cursor. In Textfeldern, Editoren und Contenteditable bleiben einzelne Tasten normale Eingaben; dieselbe Taste mit Alt (z. B. Alt+R) löst die Aktion auch dort aus. Kürzel mit Strg, Alt oder Super gelten überall. Zuruf fängt seine Tasten vor der Seite ab, einschließlich Wiederholung und Loslassen. `Esc` bricht eine Auswahl ab. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
+Projekt, Review und Session auswählen, im verwalteten Browser nötigenfalls manuell anmelden und Review aktivieren. `W` erfasst den Viewport sofort – dort gibt es nichts auszuwählen. `S` und `D` nehmen nicht sofort auf, sondern lassen erst wählen: Nach `S` wird die Seite abgedunkelt und man zieht wie mit einem Ausschneidewerkzeug einen Bereich auf, dessen Größe mitläuft; beim Loslassen wird aufgenommen. Nach `D` leuchtet das Element unter dem Zeiger farbig auf, mit Name und Größe; ein Klick oder Enter nimmt es auf. Der Klick erreicht die Seite nicht. `Esc` oder dieselbe Taste noch einmal bricht die Auswahl ab. In Textfeldern, Editoren und Contenteditable bleiben einzelne Tasten normale Eingaben; dieselbe Taste mit Alt (z. B. Alt+R) löst die Aktion auch dort aus. Kürzel mit Strg, Alt oder Super gelten überall. Zuruf fängt seine Tasten vor der Seite ab, einschließlich Wiederholung und Loslassen. Außerhalb einer Auswahl gehört `Esc` der Seite. `E` öffnet den Textkommentar, `R` steuert Sprache. Die Bindings sind in den Einstellungen konfigurierbar. Globale Bindings benötigen Modifier und werden nur zur Laufzeit gesetzt.
 
 Nach dauerhafter Rohbildpersistenz bestätigt die Seite „Gespeichert“. Die markierte Kopie entsteht anschließend; Dispatch wartet auf beide Bilder. Ein Absturz vor Abschluss hinterlässt eine sichtbar als unterbrochen kommentierte Annotation und blockiert deren unvollständigen Versand. Neu aufnehmen beziehungsweise den Eintrag prüfen und entfernen; automatische Rekonstruktion einer verlorenen Captureoperation gibt es nicht.
 
@@ -44,6 +44,16 @@ Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung l�
 Zu jeder Aufnahme merkt sich Zuruf, was die Seite bis dahin von sich aus gemeldet hat: Konsolenfehler und -warnungen, unbehandelte Ausnahmen und fehlgeschlagene Anfragen (etwa ein 404 oder 500), jeweils mit Quelle und Zeile. Am Eintrag steht dann zum Beispiel „2 Fehler“; ein Klick klappt die Liste auf. Die Meldungen gehen im Manifest (`diagnostics` je Annotation) mit an den Agenten, der damit oft schon die Ursache in der Hand hat.
 
 Gesammelt wird je Tab seit dem Laden des aktuellen Dokuments, höchstens die letzten 20 Meldungen; gleiche Meldungen hintereinander werden gezählt statt wiederholt. Adressen durchlaufen dieselbe Schwärzung wie alle anderen. Meldungstexte werden nicht inhaltlich geprüft – wer Geheimnisse in die Konsole schreibt, sollte die Liste vor dem Senden ansehen.
+
+## Mit einem Agenten zusammenarbeiten
+
+Arbeitet ein Agent im Sitzungsfenster, sieht man ihm zu, statt zu raten:
+
+- **Wo er handelt:** Ein beschrifteter Zeiger in der Agentenfarbe folgt seinen Mausbewegungen, jeder Klick zeigt einen Ring.
+- **Was er tut:** Fortschrittsmeldungen des Agenten (`report_progress`) erscheinen als Sprechblase unten rechts in der Seite, neben „Agent steuert“ – nicht nur in der Aufgabenliste.
+- **Was er zeigen will:** Mit dem Werkzeug `show_in_browser` markiert der Agent ein Element in der sichtbaren Seite und schreibt eine kurze Nachricht dazu, etwa eine Rückfrage („Meinst du diesen Knopf?“) oder das Ergebnis einer Änderung. Dafür braucht er keine Kontrolle über den Browser; er zeigt nur. Ein Klick oder `Esc` blendet die Markierung aus.
+
+Die Antwort gibt man wie gewohnt: aufnehmen, dazu sprechen oder tippen und als Nachfrage an denselben Thread senden. Übernehmen (`control.takeover`) bleibt jederzeit möglich und gewinnt sofort.
 
 ## Aufgaben und Agentenzugriff
 

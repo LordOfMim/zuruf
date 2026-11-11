@@ -39,6 +39,17 @@ fn agent_page(info: &Value, private: &HashSet<String>) -> bool {
 pub type TabOpener = std::sync::Arc<
     dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<String>> + Send>> + Send + Sync,
 >;
+/// Told where an agent moved or clicked: target id, viewport position, and whether a button
+/// went down. The window shows it, so the person sees what the agent is doing.
+pub type InputObserver = std::sync::Arc<dyn Fn(&str, f64, f64, bool) + Send + Sync>;
+/// What ties an agent's connection to the session's window.
+#[derive(Default)]
+pub struct WindowHooks {
+    /// Targets an agent must never see, such as the app's own panel.
+    pub private: HashSet<String>,
+    pub opener: Option<TabOpener>,
+    pub observer: Option<InputObserver>,
+}
 /// Browser-wide commands are default-denied. Flat page commands use an allow-list
 /// of domains; experimental browser, IO, storage and extension domains stay private.
 pub fn allowed(method: &str, attached: bool) -> bool {
@@ -126,13 +137,17 @@ pub(crate) async fn serve<S>(
     auth: AgentAccess,
     authorization: Option<&str>,
     control: Arbitration,
-    private: HashSet<String>,
-    opener: Option<TabOpener>,
+    window: WindowHooks,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     authenticate(authorization, &auth.token)?;
+    let WindowHooks {
+        private,
+        opener,
+        observer,
+    } = window;
     let private = std::sync::Arc::new(private);
     let cdp = Cdp::connect(upstream).await?;
     let mut events = cdp.subscribe();
@@ -354,6 +369,7 @@ where
                         let agent = auth.agent_id.clone();
                         let access = auth.clone();
                         let private = private.clone();
+                        let observer = observer.clone();
                         tokio::spawn(async move {
                             while let Some((command, params, generation)) = jobs.recv().await {
                                 if replies.is_closed() {
@@ -373,6 +389,13 @@ where
                                     }
                                     access.check()?;
                                     if gate.check(&agent).await?!=generation{return Err(Error::Denied("revoked before dispatch"));}
+                                    if command.method == "Input.dispatchMouseEvent"
+                                        && let Some(observer) = &observer
+                                        && let (Some(x), Some(y)) =
+                                            (params["x"].as_f64(), params["y"].as_f64())
+                                    {
+                                        observer(&tab, x, y, params["type"] == "mousePressed");
+                                    }
                                     backend
                                         .call(
                                             &command.method,
@@ -577,8 +600,7 @@ mod integration_tests {
                 AgentAccess::new("test".into(), "test".into()),
                 Some("Bearer test"),
                 gate,
-                HashSet::new(),
-                None,
+                WindowHooks::default(),
             )
             .await
         });

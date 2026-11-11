@@ -4,7 +4,7 @@ use crate::{
     capture::{Ring, clip, mark, redact, redact_url},
     cdp::Cdp,
     control::Arbitration,
-    proxy::{AgentAccess, TabOpener},
+    proxy::{AgentAccess, InputObserver, TabOpener, WindowHooks},
     *,
 };
 use base64::Engine;
@@ -350,6 +350,14 @@ impl Browser {
         self.page.push_bindings(bindings).await;
         Ok(())
     }
+    /// Show in the page what an agent says it is doing.
+    pub async fn agent_note(&self, text: &str) {
+        self.page.agent_note(text).await;
+    }
+    /// Mark an element in the visible tab for the person to look at. False: nothing matched.
+    pub async fn agent_point(&self, selector: &str, text: &str) -> Result<bool> {
+        self.page.agent_point(selector, text).await
+    }
     /// Show in every page whether speech is being recorded.
     pub async fn set_recording(&self, recording: bool) {
         self.page
@@ -425,14 +433,35 @@ impl Browser {
             let window = window.clone();
             Box::pin(async move { window.open_tab(&url).await })
         });
+        // Show the agent's pointer in the page. Moves come in bursts; a few per second are
+        // enough to follow, while every click is shown.
+        let page = self.page.clone();
+        let last_move = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+        let observer: InputObserver = Arc::new(move |target, x, y, pressed| {
+            if !pressed {
+                let Ok(mut last) = last_move.lock() else {
+                    return;
+                };
+                if last.elapsed() < Duration::from_millis(60) {
+                    return;
+                }
+                *last = std::time::Instant::now();
+            }
+            let page = page.clone();
+            let target = target.to_owned();
+            tokio::spawn(async move { page.agent_pointer(&target, x, y, pressed).await });
+        });
         proxy::serve(
             ws,
             &self.endpoint,
             auth,
             authorization,
             self.control.clone(),
-            self.private.clone(),
-            Some(opener),
+            WindowHooks {
+                private: self.private.clone(),
+                opener: Some(opener),
+                observer: Some(observer),
+            },
         )
         .await
     }

@@ -38,6 +38,7 @@ docker exec zuruf-dev su dev -c 'cd /work && CARGO_TARGET_DIR=/build/target bash
 
 | Skript | Zweck |
 |---|---|
+| `display.sh` | den virtuellen Bildschirm `:99` sicher (neu) starten |
 | `run-shell.sh` | Shell unter Xvfb starten; Befehle nach `/tmp/shell-in` schreiben, Bildschirmfoto mit `import -window root` |
 | `run-wayland.sh` | dasselbe unter sway (nicht als root); zeigt App-ID und Fenstertitel, wie der Compositor sie sieht |
 | `e2e-wayland.sh` | `tests/e2e/shell.mjs` unter sway, einschließlich „Fenster schließen“ |
