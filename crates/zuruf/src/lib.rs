@@ -165,6 +165,10 @@ impl Daemon {
                 "/api/v1/sessions/{session}/agent-access",
                 axum::routing::post(real::agent_access),
             )
+            .route(
+                "/api/v1/sessions/{session}/page-width",
+                axum::routing::post(real::page_width),
+            )
             .route("/api/v1/events", get(events))
             .route("/events", get(events))
             .route("/api/v1/{*path}", any(api))
@@ -906,6 +910,14 @@ impl Daemon {
                         a.scroll = result.scroll;
                         a.cursor = result.cursor;
                         a.rect = result.rect;
+                        a.diagnostics = result.diagnostics;
+                        for entry in &mut a.diagnostics {
+                            entry.url = entry
+                                .url
+                                .as_deref()
+                                .map(|url| redact_url(url, &s.settings.redaction))
+                                .filter(|url| !url.is_empty());
+                        }
                         a.dom = result.dom;
                         if let Some(dom) = &mut a.dom {
                             dom.attributes.retain(|key, _| {
@@ -1251,6 +1263,7 @@ fn annotation_in(
         cursor: None,
         rect: None,
         dom: None,
+        diagnostics: vec![],
         assets: vec![],
         transcript: String::new(),
         transcript_state: AnnotationTranscriptState::None,

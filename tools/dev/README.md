@@ -42,6 +42,7 @@ docker exec zuruf-dev su dev -c 'cd /work && CARGO_TARGET_DIR=/build/target bash
 | `run-wayland.sh` | dasselbe unter sway (nicht als root); zeigt App-ID und Fenstertitel, wie der Compositor sie sieht |
 | `e2e-wayland.sh` | `tests/e2e/shell.mjs` unter sway, einschließlich „Fenster schließen“ |
 | `try-app.sh`, `api.sh` | echten Daemon mit Wegwerfdaten starten und seine API aufrufen |
+| `look.sh` | Sitzungsfenster mit den Beispieldaten der UI zeigen und fotografieren, um das Aussehen zu beurteilen |
 | `measure.sh` | Release-Build installieren; Größe, Startzeit und Speicher ausgeben |
 | `cdp.mjs` | DevTools-Befehle an eine laufende Shell schicken |
 | `static-server.mjs` | die Prüfseiten aus `tests/browser/fixture` ausliefern |

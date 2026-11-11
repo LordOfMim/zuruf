@@ -30,6 +30,8 @@ pub struct Options {
     pub panel: Option<String>,
     pub panel_width: i32,
     pub theme: Theme,
+    /// Width to show pages at; without it they use all the room there is.
+    pub page_width: Option<i32>,
     /// Loopback port of the DevTools endpoint the daemon connects to.
     pub port: i32,
     /// Show only the app, filling the window: no tabs, no toolbar.
@@ -58,6 +60,7 @@ impl Options {
                     options.panel_width = value.parse().unwrap_or(options.panel_width);
                 }
                 "theme" => options.theme = Theme::parse(value),
+                "page-width" => options.page_width = value.parse().ok(),
                 "port" => options.port = value.parse().unwrap_or(0),
                 "url" => options.urls.push(value.into()),
                 "detached" => options.detached = true,

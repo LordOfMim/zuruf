@@ -335,6 +335,13 @@ impl Browser {
             .command(json!({"command": "theme", "mode": theme}))
             .await
     }
+    /// Show pages at a fixed width in CSS pixels, centred in the window; `None` uses the full
+    /// width. The page's real viewport changes, so layouts respond as on a screen that wide.
+    pub async fn set_page_width(&self, width: Option<u32>) -> Result<()> {
+        self.window
+            .command(json!({"command": "page-width", "width": width}))
+            .await
+    }
     pub async fn set_review_mode(&self, on: bool, bindings: Vec<Binding>) -> Result<()> {
         self.page.configure(on, bindings).await;
         Ok(())
@@ -774,6 +781,10 @@ impl Browser {
             "ZURUF_CAPTURE {}",
             json!({"metadataMs":metadata_ms,"screenshotMs":screenshot_ms,"postprocessMs":post_started.elapsed().as_secs_f64()*1000.})
         );
+        let mut diagnostics = self.page.diagnostics(&tab.id).await;
+        for entry in &mut diagnostics {
+            entry.url = entry.url.as_deref().map(redact_url);
+        }
         Ok(CaptureResult {
             raw_png: raw,
             marked_png: marked,
@@ -788,6 +799,7 @@ impl Browser {
             rect,
             dom: dom.clone(),
             tab,
+            diagnostics,
         })
     }
     pub async fn stop(&self) -> Result<()> {

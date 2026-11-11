@@ -256,7 +256,7 @@ pub fn build_manifest(
                 ) && !sensitive(k, &settings.patterns)
             });
         }
-        entries.push(json!({"id":a.id,"type":a.r#type,"transcript":a.transcript,"note":a.note,"captureTime":a.created_at,"url":a.url.as_deref().map(|u|redact_url(u,settings)),"screenshot":a.assets.first().map(|a|&a.path),"assets":a.assets.iter().map(|a|&a.path).collect::<Vec<_>>(),"dom":dom,"boundingBox":a.rect,"sessionId":a.session_id,"tabId":a.tab_id,"viewport":a.viewport}));
+        entries.push(json!({"id":a.id,"type":a.r#type,"transcript":a.transcript,"note":a.note,"captureTime":a.created_at,"url":a.url.as_deref().map(|u|redact_url(u,settings)),"screenshot":a.assets.first().map(|a|&a.path),"assets":a.assets.iter().map(|a|&a.path).collect::<Vec<_>>(),"dom":dom,"boundingBox":a.rect,"sessionId":a.session_id,"tabId":a.tab_id,"viewport":a.viewport,"diagnostics":a.diagnostics}));
     }
     Ok(
         json!({"schemaVersion":"1.0","batchId":batch.id,"note":batch.note,"project":{"name":project.name,"repositoryPath":project.repository_path,"baseUrl":redact_url(&project.base_url,settings)},"browserContext":annotations.first().map(|a| json!({"sessionId":a.session_id,"tabId":a.tab_id,"url":a.url.as_deref().map(|u|redact_url(u,settings)),"title":a.page_title,"viewport":a.viewport})),"annotations":entries,"task":{"goal":"Implementiere die annotierten Änderungen.","workspaceStrategy":profile.workspace_strategy,"verifyInBrowser":true}}),
@@ -267,7 +267,7 @@ pub fn build_prompt(absolute_manifest_path: &str) -> Result<String, DomainError>
         return Err(DomainError::Path);
     }
     Ok(format!(
-        "Analysiere und bearbeite die Review-Annotationen. Das vollständige Manifest liegt unter {absolute_manifest_path}; Screenshots sind relativ zu diesem Verzeichnis referenziert. Prüfe die DOM-Kontexte und implementiere die dokumentierten Änderungen im zugewiesenen Projekt-Workspace. Füge keine nicht dokumentierten Anforderungen hinzu. Prüfe die Änderungen im Browser, falls eine passende Session freigegeben ist. Melde Ergebnis, betroffene Dateien und offene Punkte je Annotation zurück."
+        "Analysiere und bearbeite die Review-Annotationen. Das vollständige Manifest liegt unter {absolute_manifest_path}; Screenshots sind relativ zu diesem Verzeichnis referenziert. Prüfe die DOM-Kontexte und implementiere die dokumentierten Änderungen im zugewiesenen Projekt-Workspace. Unter `diagnostics` stehen je Annotation die Konsolenfehler, unbehandelten Ausnahmen und fehlgeschlagenen Anfragen, die die Seite zum Zeitpunkt der Aufnahme gemeldet hatte; nutze sie als Hinweis auf die Ursache. Füge keine nicht dokumentierten Anforderungen hinzu. Prüfe die Änderungen im Browser, falls eine passende Session freigegeben ist. Melde Ergebnis, betroffene Dateien und offene Punkte je Annotation zurück."
     ))
 }
 impl Default for Settings {

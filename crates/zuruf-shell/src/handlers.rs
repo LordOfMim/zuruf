@@ -34,6 +34,12 @@ pub fn page_view() -> BrowserViewDelegate {
 pub fn panel_view(width: i32) -> BrowserViewDelegate {
     PageView::new(width)
 }
+pub fn line() -> PanelDelegate {
+    Line::new()
+}
+pub fn page_area() -> PanelDelegate {
+    PageArea::new()
+}
 pub fn button() -> ButtonDelegate {
     Pressed::new()
 }
@@ -53,6 +59,9 @@ wrap_client! {
         }
         fn life_span_handler(&self) -> Option<LifeSpanHandler> {
             Some(Life::new())
+        }
+        fn load_handler(&self) -> Option<LoadHandler> {
+            Some(Loading::new())
         }
     }
 }
@@ -99,6 +108,24 @@ wrap_life_span_handler! {
             match browser {
                 Some(browser) => i32::from(shell::browser_closing(browser)),
                 None => 0,
+            }
+        }
+    }
+}
+
+wrap_load_handler! {
+    struct Loading;
+
+    impl LoadHandler {
+        fn on_loading_state_change(
+            &self,
+            browser: Option<&mut Browser>,
+            is_loading: ::std::os::raw::c_int,
+            _can_go_back: ::std::os::raw::c_int,
+            _can_go_forward: ::std::os::raw::c_int,
+        ) {
+            if let Some(browser) = browser {
+                shell::loading_changed(browser, is_loading != 0);
             }
         }
     }
@@ -199,6 +226,10 @@ wrap_window_delegate! {
                 height: 400,
             }
         }
+
+        fn on_theme_changed(&self, _view: Option<&mut View>) {
+            shell::theme_changed();
+        }
     }
 
     impl PanelDelegate {}
@@ -225,6 +256,10 @@ wrap_window_delegate! {
         fn on_window_destroyed(&self, _window: Option<&mut Window>) {
             shell::destroyed();
             quit_message_loop();
+        }
+
+        fn on_window_bounds_changed(&self, _window: Option<&mut Window>, _bounds: Option<&Rect>) {
+            shell::fit_page();
         }
 
         fn initial_bounds(&self, _window: Option<&mut Window>) -> Rect {
@@ -332,6 +367,34 @@ wrap_window_delegate! {
             RuntimeStyle::ALLOY
         }
     }
+}
+
+wrap_panel_delegate! {
+    struct Line {}
+
+    impl ViewDelegate {
+        fn preferred_size(&self, _view: Option<&mut View>) -> Size {
+            Size {
+                width: 1,
+                height: 1,
+            }
+        }
+    }
+
+    impl PanelDelegate {}
+}
+
+wrap_panel_delegate! {
+    struct PageArea {}
+
+    impl ViewDelegate {
+        fn on_layout_changed(&self, _view: Option<&mut View>, _new_bounds: Option<&Rect>) {
+            // Its width is known now; centre the page if a fixed width is chosen.
+            shell::fit_page();
+        }
+    }
+
+    impl PanelDelegate {}
 }
 
 wrap_button_delegate! {

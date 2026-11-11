@@ -4,12 +4,13 @@
 //! It reports key presses, the pointer and picker results through a binding that only exists in
 //! that world, so web pages can neither see nor call it. Commands travel the other way by
 //! evaluating a function in the same world.
-use crate::{Binding, ControlState, DomCapture, Error, Point, Rect, Result, cdp::Cdp};
+use crate::{Binding, ControlState, Diagnostic, DomCapture, Error, Point, Rect, Result, cdp::Cdp};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
+    time::Instant,
 };
 use tokio::sync::{Mutex, broadcast};
 
@@ -20,6 +21,11 @@ const BINDING: &str = "__zurufSend";
 /// Function the app calls to reach the agent.
 const RECEIVER: &str = "__zurufReceive";
 const AGENT: &str = include_str!(concat!(env!("OUT_DIR"), "/agent.js"));
+/// How many reports of a page are remembered, how many a capture carries, and how long one
+/// report's text may be.
+const DIAGNOSTICS_KEPT: usize = 50;
+const DIAGNOSTICS_SENT: usize = 20;
+const DIAGNOSTIC_TEXT: usize = 500;
 
 /// A message from one document of one tab, with the identity the app assigned to it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +138,130 @@ struct Target {
     frames: HashMap<String, Frame>,
     /// Stable small numbers per CDP frame id; the top frame is always 0.
     numbers: HashMap<String, i64>,
+    /// What the current document reported, with the time of the last report.
+    diagnostics: VecDeque<(Instant, Diagnostic)>,
+}
+
+impl Target {
+    /// Remember a report; the same one again only counts up.
+    fn report(&mut self, entry: Diagnostic) {
+        let repeated = self.diagnostics.back_mut().filter(|(_, last)| {
+            last.kind == entry.kind
+                && last.level == entry.level
+                && last.text == entry.text
+                && last.url == entry.url
+                && last.line == entry.line
+        });
+        match repeated {
+            Some((at, last)) => {
+                *at = Instant::now();
+                last.count += 1;
+            }
+            None => {
+                if self.diagnostics.len() == DIAGNOSTICS_KEPT {
+                    self.diagnostics.pop_front();
+                }
+                self.diagnostics.push_back((Instant::now(), entry));
+            }
+        }
+    }
+}
+
+fn shortened(text: &str) -> String {
+    let mut short: String = text.chars().take(DIAGNOSTIC_TEXT).collect();
+    if text.chars().count() > DIAGNOSTIC_TEXT {
+        short.push('…');
+    }
+    short
+}
+
+/// CDP counts lines from zero; people and editors from one.
+fn line_number(value: &Value) -> Option<u32> {
+    value.as_u64().map(|line| line as u32 + 1)
+}
+
+fn diagnostic(kind: &str, level: &str, text: &str, url: &Value, line: Option<u32>) -> Diagnostic {
+    Diagnostic {
+        kind: kind.into(),
+        level: level.into(),
+        text: shortened(text),
+        url: url
+            .as_str()
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned),
+        line,
+        count: 1,
+        age_ms: 0,
+    }
+}
+
+/// `console.error`, `console.warn` and failed assertions (`Runtime.consoleAPICalled`).
+fn console_diagnostic(params: &Value) -> Option<Diagnostic> {
+    let level = match params["type"].as_str()? {
+        "error" | "assert" => "error",
+        "warning" => "warning",
+        _ => return None,
+    };
+    let words: Vec<String> = params["args"]
+        .as_array()?
+        .iter()
+        .map(|argument| match &argument["value"] {
+            Value::String(text) => text.clone(),
+            Value::Null => argument["description"]
+                .as_str()
+                .unwrap_or("null")
+                .to_owned(),
+            other => other.to_string(),
+        })
+        .collect();
+    let frame = &params["stackTrace"]["callFrames"][0];
+    Some(diagnostic(
+        "console",
+        level,
+        &words.join(" "),
+        &frame["url"],
+        line_number(&frame["lineNumber"]),
+    ))
+}
+
+/// An exception nobody caught (`Runtime.exceptionThrown`).
+fn exception_diagnostic(params: &Value) -> Option<Diagnostic> {
+    let details = &params["exceptionDetails"];
+    let text = details["exception"]["description"]
+        .as_str()
+        .or(details["text"].as_str())?;
+    Some(diagnostic(
+        "exception",
+        "error",
+        text,
+        &details["url"],
+        line_number(&details["lineNumber"]),
+    ))
+}
+
+/// What the browser itself logs about a page (`Log.entryAdded`): above all requests that failed.
+fn log_diagnostic(params: &Value) -> Option<Diagnostic> {
+    let entry = &params["entry"];
+    let level = match entry["level"].as_str()? {
+        "error" => "error",
+        "warning" => "warning",
+        _ => return None,
+    };
+    let kind = if entry["source"] == "network" {
+        "network"
+    } else {
+        "console"
+    };
+    Some(diagnostic(
+        kind,
+        level,
+        entry["text"].as_str()?,
+        &entry["url"],
+        entry["lineNumber"]
+            .as_u64()
+            .filter(|line| *line > 0)
+            .map(|line| line as u32),
+    ))
 }
 
 #[derive(Default)]
@@ -269,6 +399,23 @@ impl PageBridge {
     /// CDP session attached to a tab's page.
     pub async fn page_session(&self, target: &str) -> Option<String> {
         self.state.lock().await.targets.get(target)?.session.clone()
+    }
+    /// What a tab's current document reported so far, oldest first.
+    pub async fn diagnostics(&self, target: &str) -> Vec<Diagnostic> {
+        let state = self.state.lock().await;
+        let Some(target) = state.targets.get(target) else {
+            return vec![];
+        };
+        let skipped = target.diagnostics.len().saturating_sub(DIAGNOSTICS_SENT);
+        target
+            .diagnostics
+            .iter()
+            .skip(skipped)
+            .map(|(at, entry)| Diagnostic {
+                age_ms: at.elapsed().as_millis() as u64,
+                ..entry.clone()
+            })
+            .collect()
     }
     pub async fn is_private(&self, target: &str) -> bool {
         self.state.lock().await.private.contains(target)
@@ -451,7 +598,11 @@ impl PageBridge {
                 let Some(target) = state.targets.get_mut(&target_id) else {
                     return;
                 };
-                // The top frame of a page carries the page's target id.
+                // The top frame of a page carries the page's target id. Its agent starts before
+                // the document's own scripts, so what the last document reported ends here.
+                if frame == target_id {
+                    target.diagnostics.clear();
+                }
                 let next = target.numbers.len() as i64 + 1;
                 let number = if frame == target_id {
                     0
@@ -481,6 +632,22 @@ impl PageBridge {
             "Runtime.executionContextsCleared" => {
                 if let Some(session) = session {
                     self.forget_worlds(session, None).await;
+                }
+            }
+            "Runtime.consoleAPICalled" | "Runtime.exceptionThrown" | "Log.entryAdded" => {
+                let entry = match event["method"].as_str() {
+                    Some("Runtime.consoleAPICalled") => console_diagnostic(params),
+                    Some("Runtime.exceptionThrown") => exception_diagnostic(params),
+                    _ => log_diagnostic(params),
+                };
+                let (Some(session), Some(entry)) = (session, entry) else {
+                    return;
+                };
+                let mut state = self.state.lock().await;
+                if let Some(target_id) = state.sessions.get(session).cloned()
+                    && let Some(target) = state.targets.get_mut(&target_id)
+                {
+                    target.report(entry);
                 }
             }
             "Runtime.bindingCalled" => {
@@ -588,6 +755,8 @@ impl PageBridge {
         // documents loaded later.
         self.cdp.call("Page.enable", json!({}), session).await?;
         self.cdp.call("Runtime.enable", json!({}), session).await?;
+        // The browser's own log reports failed requests without watching every request.
+        self.cdp.call("Log.enable", json!({}), session).await?;
         self.cdp
             .call(
                 "Runtime.addBinding",
@@ -752,6 +921,59 @@ mod tests {
             serde_json::to_value(Message::Status { recording: true }).unwrap(),
             json!({"type":"status","payload":{"recording":true}})
         );
+    }
+
+    #[test]
+    fn page_reports_become_diagnostics() {
+        let console = console_diagnostic(&json!({
+            "type": "error",
+            "args": [{"type": "string", "value": "Speichern fehlgeschlagen"}, {"type": "number", "value": 500}],
+            "stackTrace": {"callFrames": [{"url": "http://localhost/app.js", "lineNumber": 41}]},
+        }))
+        .unwrap();
+        assert_eq!(console.text, "Speichern fehlgeschlagen 500");
+        assert_eq!(
+            (console.kind.as_str(), console.level.as_str()),
+            ("console", "error")
+        );
+        assert_eq!(console.line, Some(42));
+        assert!(console_diagnostic(&json!({"type": "log", "args": []})).is_none());
+
+        let exception = exception_diagnostic(&json!({"exceptionDetails": {
+            "text": "Uncaught",
+            "exception": {"description": "TypeError: x is undefined"},
+            "url": "http://localhost/app.js",
+            "lineNumber": 0,
+        }}))
+        .unwrap();
+        assert_eq!(exception.text, "TypeError: x is undefined");
+        assert_eq!(exception.line, Some(1));
+
+        let failed = log_diagnostic(&json!({"entry": {
+            "source": "network",
+            "level": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+            "url": "http://localhost/api/items",
+        }}))
+        .unwrap();
+        assert_eq!(failed.kind, "network");
+        assert_eq!(failed.url.as_deref(), Some("http://localhost/api/items"));
+        assert!(log_diagnostic(&json!({"entry": {"level": "info", "text": "x"}})).is_none());
+    }
+
+    #[test]
+    fn repeated_reports_count_up_and_old_ones_fall_out() {
+        let mut target = Target::default();
+        let entry = |text: &str| diagnostic("console", "error", text, &Value::Null, None);
+        target.report(entry("a"));
+        target.report(entry("a"));
+        target.report(entry("b"));
+        assert_eq!(target.diagnostics.len(), 2);
+        assert_eq!(target.diagnostics[0].1.count, 2);
+        for number in 0..DIAGNOSTICS_KEPT + 5 {
+            target.report(entry(&number.to_string()));
+        }
+        assert_eq!(target.diagnostics.len(), DIAGNOSTICS_KEPT);
     }
 
     #[test]

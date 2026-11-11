@@ -202,6 +202,39 @@ try {
   assert.equal(region.type, "region");
   passed("review hotkeys capture viewport, element and region");
 
+  // What the page reports on its own is attached to the capture and reaches the agent.
+  await page.evaluate(() => {
+    console.error("Speichern fehlgeschlagen", 500);
+    void fetch("/gibt-es-nicht.json");
+  });
+  await sleep(500);
+  const withReports = await capture("viewport with page reports", async () => {
+    await page.locator("h1").click();
+    await page.keyboard.press("w");
+  });
+  const reports = withReports.diagnostics ?? [];
+  assert(
+    reports.some((entry) => entry.kind === "console" && entry.text === "Speichern fehlgeschlagen 500"),
+    JSON.stringify(reports),
+  );
+  assert(
+    reports.some((entry) => entry.kind === "network" && entry.url?.endsWith("/gibt-es-nicht.json")),
+    JSON.stringify(reports),
+  );
+  passed("console errors and failed requests travel with the capture");
+
+  // A fixed page width: the page lays itself out for it and captures record it.
+  await api("POST", `/sessions/${session.id}/page-width`, { width: 390 });
+  await until("the narrow viewport", async () => (await page.evaluate(() => innerWidth)) === 390);
+  const narrow = await capture("viewport at 390", async () => {
+    await page.locator("h1").click();
+    await page.keyboard.press("w");
+  });
+  assert.equal(narrow.viewport.width, 390);
+  await api("POST", `/sessions/${session.id}/page-width`, { width: null });
+  await until("the full width again", async () => (await page.evaluate(() => innerWidth)) > 390);
+  passed("pages can be reviewed at a fixed width");
+
   // Typing into a field must stay typing.
   const before = (await state()).annotations.length;
   await page.locator("#text").fill("");

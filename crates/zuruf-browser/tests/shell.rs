@@ -290,6 +290,61 @@ async fn session_in_shell_window() {
         "{dom:?}"
     );
 
+    // What the page reports on its own travels with the next capture.
+    agent
+        .call(
+            "Runtime.evaluate",
+            json!({"expression": "console.error('Speichern fehlgeschlagen', 500); fetch('/gibt-es-nicht.json'); 1"}),
+            Some(&session),
+        )
+        .await;
+    let reported = wait_for("the page's reports", async || {
+        let shot = browser
+            .capture(&tab.id, CaptureKind::Viewport, None, Ring::default())
+            .await
+            .expect("capture with diagnostics");
+        (shot.diagnostics.len() >= 2).then_some(shot.diagnostics)
+    })
+    .await;
+    assert!(
+        reported.iter().any(|entry| entry.kind == "console"
+            && entry.level == "error"
+            && entry.text == "Speichern fehlgeschlagen 500"),
+        "{reported:?}"
+    );
+    assert!(
+        reported.iter().any(|entry| entry.kind == "network"
+            && entry
+                .url
+                .as_deref()
+                .is_some_and(|url| url.ends_with("/gibt-es-nicht.json"))),
+        "{reported:?}"
+    );
+
+    // A fixed page width narrows the page's real viewport.
+    browser.set_page_width(Some(390)).await.unwrap();
+    let narrow = wait_for("the narrow viewport", async || {
+        let shot = browser
+            .capture(&tab.id, CaptureKind::Viewport, None, Ring::default())
+            .await
+            .expect("capture at a fixed width");
+        (shot.viewport.width == 390.0).then_some(shot)
+    })
+    .await;
+    assert_eq!(
+        image_size(&narrow.raw_png).0,
+        (390.0 * scale).round() as u32
+    );
+    browser.set_page_width(None).await.unwrap();
+    wait_for("the full width again", async || {
+        let shot = browser
+            .capture(&tab.id, CaptureKind::Viewport, None, Ring::default())
+            .await
+            .expect("capture at full width");
+        (shot.viewport.width > 390.0).then_some(())
+    })
+    .await;
+
     // A tab an agent creates opens inside the window, as a normal tab.
     let created = agent
         .call(

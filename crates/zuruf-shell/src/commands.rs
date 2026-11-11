@@ -15,6 +15,8 @@ pub enum Command {
     Panel { visible: Option<bool> },
     /// Wear another theme.
     Theme { mode: Theme },
+    /// Show pages at a fixed width in pixels; without `width`, at the full width.
+    PageWidth { width: Option<i32> },
     /// Close the window and end the process.
     Quit,
 }
@@ -31,6 +33,7 @@ wrap_task! {
                 Command::Focus => shell::focus_window(),
                 Command::Panel { visible } => shell::show_panel(visible),
                 Command::Theme { mode } => shell::set_theme(mode),
+                Command::PageWidth { width } => shell::set_page_width(width),
                 Command::Quit => shell::quit(),
             }
         }

@@ -681,6 +681,72 @@ button.entry-thumb:hover {
   color: var(--warn);
 }
 
+/* What the page itself reported at capture time: a quiet count that opens the list. */
+.entry-issues-toggle {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--warn);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.entry-issues-toggle.has-errors {
+  color: var(--danger);
+}
+
+.entry-issues-toggle:hover {
+  text-decoration-style: solid;
+}
+
+.entry-issues {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s1);
+}
+
+.entry-issue {
+  display: grid;
+  gap: 1px;
+  padding: 6px var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--danger-soft);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+.entry-issue.is-warning {
+  background: var(--warn-soft);
+}
+
+.entry-issue-kind {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.entry-issue.is-warning .entry-issue-kind {
+  color: var(--warn);
+}
+
+.entry-issue-text {
+  color: var(--text);
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.entry-issue-source {
+  color: var(--text-3);
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .entry-remove {
   position: absolute;
   top: 6px;

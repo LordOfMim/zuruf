@@ -9,7 +9,7 @@ Browser-Sitzungen für den Daemon, ohne Abhängigkeit auf `zuruf-core` und ohne 
 | Sitzung starten, stoppen, neu starten | `Browser::start(SessionConfig)`, `stop`, `restart` (mit den zuletzt offenen Adressen) |
 | Isoliert duplizieren | `Browser::duplicate_config(new_root)` – neues Profil, keine Cookies |
 | Tabs | `open_tab(url)` öffnet im Fenster der Sitzung, `list_tabs()` |
-| Fenster | `focus()`, `show_panel(Some(true) \| Some(false) \| None)`, `set_theme("system" \| "dark" \| "light")` |
+| Fenster | `focus()`, `show_panel(Some(true) \| Some(false) \| None)`, `set_theme("system" \| "dark" \| "light")`, `set_page_width(Some(390) \| None)` |
 | Aufnahme | `capture_request(&Envelope, Ring)` für einen Hotkey (prüft die Dokumentkennung), `capture(target, kind, rect, ring)` direkt; `capture_raw`-Varianten liefern nur das maskierte Rohbild |
 | Review-Modus, Belegung | `set_review_mode(on, bindings)`, `push_bindings`, `set_recording(bool)` |
 | Kontrolle | `grant(agent, lease)`, `renew`, `release`, `takeover` |
@@ -30,6 +30,8 @@ Browser-Sitzungen für den Daemon, ohne Abhängigkeit auf `zuruf-core` und ohne 
 Der Agent meldet `ready`, `visibility`, `title`, `pointer`, `action` und `capture.request`. Die Brücke ordnet jede Meldung über ihren Ausführungskontext einem Tab, einem Frame und einem Dokument zu. Befehle (`configure`, `status`, `control.changed`, `overlay.hide`/`show`, `capture.saved`/`failed`, `dom.request`) wertet sie in derselben Welt aus. Ein neu geladenes Dokument erhält auf `ready` sofort Belegung, Aufnahmestatus und Kontrollbesitzer.
 
 Was Chromium selbst nicht meldet, liefert der Agent: Titeländerungen eines Tabs und welcher Tab sichtbar ist.
+
+Daneben sammelt die Brücke, was die Seite von sich aus meldet – Konsolenfehler, unbehandelte Ausnahmen und über `Log.enable` fehlgeschlagene Anfragen. `CaptureResult::diagnostics` enthält die letzten 20 Meldungen des aktuellen Dokuments, älteste zuerst, mit dem Alter relativ zur Aufnahme.
 
 ## Prozess und Fenster
 

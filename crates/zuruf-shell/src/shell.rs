@@ -21,6 +21,8 @@ pub struct Palette {
     field: u32,
     text: u32,
     muted: u32,
+    /// Hairlines between the app, the toolbar and the page.
+    line: u32,
     /// The one accent: focus and selection.
     signal: u32,
 }
@@ -30,6 +32,7 @@ const DARK: Palette = Palette {
     field: 0xFF1C_1D20,
     text: 0xFFE8_E7E3,
     muted: 0xFF9B_9C98,
+    line: 0xFF2A_2B2E,
     signal: 0xFFFF_5A36,
 };
 const LIGHT: Palette = Palette {
@@ -38,6 +41,7 @@ const LIGHT: Palette = Palette {
     field: 0xFFF1_F0EC,
     text: 0xFF1A_1A18,
     muted: 0xFF5F_605C,
+    line: 0xFFE2_E1DC,
     signal: 0xFFE8_431F,
 };
 
@@ -46,26 +50,40 @@ pub fn initial_palette(theme: Theme) -> Palette {
     if theme == Theme::Light { LIGHT } else { DARK }
 }
 
-/// View ids of the toolbar buttons. Tab buttons use `TAB_BASE + tab id`.
+/// View ids of the toolbar buttons. A tab's title uses `TAB_BASE + tab id`, its close button
+/// `CLOSE_BASE + tab id`.
 pub const BACK: i32 = 1;
 pub const FORWARD: i32 = 2;
 pub const RELOAD: i32 = 3;
 pub const NEW_TAB: i32 = 4;
-pub const CLOSE_TAB: i32 = 5;
-const TAB_BASE: i32 = 1000;
+pub const WIDTH: i32 = 5;
+const TAB_BASE: i32 = 1_000;
+const CLOSE_BASE: i32 = 1_000_000;
 
-const BAR_HEIGHT: i32 = 34;
-const TAB_WIDTH: i32 = 220;
+/// Heights of a tab and of the round toolbar buttons.
+const TAB_HEIGHT: i32 = 30;
+const TOOL_SIZE: i32 = 30;
+const TAB_TITLE_WIDTH: i32 = 190;
 const BLANK: &str = "about:blank";
+/// Text in the window's own controls, and the larger size for its symbol buttons.
+const FONT: &str = "Inter, Noto Sans, DejaVu Sans, 12px";
+const SYMBOL_FONT: &str = "Inter, Noto Sans, DejaVu Sans, 15px";
+
+/// Page widths to review a layout at; `None` is the full width of the window.
+const WIDTHS: [Option<i32>; 4] = [None, Some(1024), Some(768), Some(390)];
 
 struct Tab {
     id: i32,
     /// Chromium's identifier of the tab's browser, once it is known.
     browser: Option<i32>,
     view: BrowserView,
+    /// Title and close button side by side.
+    holder: Panel,
     button: LabelButton,
+    close: LabelButton,
     title: String,
     url: String,
+    loading: bool,
 }
 
 #[derive(Default)]
@@ -73,10 +91,18 @@ struct Shell {
     options: Options,
     window: Option<Window>,
     panel: Option<BrowserView>,
+    /// One-pixel lines between the app, the toolbar and the page.
+    lines: Vec<Panel>,
     strip: Option<Panel>,
     toolbar: Option<Panel>,
     stack: Option<Panel>,
     address: Option<Textfield>,
+    reload: Option<LabelButton>,
+    width_button: Option<LabelButton>,
+    /// The buttons that sit on the toolbar and share its colour.
+    tools: Vec<LabelButton>,
+    /// The width pages are shown at; `None` uses all the room there is.
+    page_width: Option<i32>,
     tabs: Vec<Tab>,
     active: Option<i32>,
     next_tab: i32,
@@ -164,16 +190,48 @@ pub fn theme(window: &Window) {
     paint();
 }
 
+wrap_task! {
+    struct Repaint {}
+
+    impl Task {
+        fn execute(&self) {
+            paint();
+        }
+    }
+}
+
+/// Chromium resets every view's own colour when the theme changes, and tells us while it is
+/// still doing so. Colour the views again once it has finished.
+pub fn theme_changed() {
+    let mut task = Repaint::new();
+    post_task(ThreadId::UI, Some(&mut task));
+}
+
+/// A one-pixel line; the layout stretches it along its other axis.
+fn line() -> Option<Panel> {
+    let mut delegate = handlers::line();
+    panel_create(Some(&mut delegate))
+}
+
 /// Colour the views that carry a colour of their own.
 fn paint() {
     let palette = palette();
-    let (strip, toolbar, stack, active, tabs) = with(|shell| {
-        let tabs: Vec<(i32, LabelButton)> = shell
+    let (lines, tools, strip, toolbar, stack, active, tabs) = with(|shell| {
+        let tabs: Vec<(i32, Panel, LabelButton, LabelButton)> = shell
             .tabs
             .iter()
-            .map(|tab| (tab.id, tab.button.clone()))
+            .map(|tab| {
+                (
+                    tab.id,
+                    tab.holder.clone(),
+                    tab.button.clone(),
+                    tab.close.clone(),
+                )
+            })
             .collect();
         (
+            shell.lines.clone(),
+            shell.tools.clone(),
             shell.strip.clone(),
             shell.toolbar.clone(),
             shell.stack.clone(),
@@ -181,6 +239,12 @@ fn paint() {
             tabs,
         )
     });
+    for line in lines {
+        line.set_background_color(palette.line);
+    }
+    for tool in tools {
+        tool.set_background_color(palette.surface);
+    }
     if let Some(strip) = strip {
         strip.set_background_color(palette.background);
     }
@@ -190,14 +254,19 @@ fn paint() {
     if let Some(stack) = stack {
         stack.set_background_color(palette.background);
     }
-    for (id, button) in tabs {
+    for (id, holder, button, close) in tabs {
+        // The visible tab shares the toolbar's surface and so reads as part of it.
         let shown = active == Some(id);
-        button.set_enabled_text_colors(if shown { palette.text } else { palette.muted });
-        button.set_background_color(if shown {
+        let surface = if shown {
             palette.surface
         } else {
             palette.background
-        });
+        };
+        holder.set_background_color(surface);
+        button.set_background_color(surface);
+        close.set_background_color(surface);
+        button.set_enabled_text_colors(if shown { palette.text } else { palette.muted });
+        close.set_enabled_text_colors(palette.muted);
     }
 }
 
@@ -236,32 +305,46 @@ pub fn create(options: Options) {
     window_create_top_level(Some(&mut delegate));
 }
 
-fn row(spacing: i32) -> BoxLayoutSettings {
+fn row(spacing: i32, insets: Insets) -> BoxLayoutSettings {
     BoxLayoutSettings {
         horizontal: 1,
+        between_child_spacing: spacing,
+        inside_border_insets: insets,
+        cross_axis_alignment: AxisAlignment::STRETCH,
+        ..Default::default()
+    }
+}
+
+fn column(spacing: i32) -> BoxLayoutSettings {
+    BoxLayoutSettings {
+        horizontal: 0,
         between_child_spacing: spacing,
         cross_axis_alignment: AxisAlignment::STRETCH,
         ..Default::default()
     }
 }
 
-fn column() -> BoxLayoutSettings {
-    BoxLayoutSettings {
-        horizontal: 0,
-        cross_axis_alignment: AxisAlignment::STRETCH,
-        ..Default::default()
+fn no_insets() -> Insets {
+    Insets {
+        top: 0,
+        left: 0,
+        bottom: 0,
+        right: 0,
     }
 }
 
+/// A button showing a single symbol.
 fn tool_button(id: i32, glyph: &str, tooltip: &str) -> Option<LabelButton> {
     let mut delegate = handlers::button();
     let button = label_button_create(Some(&mut delegate), Some(&text(glyph)))?;
     button.set_id(id);
+    button.set_font_list(Some(&text(SYMBOL_FONT)));
+    button.set_horizontal_alignment(HorizontalAlignment::CENTER);
     button.set_tooltip_text(Some(&text(tooltip)));
     button.set_accessible_name(Some(&text(tooltip)));
     button.set_minimum_size(Some(&Size {
-        width: BAR_HEIGHT,
-        height: BAR_HEIGHT,
+        width: TOOL_SIZE,
+        height: TOOL_SIZE,
     }));
     Some(button)
 }
@@ -271,7 +354,7 @@ pub fn build(window: &Window) {
     window.set_title(Some(&text("Zuruf")));
     theme(window);
     window.theme_changed();
-    let layout = window.set_to_box_layout(Some(&row(0)));
+    let layout = window.set_to_box_layout(Some(&row(0, no_insets())));
     let (panel, urls, app_only) = with(|shell| {
         (
             shell.panel.clone(),
@@ -295,22 +378,52 @@ pub fn build(window: &Window) {
         }
     }
 
-    let (Some(right), Some(strip), Some(toolbar), Some(stack)) = (
+    let mut stack_delegate = handlers::page_area();
+    let (Some(right), Some(chrome), Some(strip), Some(toolbar), Some(stack)) = (
         panel_create(None),
         panel_create(None),
         panel_create(None),
         panel_create(None),
+        panel_create(Some(&mut stack_delegate)),
     ) else {
         return;
     };
-    let right_layout = right.set_to_box_layout(Some(&column()));
+    // Hairlines: one between the app and the browser, one between toolbar and page.
+    let mut lines = Vec::new();
+    if panel.is_some()
+        && let Some(divider) = line()
+    {
+        window.add_child_view(Some(&mut View::from(&divider)));
+        lines.push(divider);
+    }
+    let right_layout = right.set_to_box_layout(Some(&column(0)));
+    chrome.set_to_box_layout(Some(&column(0)));
 
-    strip.set_to_box_layout(Some(&row(1)));
+    // Tabs stand on the toolbar: room above and beside them, none below.
+    strip.set_to_box_layout(Some(&row(
+        2,
+        Insets {
+            top: 6,
+            left: 8,
+            bottom: 0,
+            right: 8,
+        },
+    )));
     if let Some(add) = tool_button(NEW_TAB, "+", "Neuer Tab (Strg+T)") {
         strip.add_child_view(Some(&mut View::from(&add)));
     }
 
-    let toolbar_layout = toolbar.set_to_box_layout(Some(&row(0)));
+    let toolbar_layout = toolbar.set_to_box_layout(Some(&row(
+        4,
+        Insets {
+            top: 5,
+            left: 8,
+            bottom: 5,
+            right: 8,
+        },
+    )));
+    let mut reload = None;
+    let mut tools = Vec::new();
     for (id, glyph, tooltip) in [
         (BACK, "←", "Zurück (Alt+←)"),
         (FORWARD, "→", "Vorwärts (Alt+→)"),
@@ -318,6 +431,10 @@ pub fn build(window: &Window) {
     ] {
         if let Some(button) = tool_button(id, glyph, tooltip) {
             toolbar.add_child_view(Some(&mut View::from(&button)));
+            tools.push(button.clone());
+            if id == RELOAD {
+                reload = Some(button);
+            }
         }
     }
     let mut address_delegate = handlers::address();
@@ -325,20 +442,41 @@ pub fn build(window: &Window) {
     if let Some(address) = &address {
         address.set_placeholder_text(Some(&text("Adresse eingeben")));
         address.set_accessible_name(Some(&text("Adresse")));
+        address.set_font_list(Some(&text(FONT)));
         let mut view = View::from(address);
         toolbar.add_child_view(Some(&mut view));
         if let Some(layout) = &toolbar_layout {
             layout.set_flex_for_view(Some(&mut view), 1);
         }
     }
-    if let Some(close) = tool_button(CLOSE_TAB, "×", "Tab schließen (Strg+W)") {
-        toolbar.add_child_view(Some(&mut View::from(&close)));
+    let width_button = {
+        let mut delegate = handlers::button();
+        let chosen = with(|shell| shell.options.page_width);
+        label_button_create(Some(&mut delegate), Some(&text(&width_label(chosen))))
+    };
+    if let Some(button) = &width_button {
+        button.set_id(WIDTH);
+        button.set_font_list(Some(&text(FONT)));
+        let tooltip = "Seitenbreite wechseln: voll, 1024, 768, 390";
+        button.set_tooltip_text(Some(&text(tooltip)));
+        button.set_accessible_name(Some(&text(tooltip)));
+        button.set_minimum_size(Some(&Size {
+            width: 96,
+            height: TOOL_SIZE,
+        }));
+        toolbar.add_child_view(Some(&mut View::from(button)));
+        tools.push(button.clone());
     }
 
     stack.set_to_fill_layout();
 
-    right.add_child_view(Some(&mut View::from(&strip)));
-    right.add_child_view(Some(&mut View::from(&toolbar)));
+    chrome.add_child_view(Some(&mut View::from(&strip)));
+    chrome.add_child_view(Some(&mut View::from(&toolbar)));
+    right.add_child_view(Some(&mut View::from(&chrome)));
+    if let Some(divider) = line() {
+        right.add_child_view(Some(&mut View::from(&divider)));
+        lines.push(divider);
+    }
     let mut stack_view = View::from(&stack);
     right.add_child_view(Some(&mut stack_view));
     if let Some(layout) = &right_layout {
@@ -352,10 +490,15 @@ pub fn build(window: &Window) {
 
     with(|shell| {
         shell.window = Some(window.clone());
+        shell.lines = lines;
         shell.strip = Some(strip);
         shell.toolbar = Some(toolbar);
         shell.stack = Some(stack);
         shell.address = address;
+        shell.reload = reload;
+        shell.width_button = width_button;
+        shell.tools = tools;
+        shell.page_width = shell.options.page_width;
     });
     paint();
     for url in &urls {
@@ -365,7 +508,57 @@ pub fn build(window: &Window) {
         activate(first);
     }
     window.show();
+    fit_page();
     commands::emit("ready");
+}
+
+fn width_label(width: Option<i32>) -> String {
+    match width {
+        Some(width) => format!("{width} px"),
+        None => "Volle Breite".into(),
+    }
+}
+
+/// Show pages at a fixed width, centred, or at the full width with `None`. This narrows the
+/// page's real viewport, so the page lays itself out exactly as on a screen of that width.
+pub fn set_page_width(width: Option<i32>) {
+    let width = width.filter(|width| *width >= 240);
+    let button = with(|shell| {
+        shell.page_width = width;
+        shell.width_button.clone()
+    });
+    if let Some(button) = button {
+        button.set_text(Some(&text(&width_label(width))));
+    }
+    fit_page();
+}
+
+fn next_page_width() {
+    let current = with(|shell| shell.page_width);
+    let index = WIDTHS.iter().position(|width| *width == current);
+    set_page_width(WIDTHS[index.map_or(0, |index| (index + 1) % WIDTHS.len())]);
+}
+
+/// Give the page area the margins that leave the chosen width in the middle. Called whenever
+/// the room changes: the window was resized, the app panel shown or hidden.
+pub fn fit_page() {
+    let (Some(stack), width) = with(|shell| (shell.stack.clone(), shell.page_width)) else {
+        return;
+    };
+    let view = View::from(&stack);
+    let room = view.bounds().width;
+    let spare = width.map_or(0, |width| (room - width).max(0));
+    let wanted = Insets {
+        top: 0,
+        left: spare / 2,
+        bottom: 0,
+        right: spare - spare / 2,
+    };
+    let current = view.insets();
+    if current.left != wanted.left || current.right != wanted.right {
+        view.set_insets(Some(&wanted));
+        stack.layout();
+    }
 }
 
 /// Forget every view once the window is gone.
@@ -392,19 +585,45 @@ pub fn open_tab(url: &str) {
 
 /// Give a page view (ours, or one a page opened itself) a tab and show it.
 pub fn adopt_tab(view: BrowserView, url: &str) {
-    let mut delegate = handlers::button();
-    let Some(button) = label_button_create(Some(&mut delegate), Some(&text(&tab_label("", url))))
-    else {
+    let mut title_delegate = handlers::button();
+    let mut close_delegate = handlers::button();
+    let (Some(holder), Some(button), Some(close)) = (
+        panel_create(None),
+        label_button_create(Some(&mut title_delegate), Some(&text(&tab_label("", url)))),
+        label_button_create(Some(&mut close_delegate), Some(&text("×"))),
+    ) else {
         return;
     };
-    button.set_maximum_size(Some(&Size {
-        width: TAB_WIDTH,
-        height: BAR_HEIGHT,
-    }));
+    holder.set_to_box_layout(Some(&row(
+        0,
+        Insets {
+            top: 0,
+            left: 4,
+            bottom: 0,
+            right: 2,
+        },
+    )));
+    button.set_font_list(Some(&text(FONT)));
+    button.set_horizontal_alignment(HorizontalAlignment::LEFT);
     button.set_minimum_size(Some(&Size {
-        width: 80,
-        height: BAR_HEIGHT,
+        width: 72,
+        height: TAB_HEIGHT,
     }));
+    button.set_maximum_size(Some(&Size {
+        width: TAB_TITLE_WIDTH,
+        height: TAB_HEIGHT,
+    }));
+    close.set_font_list(Some(&text(SYMBOL_FONT)));
+    close.set_horizontal_alignment(HorizontalAlignment::CENTER);
+    close.set_tooltip_text(Some(&text("Tab schließen (Strg+W)")));
+    close.set_accessible_name(Some(&text("Tab schließen")));
+    close.set_minimum_size(Some(&Size {
+        width: 24,
+        height: TAB_HEIGHT,
+    }));
+    holder.add_child_view(Some(&mut View::from(&button)));
+    holder.add_child_view(Some(&mut View::from(&close)));
+
     let placed = with(|shell| {
         let (strip, stack) = (shell.strip.clone()?, shell.stack.clone()?);
         shell.next_tab += 1;
@@ -414,9 +633,12 @@ pub fn adopt_tab(view: BrowserView, url: &str) {
             id,
             browser: None,
             view: view.clone(),
+            holder: holder.clone(),
             button: button.clone(),
+            close: close.clone(),
             title: String::new(),
             url: url.into(),
+            loading: false,
         });
         Some((id, position, strip, stack))
     });
@@ -424,8 +646,9 @@ pub fn adopt_tab(view: BrowserView, url: &str) {
         return;
     };
     button.set_id(TAB_BASE + id);
+    close.set_id(CLOSE_BASE + id);
     // Tabs sit in front of the "new tab" button.
-    strip.add_child_view_at(Some(&mut View::from(&button)), position);
+    strip.add_child_view_at(Some(&mut View::from(&holder)), position);
     stack.add_child_view(Some(&mut View::from(&view)));
     activate(id);
 }
@@ -450,6 +673,8 @@ pub fn activate(id: i32) {
     let found = with(|shell| {
         let tab = shell.tabs.iter().find(|tab| tab.id == id)?;
         let current = (tab.url.clone(), tab.title.clone(), tab.view.clone());
+        let loading = tab.loading;
+        let reload = shell.reload.clone();
         shell.active = Some(id);
         let all: Vec<(i32, BrowserView)> = shell
             .tabs
@@ -462,11 +687,14 @@ pub fn activate(id: i32) {
             shell.address.clone(),
             shell.stack.clone(),
             shell.window.clone(),
+            reload,
+            loading,
         ))
     });
-    let Some(((url, title, view), all, address, stack, window)) = found else {
+    let Some(((url, title, view), all, address, stack, window, reload, loading)) = found else {
         return;
     };
+    show_loading(reload, loading);
     for (tab, view) in all {
         View::from(&view).set_visible(i32::from(tab == id));
     }
@@ -518,7 +746,7 @@ pub fn close_tab(id: i32) {
         return;
     };
     if let Some(strip) = strip {
-        strip.remove_child_view(Some(&mut View::from(&tab.button)));
+        strip.remove_child_view(Some(&mut View::from(&tab.holder)));
         strip.layout();
     }
     // Taking the view out of the window and letting go of it destroys its browser.
@@ -613,6 +841,33 @@ pub fn window_closing() {
     }
 }
 
+/// The reload button stops a page that is still loading.
+fn show_loading(reload: Option<LabelButton>, loading: bool) {
+    if let Some(reload) = reload {
+        let (glyph, tooltip) = if loading {
+            ("×", "Laden abbrechen")
+        } else {
+            ("↻", "Neu laden (Strg+R)")
+        };
+        reload.set_text(Some(&text(glyph)));
+        reload.set_tooltip_text(Some(&text(tooltip)));
+    }
+}
+
+pub fn loading_changed(browser: &mut Browser, loading: bool) {
+    let Some(id) = tab_of(browser) else {
+        return;
+    };
+    let reload = with(|shell| {
+        let active = shell.active == Some(id);
+        let reload = shell.reload.clone();
+        let tab = shell.tabs.iter_mut().find(|tab| tab.id == id)?;
+        tab.loading = loading;
+        active.then_some(reload).flatten()
+    });
+    show_loading(reload, loading);
+}
+
 pub fn title_changed(browser: &mut Browser, title: &str) {
     let Some(id) = tab_of(browser) else {
         return;
@@ -690,15 +945,16 @@ pub fn pressed(id: i32) {
         }
         RELOAD => {
             if let Some(browser) = active_browser() {
-                browser.reload();
+                if browser.is_loading() != 0 {
+                    browser.stop_load();
+                } else {
+                    browser.reload();
+                }
             }
         }
         NEW_TAB => new_tab(),
-        CLOSE_TAB => {
-            if let Some((id, _)) = active_tab() {
-                close_tab(id);
-            }
-        }
+        WIDTH => next_page_width(),
+        tab if tab > CLOSE_BASE => close_tab(tab - CLOSE_BASE),
         tab if tab > TAB_BASE => activate(tab - TAB_BASE),
         _ => {}
     }
@@ -813,6 +1069,7 @@ pub fn show_panel(visible: Option<bool>) {
     let show = visible.unwrap_or(view.is_visible() == 0);
     view.set_visible(i32::from(show));
     window.layout();
+    fit_page();
 }
 
 /// Close the window; the process ends once it is gone.

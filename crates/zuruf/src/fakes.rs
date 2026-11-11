@@ -436,6 +436,7 @@ impl BrowserController for FakeBrowser {
                 } else {
                     None
                 },
+                diagnostics: vec![],
             })
         })
     }

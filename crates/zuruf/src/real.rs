@@ -1048,6 +1048,7 @@ impl BrowserController for BrowserAdapter {
                 cursor: Some(convert(result.cursor)?),
                 rect: result.rect.map(convert).transpose()?,
                 dom: result.dom.map(convert).transpose()?,
+                diagnostics: convert(result.diagnostics)?,
             })
         })
     }
@@ -1326,6 +1327,41 @@ pub async fn agent_access(
         zuruf_browser::proxy::AgentAccess::new(agent.into(), token.clone()),
     );
     Ok(axum::Json(json!({"token":token})).into_response())
+}
+/// `POST /api/v1/sessions/<id>/page-width {"width": 390 | null}`: the width pages are shown at
+/// in that session's window.
+pub async fn page_width(
+    State(app): State<Daemon>,
+    Path(session): Path<String>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<Value>,
+) -> Result<Response> {
+    if !origin_ok(&headers)
+        || headers.get("authorization").and_then(|h| h.to_str().ok())
+            != Some(&format!("Bearer {}", app.0.token))
+    {
+        return Err(Error::Api(
+            StatusCode::UNAUTHORIZED,
+            "daemon bearer required".into(),
+        ));
+    }
+    let width = match &body["width"] {
+        Value::Null => None,
+        value => Some(
+            value
+                .as_u64()
+                .filter(|width| (240..=7680).contains(width))
+                .ok_or_else(|| invalid("width: 240 to 7680, or null for the full width"))?
+                as u32,
+        ),
+    };
+    let runtime = app.0.real.get().ok_or_else(missing)?;
+    let browser = runtime.browsers.get(&session).await?;
+    browser
+        .set_page_width(width)
+        .await
+        .map_err(|error| Error::Join(error.to_string()))?;
+    Ok(axum::Json(json!({"ok": true, "width": width})).into_response())
 }
 pub async fn cdp_ws(
     State(app): State<Daemon>,

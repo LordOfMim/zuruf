@@ -129,6 +129,8 @@ pub struct CaptureResult {
     pub cursor: Option<AnnotationCursor>,
     pub rect: Option<Rect>,
     pub dom: Option<DomCapture>,
+    /// What the page reported before the capture, oldest first.
+    pub diagnostics: Vec<Diagnostic>,
 }
 pub trait BrowserController: Send + Sync {
     fn start_session(&self, session: BrowserSession) -> AdapterFuture<'_, BrowserSession>;

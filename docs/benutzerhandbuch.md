@@ -39,6 +39,12 @@ Nach dauerhafter Rohbildpersistenz bestätigt die Seite „Gespeichert“. Die m
 
 Continuous-Aufnahme setzt PCM-Grenzen an Capture und `Shift+N`; Finalisierung läuft im Hintergrund. Der Daemon-Fallback hat eine Stop-/Start-Lücke. `Shift+N` versiegelt den alten Batch und öffnet sofort den neuen Draft. Späte Transkripte bleiben am alten Batch. Vor Versand Transkripte und Bilder prüfen. Ohne Modell in den Einstellungen gilt die eigene Voxtype-Konfiguration, auch ein Remote-Endpunkt mit API-Schlüssel aus den Environment-Dateien von `voxtype.service`; dann verlässt die Tonaufnahme den Rechner wie bei Voxtype selbst. Ein in Zuruf eingetragenes Modell erzwingt lokale Erkennung und muss vorhanden sein. Deutsche Sprachqualität bleibt manuell offen. Zuruf lädt keine Modelle und verändert oder startet den vorhandenen Voxtype-Daemon nicht neu.
 
+## Was die Seite selbst meldet
+
+Zu jeder Aufnahme merkt sich Zuruf, was die Seite bis dahin von sich aus gemeldet hat: Konsolenfehler und -warnungen, unbehandelte Ausnahmen und fehlgeschlagene Anfragen (etwa ein 404 oder 500), jeweils mit Quelle und Zeile. Am Eintrag steht dann zum Beispiel „2 Fehler“; ein Klick klappt die Liste auf. Die Meldungen gehen im Manifest (`diagnostics` je Annotation) mit an den Agenten, der damit oft schon die Ursache in der Hand hat.
+
+Gesammelt wird je Tab seit dem Laden des aktuellen Dokuments, höchstens die letzten 20 Meldungen; gleiche Meldungen hintereinander werden gezählt statt wiederholt. Adressen durchlaufen dieselbe Schwärzung wie alle anderen. Meldungstexte werden nicht inhaltlich geprüft – wer Geheimnisse in die Konsole schreibt, sollte die Liste vor dem Senden ansehen.
+
 ## Aufgaben und Agentenzugriff
 
 Das Board zeigt parallele Tasks, Status, Antworten und Freigabeanforderungen. Follow-ups können nach Ende eines Runs an denselben Thread gesendet werden. **T3-Freigaben erteilt ausschließlich der Nutzer in T3.** Zuruf gibt sie nicht stellvertretend frei.
@@ -78,6 +84,10 @@ Zuruf hat einen eigenen Browser: Chromium ist eingebaut, es gibt keine Extension
 | Alt+←, Alt+→ | zurück, vorwärts |
 | Strg+Plus, Strg+Minus, Strg+0 | Zoom |
 | F12 | Entwicklerwerkzeuge in eigenem Fenster |
+
+Jeder Tab hat sein eigenes Schließen-Kreuz; während eine Seite lädt, bricht der Neu-laden-Knopf das Laden ab.
+
+**Seitenbreite.** Der Knopf rechts neben der Adressleiste schaltet die Breite um, in der die Seite gezeigt wird: volle Breite, 1024, 768 und 390 Pixel. Die Seite sitzt dann mittig im Fenster und hat wirklich diese Breite – Media Queries greifen wie auf einem so breiten Bildschirm, und jede Aufnahme hält die Breite fest. Von außen: `POST /api/v1/sessions/<id>/page-width` mit `{"width": 390}` oder `{"width": null}`.
 
 In die Adressleiste getippte Adressen ohne Schema werden für `localhost` und IP-Adressen mit `http://`, sonst mit `https://` geladen. Links, die ein neues Fenster öffnen wollen, bekommen einen Tab. `panel.toggle` (Standard Alt+P) blendet Zuruf aus und ein; die Seite bekommt dann die volle Breite. Fensterfarben folgen dem Thema aus den Einstellungen.
 

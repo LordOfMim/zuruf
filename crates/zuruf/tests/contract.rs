@@ -145,6 +145,13 @@ fn contract_domcapture() {
     );
 }
 #[test]
+fn contract_diagnostic() {
+    check::<Diagnostic>(
+        "Diagnostic",
+        r##"{"kind": "network", "level": "error", "text": "example", "url": "example", "line": 1, "count": 1, "ageMs": 1}"##,
+    );
+}
+#[test]
 fn contract_annotation() {
     check::<Annotation>(
         "Annotation",
