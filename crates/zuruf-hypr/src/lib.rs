@@ -4,12 +4,12 @@ use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
 };
+#[cfg(unix)]
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::UnixStream,
-    process::Command,
-    sync::watch,
 };
+use tokio::{process::Command, sync::watch};
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("IO: {0}")]
@@ -305,7 +305,9 @@ pub struct Hyprland {
 }
 impl Hyprland {
     pub async fn detect(binary: PathBuf) -> Result<Self> {
-        let parser = if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+        let parser = if !cfg!(target_os = "linux")
+            || std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none()
+        {
             Parser::Unavailable
         } else if run(&["eval".into(), "assert(type(hl.bind)==\"function\")".into()])
             .await
@@ -408,40 +410,49 @@ impl Hyprland {
         Ok(())
     }
     /// Handles reload events and reconnects after compositor socket replacement.
-    pub async fn serve(&mut self, mut stop: watch::Receiver<bool>) -> Result<()> {
-        if !self.available() {
-            return Ok(());
+    pub async fn serve(&mut self, stop: watch::Receiver<bool>) -> Result<()> {
+        #[cfg(not(unix))]
+        {
+            let _ = stop;
+            Ok(())
         }
-        loop {
-            if *stop.borrow() {
-                return self.shutdown().await;
+        #[cfg(unix)]
+        {
+            let mut stop = stop;
+            if !self.available() {
+                return Ok(());
             }
-            let socket = match event_socket() {
-                Ok(socket) => socket,
-                Err(error) => {
-                    tracing::warn!(error=%error, "Hyprland event socket unavailable");
-                    tokio::select! { _=stop.changed()=>return self.shutdown().await, _=tokio::time::sleep(std::time::Duration::from_secs(1))=>() }
-                    continue;
+            loop {
+                if *stop.borrow() {
+                    return self.shutdown().await;
                 }
-            };
-            let stream = UnixStream::connect(socket).await;
-            match stream {
-                Ok(stream) => {
-                    let issues = self.apply(self.wanted.clone()).await?;
-                    if !issues.is_empty() {
-                        tracing::warn!(
-                            count = issues.len(),
-                            "Shortcuts conflict after socket reconnect"
-                        );
+                let socket = match event_socket() {
+                    Ok(socket) => socket,
+                    Err(error) => {
+                        tracing::warn!(error=%error, "Hyprland event socket unavailable");
+                        tokio::select! { _=stop.changed()=>return self.shutdown().await, _=tokio::time::sleep(std::time::Duration::from_secs(1))=>() }
+                        continue;
                     }
-                    let mut lines = BufReader::new(stream).lines();
-                    loop {
-                        tokio::select! {_=stop.changed()=>return self.shutdown().await,line=lines.next_line()=>{match line?{Some(line) if line.starts_with("configreloaded>>")=>{let issues=self.apply(self.wanted.clone()).await?;if !issues.is_empty(){tracing::warn!(count=issues.len(),"Shortcuts conflict after reload");}},Some(_)=>(),None=>break}}}
+                };
+                let stream = UnixStream::connect(socket).await;
+                match stream {
+                    Ok(stream) => {
+                        let issues = self.apply(self.wanted.clone()).await?;
+                        if !issues.is_empty() {
+                            tracing::warn!(
+                                count = issues.len(),
+                                "Shortcuts conflict after socket reconnect"
+                            );
+                        }
+                        let mut lines = BufReader::new(stream).lines();
+                        loop {
+                            tokio::select! {_=stop.changed()=>return self.shutdown().await,line=lines.next_line()=>{match line?{Some(line) if line.starts_with("configreloaded>>")=>{let issues=self.apply(self.wanted.clone()).await?;if !issues.is_empty(){tracing::warn!(count=issues.len(),"Shortcuts conflict after reload");}},Some(_)=>(),None=>break}}}
+                        }
                     }
+                    Err(e) => tracing::warn!(error=%e,"Hyprland event connection unavailable"),
                 }
-                Err(e) => tracing::warn!(error=%e,"Hyprland event connection unavailable"),
+                tokio::select! {_=stop.changed()=>return self.shutdown().await,_=tokio::time::sleep(std::time::Duration::from_secs(1))=>()}
             }
-            tokio::select! {_=stop.changed()=>return self.shutdown().await,_=tokio::time::sleep(std::time::Duration::from_secs(1))=>()}
         }
     }
     pub async fn find_window(&self, pid: u32) -> Result<Option<String>> {
@@ -569,23 +580,24 @@ mod tests {
         assert!(key_name("F25").is_err());
         assert!(key_name("Unknown").is_err());
     }
+    #[cfg(unix)]
     #[test]
     fn command_injection() {
         assert_eq!(
             action_command(Path::new("/tmp/a'$(id)"), "app.open").unwrap(),
             "'/tmp/a'\\''$(id)' action 'app.open'"
         );
-        assert!(action_command(Path::new("/bin/zuruf"), "app.open;id").is_err());
+        assert!(action_command(&std::env::current_exe().unwrap(), "app.open;id").is_err());
         assert!(action_command(Path::new("relative"), "app.open").is_err());
     }
     #[test]
     fn conflicts_and_diff() {
         let existing: Vec<ExistingBind> =
             serde_json::from_str(include_str!("../tests/binds.json")).unwrap();
-        let (w, i) = prepare(Path::new("/bin/zuruf"), &[binding()], &existing);
+        let (w, i) = prepare(&std::env::current_exe().unwrap(), &[binding()], &existing);
         assert_eq!(i[0].kind, "taken_by_system");
         assert!(w.is_empty());
-        let (w, i) = prepare(Path::new("/bin/zuruf"), &[binding()], &[]);
+        let (w, i) = prepare(&std::env::current_exe().unwrap(), &[binding()], &[]);
         assert!(i.is_empty());
         let (r, a) = diff(&existing, &w);
         assert!(r.is_empty());

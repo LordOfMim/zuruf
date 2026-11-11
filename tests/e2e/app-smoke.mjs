@@ -9,6 +9,7 @@ const root = resolve(import.meta.dirname, '../..');
 const home = process.env.HOME;
 const env = {
   ...process.env,
+  ZURUF_INSTALL_TEST: '1',
   ZURUF_PORT: '47638',
   ZURUF_DATA_DIR: process.env.ZURUF_SMOKE_DATA || `${home}/.local/share/zuruf/e2e-app`,
   ZURUF_STATE_DIR: process.env.ZURUF_SMOKE_STATE || `${home}/.local/state/zuruf/e2e-app`,
@@ -21,6 +22,7 @@ const windows = async () => {
   const { stdout } = await exec('hyprctl', ['clients', '-j']);
   return JSON.parse(stdout).filter((client) => client.class === 'zuruf');
 };
+let failed = false;
 try {
   const before = new Set((await windows()).map((client) => client.address));
   await cli('open', '--view', 'sessions');
@@ -39,6 +41,9 @@ try {
   const after = (await windows()).filter((client) => !before.has(client.address));
   assert.equal(after.length, 1, 'the second open must not create another window');
   console.log('Real app window and daemon autostart: passed; app id zuruf, pid ' + own[0].pid);
+} catch (error) {
+  failed = true;
+  throw error;
 } finally {
-  await cli('stop');
+  await cli('stop').catch((error) => { if (!failed) throw error; });
 }

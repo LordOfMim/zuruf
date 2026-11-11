@@ -59,6 +59,8 @@ Die Antwort gibt man wie gewohnt: aufnehmen, dazu sprechen oder tippen und als N
 
 Das Board zeigt parallele Tasks, Status, Antworten und Freigabeanforderungen. Follow-ups können nach Ende eines Runs an denselben Thread gesendet werden. **T3-Freigaben erteilt ausschließlich der Nutzer in T3.** Zuruf gibt sie nicht stellvertretend frei.
 
+Mit **Abschließen** lässt sich eine Aufgabe auch nach einem Abbruch, Fehler, einer Rückfrage oder bei unklarem Zustand abhaken. Sie wandert nach „Abgeschlossen“ und zählt nicht mehr zu „Braucht dich“; der ursprüngliche Ausführungsstatus und die Fehlermeldung bleiben erhalten. **Wieder öffnen** nimmt die Markierung zurück. Ein erneuter Versand, eine Zuordnung oder ein Nachtrag öffnet die Aufgabe automatisch wieder. Diese Markierung organisiert Zurufs Aufgabenliste und wird lokal gespeichert.
+
 Für Captures einer einzelnen Session erhält jeder Task einen eigenen MCP-Zugang. Die externe T3-Launchschnittstelle hat keinen privaten MCP-/Environment-Parameter. Deshalb nennt der Prompt nur den Pfad einer privaten Datei unter `state/agents/<task>/credential.json` (0600). Der Agent liest die Datei lokal, ohne ihren Inhalt auszugeben, und verwendet URL, Origin und Bearer für MCP-JSON-RPC. Das ist eine Dateisystemübergabe, keine automatisch registrierte MCP-Verbindung im Provider. Prozesse desselben Unix-Nutzers können diese Datei lesen; eine OS-Sandbox wird nicht behauptet. Gemischte Mehrsessionbatches werden abgewiesen.
 
 MCP bietet Manifest, Annotationen, Bilder und Fortschrittsmeldungen. CDP verlangt zusätzlich eine aktive Kontrolllease; Erneuerung ist atomar und kann weder Ablauf noch menschliches Takeover überholen. Leaseablauf aktualisiert die Anzeige selbstständig. Abschluss, Abbruch und Interrupt widerrufen den Taskzugang; Shutdown entfernt die Dateien, Neustart verwirft alte Credentials. Laufende Tasks werden anhand ihrer gespeicherten Receipts weiterverfolgt. Nach Neustart muss ein Agentenzugang neu bereitgestellt werden; automatische Wiederanmeldung eines bereits laufenden Agenten bleibt offen.
@@ -103,7 +105,9 @@ In die Adressleiste getippte Adressen ohne Schema werden für `localhost` und IP
 
 Das Fenster ist ein Review-Browser, kein Alltagsbrowser: Downloads, Berechtigungsabfragen (Kamera, Mikrofon, Standort) und eine Passwortverwaltung gibt es nicht. Anmeldungen bleiben im Profil der Sitzung erhalten.
 
-Wer das Sitzungsfenster schließt, beendet die Sitzung; sie lässt sich unter „Sitzungen“ oder mit `zuruf open` jederzeit wieder starten. Stürzt der Browser ab, zeigt Zuruf die Sitzung als abgestürzt an – ein erneuter Start genügt.
+Wird das Sitzungsfenster geschlossen, stürzt der Browser ab oder reagiert er nicht mehr, öffnet Zuruf ihn automatisch erneut. Die zuletzt gespeicherten Tab-Adressen, das Sitzungsprofil und die über die App eingestellte Seitenbreite bleiben erhalten. Falls ein Start fehlschlägt, versucht Zuruf es mit wachsendem Abstand erneut. Unter „Sitzungen“ beendet **Stoppen** die Sitzung einschließlich aller ausstehenden Startversuche dauerhaft. Auch nach einem Dienstneustart werden aktive Sitzungen wiederhergestellt; gestoppte bleiben beendet. Nicht gespeicherte Formulareingaben sind kein Bestandteil dieser Wiederherstellung.
+
+**Stoppen** lässt Zuruf geöffnet: Ohne weitere laufende Sitzung erscheint das eigenständige App-Fenster mit der Sitzungsübersicht. Läuft noch eine andere Sitzung, bleibt die App dort sichtbar. `zuruf stop` beendet dagegen den Dienst und alle Zuruf-Fenster.
 
 ## Ein Fenster oder zwei
 

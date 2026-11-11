@@ -9,6 +9,9 @@ use std::io::{BufRead, Write};
 pub enum Command {
     /// Open a page in a new tab and show it.
     Open { url: String },
+    /// Exercise the native close button in headed development tests.
+    #[cfg(debug_assertions)]
+    TestCloseTab,
     /// Bring the window to the front.
     Focus,
     /// Show or hide the app panel; toggles when `visible` is absent.
@@ -30,6 +33,8 @@ wrap_task! {
         fn execute(&self) {
             match self.command.clone() {
                 Command::Open { url } => shell::open_tab(&url),
+                #[cfg(debug_assertions)]
+                Command::TestCloseTab => shell::test_close_tab(),
                 Command::Focus => shell::focus_window(),
                 Command::Panel { visible } => shell::show_panel(visible),
                 Command::Theme { mode } => shell::set_theme(mode),

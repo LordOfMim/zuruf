@@ -111,13 +111,7 @@ impl Daemon {
             let token = if token_path.exists() {
                 std::fs::read_to_string(&token_path).map_err(StoreError::from)?
             } else {
-                use std::io::Read;
-                let mut bytes = [0u8; 32];
-                std::fs::File::open("/dev/urandom")
-                    .map_err(StoreError::from)?
-                    .read_exact(&mut bytes)
-                    .map_err(StoreError::from)?;
-                let token = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+                let token = zuruf_platform::random_token().map_err(StoreError::from)?;
                 zuruf_store::atomic_write(&token_path, token.as_bytes())?;
                 token
             };
@@ -189,6 +183,9 @@ impl Daemon {
     }
     pub async fn close(&self) -> Result<()> {
         self.shutdown();
+        if let Some(runtime) = self.0.real.get() {
+            runtime.browsers.cancel_recovery();
+        }
         for task in self.snapshot().await?.tasks {
             self.revoke_mcp_task(&task.id);
         }
@@ -197,11 +194,12 @@ impl Daemon {
             failure.get_or_insert(e.into());
         }
         if let Some(runtime) = self.0.real.get() {
-            runtime.browsers.close_app().await;
-        }
-        for session in self.snapshot().await?.sessions {
-            if let Err(e) = self.0.browser.stop_session(session.id).await {
-                failure.get_or_insert(e.into());
+            runtime.browsers.shutdown().await;
+        } else {
+            for session in self.snapshot().await?.sessions {
+                if let Err(e) = self.0.browser.stop_session(session.id).await {
+                    failure.get_or_insert(e.into());
+                }
             }
         }
         match failure {
@@ -316,6 +314,7 @@ impl Daemon {
         .await
     }
     pub async fn recover(&self) -> Result<()> {
+        let speech_unavailable = cfg!(target_os = "windows") && self.0.real.get().is_some();
         // The page side starts switched off; bring it in line with what the app shows.
         let review = self.snapshot().await?.status.review_mode;
         self.0.browser.set_review_mode(review).await?;
@@ -327,7 +326,7 @@ impl Daemon {
             Ok(())
         })
         .await?;
-        self.mutate(|s, _| {
+        self.mutate(move |s, _| {
             // Free dictation used to be collected invisibly on the batch; show it as an entry.
             let notes: Vec<(Id, String)> = s
                 .batches
@@ -341,7 +340,13 @@ impl Daemon {
             }
             // No recording survives a restart; a stale "on" would make the next toggle a no-op.
             s.settings.speech.enabled = false;
-            s.status.speech.state = SpeechStateState::Idle;
+            s.status.speech.state = if speech_unavailable {
+                s.status.speech.error =
+                    Some("Diktat ist derzeit unter Linux mit Voxtype verfügbar.".into());
+                SpeechStateState::Unavailable
+            } else {
+                SpeechStateState::Idle
+            };
             for segment in &mut s.segments {
                 if matches!(
                     segment.state,
@@ -389,10 +394,18 @@ impl Daemon {
         })
         .await?;
         for s in self.snapshot().await?.sessions {
-            if s.state == BrowserSessionState::Running {
+            if matches!(
+                s.state,
+                BrowserSessionState::Running
+                    | BrowserSessionState::Starting
+                    | BrowserSessionState::Crashed
+            ) {
                 let id = s.id.clone();
                 match self.0.browser.start_session(s).await {
                     Ok(updated) => {
+                        if self.0.real.get().is_some() {
+                            continue;
+                        }
                         self.mutate(move |s, _| {
                             if let Some(session) =
                                 s.sessions.iter_mut().find(|s| s.id == updated.id)
@@ -405,6 +418,9 @@ impl Daemon {
                     }
                     Err(error) => {
                         tracing::warn!(error=%error, "session restart failed");
+                        if self.0.real.get().is_some() {
+                            continue;
+                        }
                         self.mutate(move |s, _| {
                             if let Some(session) = s.sessions.iter_mut().find(|s| s.id == id) {
                                 session.state = BrowserSessionState::Crashed;
@@ -440,7 +456,10 @@ impl Daemon {
             let p = Project {
                 id: id(),
                 name: "Zuruf Demo".into(),
-                repository_path: "/tmp/zuruf-demo".into(),
+                repository_path: std::env::temp_dir()
+                    .join("zuruf-demo")
+                    .to_string_lossy()
+                    .into(),
                 base_url: "http://localhost:3000".into(),
                 t3_project_id: Some("fake-project".into()),
                 default_profile_id: None,
@@ -1817,6 +1836,7 @@ async fn api(
                     }
                     store.clear_receipt(&t.id)?;
                     t.status = TaskStatus::Queued;
+                    t.marked_done = false;
                     t.error = None;
                     // A retry follows a correction: use the profile as it is now.
                     if let Some(profile) = profiles.iter().find(|p| p.id == t.profile.id) {
@@ -1901,6 +1921,7 @@ async fn api(
                     if t.status != TaskStatus::UnknownRemoteState {
                         return Err(invalid("task not ambiguous"));
                     }
+                    t.marked_done = false;
                     match r.resolution {
                         ResolveRequestResolution::NotSent => {
                             t.status = TaskStatus::Queued;
@@ -1997,6 +2018,7 @@ async fn api(
                         .ok_or_else(missing)?;
                     t.status = TaskStatus::Queued;
                     t.finished_at = None;
+                    t.marked_done = false;
                     t.error = None;
                     t.pending_request = None;
                     t.last_message = None;
@@ -2046,10 +2068,7 @@ async fn api(
                 .ok_or_else(missing)?;
             let updated = match operation {
                 "start" => app.0.browser.start_session(s).await?,
-                "restart" => {
-                    app.0.browser.stop_session(key.clone()).await?;
-                    app.0.browser.start_session(s).await?
-                }
+                "restart" => app.0.browser.restart_session(s).await?,
                 "stop" => {
                     app.0.browser.stop_session(key.clone()).await?;
                     BrowserSession {
@@ -2078,12 +2097,24 @@ async fn api(
                     s
                 }
             };
-            app.mutate(move |s, _| {
-                s.sessions.retain(|x| x.id != updated.id);
-                s.sessions.push(updated.clone());
-                val(updated)
-            })
-            .await?
+            if app.0.real.get().is_some() {
+                // The session owner committed the newest intent. Never overwrite a later
+                // stop/restart or live tab event with a stale HTTP request's session.
+                val(app
+                    .snapshot()
+                    .await?
+                    .sessions
+                    .into_iter()
+                    .find(|s| s.id == updated.id)
+                    .ok_or_else(missing)?)?
+            } else {
+                app.mutate(move |s, _| {
+                    s.sessions.retain(|x| x.id != updated.id);
+                    s.sessions.push(updated.clone());
+                    val(updated)
+                })
+                .await?
+            }
         }
         ("GET", "projects" | "profiles", "", _) => {
             let s = val(app.snapshot().await?)?;

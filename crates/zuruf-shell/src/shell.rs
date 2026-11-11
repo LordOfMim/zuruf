@@ -649,6 +649,9 @@ pub fn adopt_tab(view: BrowserView, url: &str) {
     close.set_id(CLOSE_BASE + id);
     // Tabs sit in front of the "new tab" button.
     strip.add_child_view_at(Some(&mut View::from(&holder)), position);
+    // Adding a native view only invalidates layout. Dynamic tabs need their
+    // button bounds now, without waiting for the next window resize.
+    strip.layout();
     stack.add_child_view(Some(&mut View::from(&view)));
     activate(id);
 }
@@ -930,7 +933,26 @@ pub fn navigate(input: &str) {
     View::from(&view).request_focus();
 }
 
-/// A toolbar or tab button was pressed.
+// A toolbar or tab button was pressed.
+wrap_task! {
+    struct PressButton {
+        id: i32,
+    }
+
+    impl Task {
+        fn execute(&self) {
+            pressed(self.id);
+        }
+    }
+}
+
+/// CEF reads the button again after OnButtonPressed returns. Closing a tab here
+/// would destroy that button underneath CEF's mouse-release callback.
+pub fn press_later(id: i32) {
+    let mut task = PressButton::new(id);
+    post_task(ThreadId::UI, Some(&mut task));
+}
+
 pub fn pressed(id: i32) {
     match id {
         BACK => {
@@ -957,6 +979,21 @@ pub fn pressed(id: i32) {
         tab if tab > CLOSE_BASE => close_tab(tab - CLOSE_BASE),
         tab if tab > TAB_BASE => activate(tab - TAB_BASE),
         _ => {}
+    }
+}
+
+/// Debug builds exercise CEF's real button callback, rather than closing a CDP target.
+#[cfg(debug_assertions)]
+pub fn test_close_tab() {
+    let target = with(|shell| {
+        let tab = shell.tabs.iter().find(|tab| Some(tab.id) == shell.active)?;
+        Some((shell.window.clone()?, tab.close.clone()))
+    });
+    if let Some((window, button)) = target {
+        let rect = View::from(&button).bounds_in_screen();
+        drop(button);
+        window.send_mouse_move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        window.send_mouse_events(MouseButtonType::LEFT, 1, 1);
     }
 }
 

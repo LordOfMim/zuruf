@@ -26,6 +26,7 @@ const cdn = process.env.CEF_DOWNLOAD_URL ?? "https://cef-builds.spotifycdn.com";
 const platforms = {
   "linux-x64": ["linux64", "cef_linux_x86_64"],
   "linux-arm64": ["linuxarm64", "cef_linux_aarch64"],
+  "win32-x64": ["windows64", "cef_windows_x86_64"],
 };
 const platform = platforms[`${process.platform}-${process.arch}`];
 if (!platform) {
@@ -35,7 +36,7 @@ if (!platform) {
 const [indexKey, directoryName] = platform;
 const location = join(root, version);
 const target = join(location, directoryName);
-if (existsSync(join(target, "archive.json"))) {
+if (existsSync(join(target, "archive.json")) && existsSync(join(target, "LICENSE.txt"))) {
   console.log(`CEF ${version} already present in ${target}`);
   process.exit(0);
 }
@@ -76,12 +77,18 @@ if (sha1 !== file.sha1) {
 }
 
 console.log("unpacking");
-execFileSync("tar", ["-xjf", archive, "-C", location], { stdio: "inherit" });
+// Git Bash's tar interprets drive letters as remote hosts. Python's extractor
+// handles native paths and long CEF filenames consistently on Windows.
+if (process.platform === "win32") {
+  execFileSync("python", ["-c", "import sys, tarfile; tarfile.open(sys.argv[1], 'r:bz2').extractall(sys.argv[2], filter='data')", archive, location], { stdio: "inherit" });
+} else {
+  execFileSync("tar", ["-xjf", archive, "-C", location], { stdio: "inherit" });
+}
 const extracted = join(location, file.name.replace(/\.tar\.bz2$/, ""));
 rmSync(target, { recursive: true, force: true });
 renameSync(join(extracted, "Release"), target);
 cpSync(join(extracted, "Resources"), target, { recursive: true });
-for (const entry of ["CMakeLists.txt", "cmake", "include", "libcef_dll", "CREDITS.html"])
+for (const entry of ["CMakeLists.txt", "cmake", "include", "libcef_dll", "CREDITS.html", "LICENSE.txt"])
   renameSync(join(extracted, entry), join(target, entry));
 writeFileSync(
   join(target, "archive.json"),

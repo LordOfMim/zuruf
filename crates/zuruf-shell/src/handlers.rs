@@ -1,5 +1,5 @@
 //! Chromium's callbacks, forwarded to the window logic in `shell`.
-use crate::shell;
+use crate::{commands, shell};
 use cef::*;
 use std::cell::RefCell;
 
@@ -62,6 +62,38 @@ wrap_client! {
         }
         fn load_handler(&self) -> Option<LoadHandler> {
             Some(Loading::new())
+        }
+        fn request_handler(&self) -> Option<RequestHandler> {
+            Some(Recovery::new())
+        }
+    }
+}
+
+wrap_request_handler! {
+    struct Recovery;
+
+    impl RequestHandler {
+        fn on_render_process_terminated(
+            &self,
+            _browser: Option<&mut Browser>,
+            _status: TerminationStatus,
+            _error_code: ::std::os::raw::c_int,
+            _error_string: Option<&CefString>,
+        ) {
+            commands::emit("crashed");
+        }
+
+        fn on_render_process_unresponsive(
+            &self,
+            _browser: Option<&mut Browser>,
+            callback: Option<&mut UnresponsiveProcessCallback>,
+        ) -> ::std::os::raw::c_int {
+            commands::emit("crashed");
+            if let Some(callback) = callback {
+                callback.terminate();
+            }
+            // The daemon restores the session; suppress Chromium's hung-page dialog.
+            1
         }
     }
 }
@@ -405,7 +437,7 @@ wrap_button_delegate! {
     impl ButtonDelegate {
         fn on_button_pressed(&self, button: Option<&mut Button>) {
             if let Some(button) = button {
-                shell::pressed(button.id());
+                shell::press_later(button.id());
             }
         }
     }

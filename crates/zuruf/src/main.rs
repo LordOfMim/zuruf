@@ -115,10 +115,6 @@ async fn run() -> Result<(), Error> {
             if seed_demo {
                 daemon.seed_demo().await?;
             }
-            if let Err(error) = daemon.recover().await {
-                let _ = daemon.close().await;
-                return Err(error);
-            }
             let listener = match bind(port).await {
                 Ok(listener) => listener,
                 Err(error) => {
@@ -130,34 +126,45 @@ async fn run() -> Result<(), Error> {
                 port = listener.local_addr().map_err(StoreError::from)?.port(),
                 "daemon listening"
             );
-            let result = axum::serve(listener, daemon.router())
-                .with_graceful_shutdown({
-                    let daemon = daemon.clone();
-                    async move {
-                        tokio::select! { _ = daemon.stopped() => {}, _ = async {
-                            #[cfg(unix)]
-                            {
-                                if let Ok(mut term) = tokio::signal::unix::signal(
-                                    tokio::signal::unix::SignalKind::terminate(),
-                                ) {
-                                    tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}
-                                } else {
-                                    let _ = tokio::signal::ctrl_c().await;
-                                }
-                            }
-                            #[cfg(not(unix))]
-                            {
+            let server = axum::serve(listener, daemon.router()).with_graceful_shutdown({
+                let daemon = daemon.clone();
+                async move {
+                    tokio::select! { _ = daemon.stopped() => {}, _ = async {
+                        #[cfg(unix)]
+                        {
+                            if let Ok(mut term) = tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::terminate(),
+                            ) {
+                                tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}
+                            } else {
                                 let _ = tokio::signal::ctrl_c().await;
                             }
-                        } => {} }
-                        if let Err(e) = daemon.close().await {
-                            tracing::warn!(error=%e, "shutdown cleanup failed");
                         }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = tokio::signal::ctrl_c().await;
+                        }
+                    } => {} }
+                    if let Err(e) = daemon.close().await {
+                        tracing::warn!(error=%e, "shutdown cleanup failed");
                     }
-                })
-                .await;
+                }
+            });
+            // Serve the panel before recovery launches its browser windows. Otherwise a
+            // restored panel can load an error page while the HTTP port is still closed.
+            let recovery = async {
+                tokio::select! {
+                    result = daemon.recover() => result,
+                    _ = daemon.stopped() => Ok(()),
+                }
+            };
+            let result = tokio::try_join!(recovery, async {
+                server
+                    .await
+                    .map_err(|error| Error::from(StoreError::from(error)))
+            });
             daemon.close().await?;
-            result.map_err(StoreError::from)?;
+            result?;
         }
         command => {
             let token = tokio::fs::read_to_string(paths.state.join("token"))
@@ -197,6 +204,27 @@ async fn run() -> Result<(), Error> {
                 .json::<serde_json::Value>()
                 .await
                 .map_err(|e| Error::Join(e.to_string()))?;
+            if matches!(command, Command::Stop) {
+                // Installers may replace the binaries immediately after this command returns.
+                // The shutdown response precedes browser cleanup; wait until that is complete.
+                tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                    loop {
+                        match tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+                            .await
+                        {
+                            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {
+                                return Ok::<(), Error>(());
+                            }
+                            Err(error) => return Err(StoreError::from(error).into()),
+                            Ok(_) => {
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await
+                            }
+                        }
+                    }
+                })
+                .await
+                .map_err(|_| Error::Join("Daemon shutdown timed out".into()))??;
+            }
             match response["code"].as_str() {
                 Some(code) => println!("{base}/#code={code}&view={view}"),
                 None => println!("{}", serde_json::to_string_pretty(&response)?),
@@ -228,7 +256,11 @@ async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
         return Ok(());
     }
     let binary = std::env::current_exe().map_err(StoreError::from)?;
-    let systemd = cfg!(target_os = "linux")
+    // Installer and desktop smoke tests have their own state and port. They must
+    // never start the user's installed service, which has a different environment.
+    let isolated = std::env::var("ZURUF_INSTALL_TEST").as_deref() == Ok("1");
+    let systemd = !isolated
+        && cfg!(target_os = "linux")
         && std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|runtime| {
             std::path::Path::new(&runtime)
                 .join("systemd/private")
@@ -294,7 +326,9 @@ async fn ensure_daemon(base: &str, paths: &Paths) -> Result<(), Error> {
             .map_err(StoreError::from)?;
         let log =
             std::fs::File::create(paths.state.join("daemon.log")).map_err(StoreError::from)?;
-        tokio::process::Command::new(&binary)
+        let mut command = tokio::process::Command::new(&binary);
+        zuruf_platform::background(command.as_std_mut());
+        command
             .arg("daemon")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())

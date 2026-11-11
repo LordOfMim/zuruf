@@ -2,9 +2,7 @@
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+    fs,
     path::{Component, Path, PathBuf},
 };
 use zuruf_core::*;
@@ -36,19 +34,44 @@ pub struct Paths {
 }
 impl Paths {
     pub fn from_env() -> Result<Self> {
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .ok_or_else(|| StoreError::Invalid("HOME missing".into()))?;
+        #[cfg(windows)]
+        let (data, state, config) = {
+            let local = std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .ok_or_else(|| StoreError::Invalid("LOCALAPPDATA missing".into()))?
+                .join("Zuruf");
+            (
+                local.join("data"),
+                local.join("state"),
+                local.join("config"),
+            )
+        };
+        #[cfg(not(windows))]
+        let (data, state, config) = {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .ok_or_else(|| StoreError::Invalid("HOME missing".into()))?;
+            let xdg = |key, default: &str| {
+                std::env::var_os(key)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| home.join(default))
+            };
+            (
+                xdg("XDG_DATA_HOME", ".local/share").join("zuruf"),
+                xdg("XDG_STATE_HOME", ".local/state").join("zuruf"),
+                xdg("XDG_CONFIG_HOME", ".config").join("zuruf"),
+            )
+        };
         Ok(Self {
             data: std::env::var_os("ZURUF_DATA_DIR")
                 .map(PathBuf::from)
-                .unwrap_or(home.join(".local/share/zuruf")),
+                .unwrap_or(data),
             state: std::env::var_os("ZURUF_STATE_DIR")
                 .map(PathBuf::from)
-                .unwrap_or(home.join(".local/state/zuruf")),
+                .unwrap_or(state),
             config: std::env::var_os("ZURUF_CONFIG_DIR")
                 .map(PathBuf::from)
-                .unwrap_or(home.join(".config/zuruf")),
+                .unwrap_or(config),
         })
     }
     pub fn prepare(&self) -> Result<()> {
@@ -68,11 +91,7 @@ impl Paths {
     }
 }
 pub fn private_dir(path: &Path) -> Result<()> {
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(path)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    zuruf_platform::private_dir(path)?;
     Ok(())
 }
 pub fn safe_join(root: &Path, relative: &str) -> Result<PathBuf> {
@@ -93,27 +112,8 @@ pub fn safe_join(root: &Path, relative: &str) -> Result<PathBuf> {
     Ok(current)
 }
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| StoreError::Invalid("no parent".into()))?;
-    private_dir(parent)?;
-    let tmp = parent.join(format!(".{}.tmp", id()));
-    let result = (|| {
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        fs::rename(&tmp, path)?;
-        fs::File::open(parent)?.sync_all()?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(tmp);
-    }
-    result
+    zuruf_platform::atomic_write(path, bytes)?;
+    Ok(())
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Participant {
@@ -136,7 +136,7 @@ impl Store {
         paths.prepare()?;
         let db = paths.data.join("zuruf.sqlite");
         let connection = Connection::open(&db)?;
-        fs::set_permissions(db, fs::Permissions::from_mode(0o600))?;
+        zuruf_platform::private_file(&db)?;
         connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS migrations(version INTEGER PRIMARY KEY);")?;
         if connection.query_row(
             "SELECT count(*) FROM migrations WHERE version=?1",
@@ -530,7 +530,11 @@ mod tests {
         atomic_write(&p, b"a").unwrap();
         atomic_write(&p, b"b").unwrap();
         assert_eq!(fs::read(&p).unwrap(), b"b");
-        assert_eq!(fs::metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+        }
         for s in ["../x", "/x", "x/../../x", "x\\y"] {
             assert!(safe_join(t.path(), s).is_err());
         }

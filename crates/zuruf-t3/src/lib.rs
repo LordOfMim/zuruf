@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
-use tokio::{io::AsyncWriteExt, process::Command};
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -269,7 +269,7 @@ impl T3Adapter {
         })
     }
     async fn cli(&self, args: &[String], stdin: Option<&str>) -> Result<Value> {
-        let mut child = Command::new(&self.cli)
+        let mut child = command(&self.cli)
             .args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -376,7 +376,7 @@ impl T3Adapter {
         });
         if let Err(error) = self.save().await {
             if let Some(credentials) = self.credentials.take() {
-                let _ = Command::new(&self.cli)
+                let _ = command(&self.cli)
                     .args(["auth", "session", "revoke", &credentials.session_id])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -388,33 +388,11 @@ impl T3Adapter {
         Ok(())
     }
     async fn save(&self) -> Result<()> {
-        use std::os::unix::fs::OpenOptionsExt;
         let bytes = serde_json::to_vec(&self.credentials)?;
         let path = self.credentials_path.clone();
-        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-            use std::io::Write;
-            let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-            let result = (|| {
-                let mut f = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(&temporary)?;
-                f.write_all(&bytes)?;
-                f.sync_all()?;
-                std::fs::rename(&temporary, &path)?;
-                if let Some(parent) = path.parent() {
-                    std::fs::File::open(parent)?.sync_all()?;
-                }
-                Ok(())
-            })();
-            if result.is_err() {
-                let _ = std::fs::remove_file(temporary);
-            }
-            result
-        })
-        .await
-        .map_err(|_| Error::Protocol("Credential write task failed".into()))??;
+        tokio::task::spawn_blocking(move || zuruf_platform::atomic_write(&path, &bytes))
+            .await
+            .map_err(|_| Error::Protocol("Credential write task failed".into()))??;
         Ok(())
     }
     pub async fn connect(&mut self, origin: &str) -> Result<()> {
@@ -431,7 +409,7 @@ impl T3Adapter {
         self.connection.error = None;
         let origin = validate_origin(origin)?;
         if let Ok(metadata) = tokio::fs::symlink_metadata(&self.credentials_path).await
-            && (!metadata.is_file() || metadata.permissions().mode() & 0o077 != 0)
+            && (!metadata.is_file() || !private_permissions(&metadata))
         {
             return Err(Error::Protocol(
                 "Credential file must be a private regular file (0600)".into(),
@@ -457,7 +435,7 @@ impl T3Adapter {
         Ok(())
     }
     pub async fn connect_cli(&mut self) -> Result<()> {
-        let output = Command::new(&self.cli).arg("--version").output().await?;
+        let output = command(&self.cli).arg("--version").output().await?;
         if !output.status.success() {
             return Err(Error::Protocol("CLI unavailable".into()));
         }
@@ -472,7 +450,7 @@ impl T3Adapter {
     }
     pub async fn disconnect(&mut self) -> Result<()> {
         if let Some(c) = &self.credentials {
-            let out = Command::new(&self.cli)
+            let out = command(&self.cli)
                 .args(["auth", "session", "revoke", &c.session_id])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -921,6 +899,7 @@ impl T3Adapter {
         }
     }
 }
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 pub fn validate_origin(origin: &str) -> Result<String> {
     let url = reqwest::Url::parse(origin).map_err(|_| Error::Protocol("Invalid origin".into()))?;
@@ -987,6 +966,25 @@ pub fn parse_status(v: &Value, run: &str) -> ThreadStatus {
             })
             .and_then(|m| string(m, "text")),
     }
+}
+
+fn private_permissions(metadata: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        metadata.permissions().mode() & 0o077 == 0
+    }
+    // Windows credential files inherit the private owner/SYSTEM ACL from the app directory.
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        true
+    }
+}
+
+fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    zuruf_platform::background(command.as_std_mut());
+    command
 }
 
 #[cfg(test)]

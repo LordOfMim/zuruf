@@ -1,0 +1,124 @@
+name: Build and test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      CEF_PATH: ${{ github.workspace }}/.cef
+      CARGO_BUILD_JOBS: '4'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '26'
+          cache: pnpm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.1'
+          components: rustfmt, clippy
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+      - name: Linux build and browser dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang pkg-config libgtk-3-dev libnss3 libnspr4 libasound2 libgbm1 libxshmfence1 libxss1 xvfb xauth
+      - name: CEF version and native library search path
+        run: |
+          echo "CEF_VERSION=$(node tools/release/cef-version.mjs)" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/target/debug" >> "$GITHUB_PATH"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.CEF_PATH }}
+          key: cef-${{ runner.os }}-${{ env.CEF_VERSION }}-licenses-v1
+      - name: Download pinned Chromium runtime
+        timeout-minutes: 10
+        run: node tools/dev/fetch-cef.mjs "$CEF_VERSION" "$CEF_PATH"
+      - name: Build UI and page agent
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @zuruf/ui build
+          pnpm --filter @zuruf/page build
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Rust tests
+        if: runner.os == 'Linux'
+        run: cargo test --workspace --locked -j 4
+      - name: Rust tests (Windows)
+        if: runner.os == 'Windows'
+        # Git Bash prepends its unrelated link.exe ahead of the MSVC linker.
+        shell: pwsh
+        run: cargo test --workspace --locked -j 4
+      - name: Rust lint
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
+      - name: Rust lint (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
+      - name: Build release
+        if: runner.os == 'Linux'
+        run: cargo build --workspace --release --locked -j 4
+      - name: Build release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --workspace --release --locked -j 4
+      - name: Fetch license source metadata for all platforms
+        run: cargo fetch --locked
+      - name: Build installers and license bundle
+        run: python tools/release/package.py
+      - name: Test Linux installers and native browser
+        if: runner.os == 'Linux'
+        env:
+          ZURUF_SHELL_ARGS: --disable-gpu
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' python tools/release/test-installers.py
+      - name: Test Windows installer and native browser
+        if: runner.os == 'Windows'
+        env:
+          ZURUF_SHELL_ARGS: --disable-gpu
+        run: python tools/release/test-installers.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zuruf-${{ runner.os }}-x64
+          path: artifacts/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Preserve failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: |
+            artifacts/SHA256SUMS*
+            .release-stage/*/BUILD.json
+            .release-stage/*/share/doc/zuruf/RUST-LICENSES.html
+          if-no-files-found: ignore
+          retention-days: 7

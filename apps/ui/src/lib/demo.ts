@@ -559,6 +559,7 @@ export function createDemoTransport(empty = false): Transport {
       }
       if (method === "PATCH") Object.assign(target, data);
       if (verb === "retry" || verb === "resolve") {
+        target.markedDone = false;
         target.error = null;
         if (data.resolution === "adopt_thread") {
           target.status = "running";

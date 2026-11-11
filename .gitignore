@@ -21,3 +21,12 @@ credential.json
 # Screenshots taken while developing in the container
 tools/dev/*.png
 .pnpm-store/
+
+# Release build inputs and artifacts
+.cef/
+artifacts/
+.release-stage/
+.release-tools/
+
+__pycache__/
+*.pyc

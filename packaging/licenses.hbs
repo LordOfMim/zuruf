@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Zuruf – Lizenzen der Rust-Komponenten</title>
+<style>body{font:16px/1.5 system-ui;max-width:70em;margin:3em auto;padding:0 2em}pre{white-space:pre-wrap}section{margin:3em 0}</style></head>
+<body><h1>Lizenzen der Rust-Komponenten</h1><p>Zuruf verwendet die folgenden Open-Source-Komponenten. Die Lizenztexte von Chromium, CEF, Solid und den Schriftarten liegen separat in diesem Verzeichnis.</p>
+{{#each licenses}}<section><h2>{{name}}</h2><ul>{{#each used_by}}<li><a href="{{crate.repository}}">{{crate.name}} {{crate.version}}</a></li>{{/each}}</ul><pre>{{text}}</pre></section>{{/each}}
+</body></html>

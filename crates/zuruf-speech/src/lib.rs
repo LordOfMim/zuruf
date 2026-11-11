@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader},
-    process::{Child, Command},
+    process::Child,
     sync::{Semaphore, watch},
 };
 #[derive(Debug, thiserror::Error)]
@@ -116,7 +116,7 @@ pub struct Voxtype {
 /// of a remote endpoint) and this process lacks. Only `VOXTYPE_*` names are returned, so a
 /// per-segment `voxtype transcribe` behaves like the user's own Voxtype. Values must not be logged.
 pub async fn voxtype_service_env() -> Vec<(String, String)> {
-    let Ok(out) = Command::new("systemctl")
+    let Ok(out) = command("systemctl")
         .args([
             "--user",
             "show",
@@ -179,11 +179,7 @@ impl Transcriber for Voxtype {
             if silent(&samples) {
                 return Ok(String::new());
             }
-            tokio::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(&self.directory)
-                .await?;
+            zuruf_platform::private_dir(&self.directory)?;
             let path = self
                 .directory
                 .join(format!("segment-{}.wav", uuid::Uuid::new_v4()));
@@ -206,7 +202,7 @@ impl Transcriber for Voxtype {
             })
             .await
             .map_err(|_| Error::Backend("WAV worker failed".into()))??;
-            let mut cmd = Command::new(&self.executable);
+            let mut cmd = command(&self.executable);
             cmd.arg("--quiet").envs(self.env.iter().cloned());
             // Without a model Voxtype's own configuration decides (local or remote endpoint);
             // a model named in Zuruf is a local Whisper file and pins local mode.
@@ -414,7 +410,7 @@ impl<T: Transcriber> SpeechAdapter for Continuous<T> {
                     .map_err(|_| Error::Backend("sample clock poisoned".into()))?;
                 c.failed = None;
             }
-            let mut child = Command::new("pw-record")
+            let mut child = command("pw-record")
                 .args([
                     "--raw",
                     "--rate",
@@ -588,7 +584,7 @@ impl DaemonIo {
         }
     }
     async fn status(&self) -> Result<String> {
-        let o = Command::new(&self.executable)
+        let o = command(&self.executable)
             .args(["status", "--format", "json"])
             .output()
             .await?;
@@ -601,15 +597,11 @@ impl DaemonIo {
             self.busy = true;
             return Err(Error::BusyExternal);
         }
-        tokio::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&self.directory)
-            .await?;
+        zuruf_platform::private_dir(&self.directory)?;
         let path = self
             .directory
             .join(format!("daemon-{}.txt", uuid::Uuid::new_v4()));
-        let mut follow = Command::new(&self.executable)
+        let mut follow = command(&self.executable)
             .args(["status", "--follow", "--format", "json"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -620,7 +612,7 @@ impl DaemonIo {
             .take()
             .ok_or_else(|| Error::Backend("status pipe unavailable".into()))?;
         let mut lines = BufReader::new(stdout).lines();
-        let mut command = Command::new(&self.executable);
+        let mut command = command(&self.executable);
         command
             .args(["record", "start"])
             .arg(format!("--file={}", path.display()))
@@ -703,7 +695,7 @@ impl SpeechAdapter for DaemonIo {
             }
             let end = self.sample + (self.started.elapsed().as_secs_f64() * 16000.0) as u64;
             let gap = Instant::now();
-            let output = Command::new(&self.executable)
+            let output = command(&self.executable)
                 .args(["record", "stop", "--wait", "--json", "--timeout", "120"])
                 .kill_on_drop(true)
                 .output()
@@ -755,7 +747,7 @@ impl SpeechAdapter for DaemonIo {
         Box::pin(async move {
             if self.owned {
                 if self.status().await? == "recording" {
-                    let o = Command::new(&self.executable)
+                    let o = command(&self.executable)
                         .args(["record", "cancel"])
                         .output()
                         .await?;
@@ -951,6 +943,12 @@ pub async fn select(
     }
 }
 
+fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    zuruf_platform::background(command.as_std_mut());
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1057,6 +1055,7 @@ mod tests {
         assert_eq!(peak.load(SeqCst), 2);
         assert_eq!(c.state().pending_segments, 0);
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn foreign_daemon_is_never_signalled() {
         use std::os::unix::fs::PermissionsExt;

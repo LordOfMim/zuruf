@@ -160,6 +160,7 @@ pub struct Browser {
     capture_lock: Mutex<()>,
     remembered: Arc<Mutex<Vec<String>>>,
     stopping: Arc<std::sync::atomic::AtomicBool>,
+    signals: ShellSignals,
 }
 impl Browser {
     pub async fn start(config: SessionConfig) -> Result<Self> {
@@ -180,7 +181,8 @@ impl Browser {
             command.arg(format!("--zuruf-url={url}"));
         }
         command.args(&config.shell_args);
-        let (mut child, stdin, closed) = spawn_shell(command, &config.shell_path, &config.root)?;
+        let (mut child, stdin, signals) = spawn_shell(command, &config.shell_path, &config.root)?;
+        let closed = signals.closed.clone();
         let pid = child.id();
         let endpoint = tokio::time::timeout(Duration::from_secs(20), async {
             loop {
@@ -209,7 +211,7 @@ impl Browser {
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        tracing::info!(session_id = %config.session_id, "browser session started");
+        tracing::info!(session_id = %config.session_id, port, "browser session started");
 
         let (events, _) = broadcast::channel(256);
         let remembered = Arc::new(Mutex::new(config.urls.clone()));
@@ -220,6 +222,12 @@ impl Browser {
         tokio::spawn(async move {
             loop {
                 match disconnected.recv().await {
+                    Ok(event) if event["method"] == "Target.targetCrashed" => {
+                        if !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                            let _ = notify.send(BrowserEvent::Crashed);
+                        }
+                        break;
+                    }
                     Ok(event) if event["method"] == "Zuruf.disconnected" => {
                         if !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                             // A window the user closed said so before it went away.
@@ -241,6 +249,7 @@ impl Browser {
         let notify = events.clone();
         let id = config.session_id.clone();
         let urls = remembered.clone();
+        let shell_signals = signals.clone();
         tokio::spawn(async move {
             loop {
                 let event = match page_events.recv().await {
@@ -249,6 +258,11 @@ impl Browser {
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
                 if let Message::Tabs { tabs } = &event.message {
+                    // Window teardown removes targets one by one. Those partial lists
+                    // must not replace the last complete set we can recover.
+                    if shell_signals.interrupted() {
+                        continue;
+                    }
                     if !tabs.is_empty() {
                         *urls.lock().await = tabs.iter().map(|tab| tab.url.clone()).collect();
                     }
@@ -279,6 +293,7 @@ impl Browser {
             capture_lock: Mutex::new(()),
             remembered,
             stopping,
+            signals,
         })
     }
     pub fn events(&self) -> broadcast::Receiver<BrowserEvent> {
@@ -314,6 +329,25 @@ impl Browser {
     /// Open a page in a new tab of the session's window. Returns its target id.
     pub async fn open_tab(&self, url: &str) -> Result<String> {
         self.window.open_tab(url).await
+    }
+    /// A bounded round-trip also detects a live process whose browser thread stopped responding.
+    pub async fn health(&self) -> Result<()> {
+        if self.interrupted() {
+            return Err(Error::Closed);
+        }
+        self.cdp
+            .call_timeout(
+                "Browser.getVersion",
+                json!({}),
+                None,
+                Duration::from_secs(3),
+            )
+            .await?;
+        Ok(())
+    }
+    /// The native window is closing or a renderer failed; preserve its restorable tabs.
+    pub fn interrupted(&self) -> bool {
+        self.signals.interrupted()
     }
     /// Process id of the shell, which is also the owner of its window.
     pub fn pid(&self) -> Option<u32> {
@@ -890,14 +924,25 @@ fn shell_command(shell: &Path, scope: &Scope, memory: &str) -> Command {
 }
 
 /// Set once the shell reports that its window was closed, by the user or on request.
-type ClosedFlag = Arc<std::sync::atomic::AtomicBool>;
+#[derive(Clone, Default)]
+struct ShellSignals {
+    ready: Arc<std::sync::atomic::AtomicBool>,
+    closed: Arc<std::sync::atomic::AtomicBool>,
+    failed: Arc<std::sync::atomic::AtomicBool>,
+}
+impl ShellSignals {
+    fn interrupted(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        self.closed.load(Ordering::Relaxed) || self.failed.load(Ordering::Relaxed)
+    }
+}
 
 /// Start a shell with its command channel open. Chromium's own log goes to `shell.log`.
 fn spawn_shell(
     mut command: Command,
     shell: &Path,
     directory: &Path,
-) -> Result<(Child, ChildStdin, ClosedFlag)> {
+) -> Result<(Child, ChildStdin, ShellSignals)> {
     let log = std::fs::File::create(directory.join("shell.log"))?;
     command
         .stdin(Stdio::piped())
@@ -908,21 +953,33 @@ fn spawn_shell(
         std::io::Error::new(error.kind(), format!("{}: {error}", shell.display()))
     })?;
     let stdin = child.stdin.take().ok_or(Error::Closed)?;
-    let closed = ClosedFlag::default();
+    let signals = ShellSignals::default();
     if let Some(stdout) = child.stdout.take() {
-        let closed = closed.clone();
+        let signals = signals.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let event = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_default();
+                if event["event"] == "ready" {
+                    signals
+                        .ready
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 if event["event"] == "closed" {
-                    closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    signals
+                        .closed
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                if event["event"] == "crashed" {
+                    signals
+                        .failed
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                 }
                 tracing::debug!(line, "shell");
             }
         });
     }
-    Ok((child, stdin, closed))
+    Ok((child, stdin, signals))
 }
 
 /// One command for a shell: a line of JSON on its stdin.
@@ -963,7 +1020,21 @@ impl AppWindow {
             .arg(format!("--zuruf-theme={theme}"))
             .arg("--zuruf-app-only")
             .args(args);
-        let (child, stdin, _closed) = spawn_shell(command, shell, directory)?;
+        let (mut child, stdin, signals) = spawn_shell(command, shell, directory)?;
+        tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                if child.try_wait()?.is_some() {
+                    return Err(Error::Closed);
+                }
+                if signals.ready.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .map_err(|_| Error::Timeout("app window startup"))??;
+        tracing::info!(pid = child.id().unwrap_or_default(), "app window started");
         Ok(Self {
             pid: child.id(),
             child: Mutex::new(child),

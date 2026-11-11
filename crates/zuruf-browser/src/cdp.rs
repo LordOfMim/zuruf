@@ -80,6 +80,16 @@ impl Cdp {
         self.events.subscribe()
     }
     pub async fn call(&self, method: &str, params: Value, session: Option<&str>) -> Result<Value> {
+        self.call_timeout(method, params, session, Duration::from_secs(30))
+            .await
+    }
+    pub(crate) async fn call_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<&str>,
+        timeout: Duration,
+    ) -> Result<Value> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
@@ -89,15 +99,16 @@ impl Cdp {
             params,
             session_id: session.map(str::to_owned),
         };
-        if self.tx.send(serde_json::to_value(cmd)?).await.is_err() {
-            self.pending.lock().await.remove(&id);
-            return Err(Error::Closed);
-        }
-        let result = tokio::time::timeout(Duration::from_secs(30), rx).await;
+        let result = tokio::time::timeout(timeout, async {
+            self.tx
+                .send(serde_json::to_value(cmd)?)
+                .await
+                .map_err(|_| Error::Closed)?;
+            rx.await.map_err(|_| Error::Closed)?
+        })
+        .await;
         self.pending.lock().await.remove(&id);
-        result
-            .map_err(|_| Error::Timeout("CDP reply"))?
-            .map_err(|_| Error::Closed)?
+        result.map_err(|_| Error::Timeout("CDP reply"))?
     }
     pub async fn attach(&self, target: &str) -> Result<String> {
         let result = self

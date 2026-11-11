@@ -4,14 +4,14 @@
 > **Produktspezifikation / Implementierungsauftrag für einen Coding-Agenten**  
 > **Stand:** 10. November 2026  
 > **Status:** Entwurf, technische Details zu T3 Code und Voxtype bei Implementierungsbeginn prüfen  
-> **Zielplattform:** Linux-Desktop (primär KDE Plasma / Wayland)  
+> **Zielplattform:** Linux-Desktop (Wayland/X11; Entwicklung auf Arch/Hyprland) und Windows 10/11 x64
 > **Lizenzziel:** Open Source, lokale Ausführung, keine verpflichtenden Cloud-Dienste
 
 ## 1. Kurzbeschreibung
 
 Entwickle eine **eigenständige lokale Desktop-/Browser-Applikation**, die einen gemeinsam durch Benutzer und KI-Agent steuerbaren Webbrowser, visuelle Annotationen, Voxtype-Spracherkennung und die **asynchrone Übergabe mehrerer paralleler Entwicklungsaufgaben an T3 Code** vereint.
 
-Die Anwendung ist ein **Review- und Orchestrierungswerkzeug**, **kein Ersatz für T3 Code**. T3 Code bleibt unverändert. Die neue Applikation interagiert ausschließlich über vorhandene, tatsächlich verfügbare Schnittstellen mit der lokal laufenden T3-Code-Instanz. Sie soll möglichst wenig manuelle Interaktion erfordern und auf dem eigenen Linux-PC laufen.
+Die Anwendung ist ein **Review- und Orchestrierungswerkzeug**, **kein Ersatz für T3 Code**. T3 Code bleibt unverändert. Die neue Applikation interagiert ausschließlich über vorhandene, tatsächlich verfügbare Schnittstellen mit der lokal laufenden T3-Code-Instanz. Sie soll möglichst wenig manuelle Interaktion erfordern und auf dem eigenen Rechner laufen. Veröffentlichungen enthalten Installer für Linux und Windows; Diktat über Voxtype/PipeWire und desktopweite Hotkeys über Hyprland bleiben zunächst Linux-Funktionen.
 
 **Kernidee:** Ich navigiere durch meine Web-App, spreche Änderungswünsche frei ins Mikrofon und drücke währenddessen `W`, `S` oder `D`, um den aktuellen Bildschirm, einen Ausschnitt oder ein DOM-Element mit dem Gesagten zu verknüpfen. Über `Shift+N` wird das bisher Gesammelte sofort als **neuer T3-Thread** an einen einstellbaren Coding-Agenten übergeben, während ich **ohne Unterbrechung** weitere Aufgaben für andere Agenten aufnehmen kann.
 
@@ -381,6 +381,8 @@ Ein kompaktes, modernes Interface mit:
 `draft` → `finalizing_transcript` → `queued` → `dispatching` → `running` → `completed`
 
 Fehler-/Sonderzustände: `needs_review`, `needs_approval`, `failed`, `cancelled`, `unknown_remote_state`.
+
+Aufgaben lassen sich unabhängig von einem erfolgreichen Ergebnis lokal abschließen (`markedDone`): auch nach Abbruch, Fehler, Rückfrage oder bei unklarem Zustand. Sie bleiben mit ihrem ursprünglichen Ausführungsstatus unter „Abgeschlossen“ erhalten und zählen nicht mehr als offener Handlungsbedarf. Die Markierung ist dauerhaft gespeichert und über „Wieder öffnen“ umkehrbar. Explizites erneutes Senden, Zuordnen oder ein Nachtrag entfernt die Markierung automatisch. Noch aktiv ausgeführte Aufgaben können zunächst abgebrochen werden.
 
 Ein Agenten-Thread kann weiterlaufen, wenn der Benutzer eine andere Browser-Session öffnet oder einen neuen Batch aufnimmt. Die Anwendung darf den Fokus nicht unfreiwillig auf T3 Code verlagern.
 

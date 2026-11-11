@@ -168,9 +168,13 @@ async fn at15_failure_retry_no_duplicate() {
     let id = d["task"]["id"].as_str().unwrap();
     h.wait(id, "failed").await;
     assert_eq!(h.t3.thread_count(), 0);
-    h.t3.set_mode(FakeMode::Normal);
-    h.call("POST", &format!("/tasks/{id}/retry"), json!({}))
+    h.call("PATCH", &format!("/tasks/{id}"), json!({"markedDone":true}))
         .await;
+    h.t3.set_mode(FakeMode::Normal);
+    let retried = h
+        .call("POST", &format!("/tasks/{id}/retry"), json!({}))
+        .await;
+    assert_eq!(retried["markedDone"], false);
     h.wait(id, "completed").await;
     assert_eq!(h.t3.thread_count(), 1);
     assert_eq!(h.state().await["annotations"].as_array().unwrap().len(), 3);
@@ -199,13 +203,17 @@ async fn at15_ambiguous_requires_resolution() {
         .await
         .unwrap();
     assert!(!response.status().is_success());
+    h.call("PATCH", &format!("/tasks/{id}"), json!({"markedDone":true}))
+        .await;
     h.t3.set_mode(FakeMode::Normal);
-    h.call(
-        "POST",
-        &format!("/tasks/{id}/resolve"),
-        json!({"resolution":"not_sent"}),
-    )
-    .await;
+    let resolved = h
+        .call(
+            "POST",
+            &format!("/tasks/{id}/resolve"),
+            json!({"resolution":"not_sent"}),
+        )
+        .await;
+    assert_eq!(resolved["markedDone"], false);
     h.wait(id, "completed").await;
     assert_eq!(h.t3.thread_count(), 1);
 }
@@ -436,6 +444,8 @@ async fn explicit_followup_is_durable_and_keeps_thread() {
     let first = h.dispatch().await;
     let id = first["task"]["id"].as_str().unwrap();
     let done = h.wait(id, "completed").await;
+    h.call("PATCH", &format!("/tasks/{id}"), json!({"markedDone":true}))
+        .await;
     let annotation = h.state().await["annotations"][0]["id"].clone();
     let queued = h
         .call(
@@ -445,6 +455,7 @@ async fn explicit_followup_is_durable_and_keeps_thread() {
         )
         .await;
     assert_eq!(queued["status"], "queued");
+    assert_eq!(queued["markedDone"], false);
     let result = h.wait(id, "completed").await;
     assert_eq!(result["threadId"], done["threadId"]);
     assert_eq!(h.t3.thread_count(), 1);
@@ -588,6 +599,7 @@ async fn only_the_apps_own_origin_may_call_the_api() {
 
 #[tokio::test]
 async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     let h = Harness::new().await;
     let sid = h.state().await["status"]["activeSessionId"]
@@ -611,6 +623,7 @@ async fn dispatch_credentials_are_private_and_revoked_on_cancel() {
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    #[cfg(unix)]
     assert_eq!(
         std::fs::metadata(&credential).unwrap().permissions().mode() & 0o777,
         0o600

@@ -6,6 +6,9 @@ license.workspace = true
 build = "build.rs"
 description = "Zuruf's own browser window: embedded Chromium with the app docked beside the page."
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 cef = "156"
 serde = { version = "1", features = ["derive"] }

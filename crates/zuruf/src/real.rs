@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use tokio::sync::Mutex as AsyncMutex;
 use zuruf_browser::{AppWindow, Browser, SessionConfig};
 
+mod recovery;
+
 fn convert<T: Serialize, U: DeserializeOwned>(value: T) -> std::result::Result<U, AdapterError> {
     serde_json::from_value(serde_json::to_value(value).map_err(io)?).map_err(io)
 }
@@ -579,6 +581,9 @@ impl DesktopHotkeys for Hotkeys {
     }
     fn check_conflicts(&self, bindings: Vec<Binding>) -> AdapterFuture<'_, Vec<BindingIssue>> {
         Box::pin(async move {
+            if !self.0.lock().await.available() {
+                return Ok(Vec::new());
+            }
             let output = tokio::process::Command::new("hyprctl")
                 .args(["binds", "-j"])
                 .output()
@@ -604,6 +609,9 @@ tokio::task_local! {
     static CAPTURE_ENVELOPE: std::cell::RefCell<Option<zuruf_browser::bridge::Envelope>>;
 }
 pub struct Browsers {
+    lifecycles: AsyncMutex<BTreeMap<String, Arc<recovery::SessionLife>>>,
+    shutting_down: tokio::sync::watch::Sender<bool>,
+    widths: AsyncMutex<BTreeMap<String, Option<u32>>>,
     pub sessions: AsyncMutex<BTreeMap<String, Arc<Browser>>>,
     /// The app in a window of its own, while no session window carries it.
     app_window: AsyncMutex<Option<AppWindow>>,
@@ -661,6 +669,9 @@ impl Browsers {
             }
         }
         let mut window = self.app_window.lock().await;
+        if *self.shutting_down.borrow() {
+            return Err(AdapterError::Unavailable("Anwendung wird beendet".into()));
+        }
         if let Some(existing) = window.as_ref()
             && existing.alive().await
         {
@@ -730,13 +741,29 @@ impl Browsers {
         session: String,
         mut rx: broadcast::Receiver<zuruf_browser::BrowserEvent>,
     ) {
-        while let Ok(event) = rx.recv().await {
+        loop {
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
             let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) else {
                 break;
             };
             let app = Daemon(inner);
             match event {
                 zuruf_browser::BrowserEvent::TabsChanged(tabs) => {
+                    // A closing window reports no tabs; retain the last restorable set.
+                    if tabs.is_empty()
+                        || self
+                            .sessions
+                            .lock()
+                            .await
+                            .get(&session)
+                            .is_some_and(|browser| browser.interrupted())
+                    {
+                        continue;
+                    }
                     let mut mapped = vec![];
                     for t in tabs {
                         if let Ok(t) = self.tab(t).await {
@@ -753,38 +780,7 @@ impl Browsers {
                         })
                         .await;
                 }
-                ended @ (zuruf_browser::BrowserEvent::Crashed
-                | zuruf_browser::BrowserEvent::Closed) => {
-                    // The window is gone either way: forget the browser so the session can be
-                    // started again, and withdraw whatever an agent held on it.
-                    self.sessions.lock().await.remove(&session);
-                    if let Some(runtime) = app.0.real.get()
-                        && let Some(access) = runtime.access.lock().await.remove(&session)
-                    {
-                        access.revoke();
-                    }
-                    let state = if matches!(ended, zuruf_browser::BrowserEvent::Closed) {
-                        BrowserSessionState::Stopped
-                    } else {
-                        BrowserSessionState::Crashed
-                    };
-                    let sid = session.clone();
-                    let _ = app
-                        .mutate(move |s, _| {
-                            if let Some(session) = s.sessions.iter_mut().find(|x| x.id == sid) {
-                                session.state = state;
-                                session.control = ControlState {
-                                    owner: ControlStateOwner::None,
-                                    agent_id: None,
-                                    lease_expires_at: None,
-                                    settling: false,
-                                };
-                            }
-                            Ok(())
-                        })
-                        .await;
-                    break;
-                }
+                zuruf_browser::BrowserEvent::Crashed | zuruf_browser::BrowserEvent::Closed => break,
                 zuruf_browser::BrowserEvent::ControlChanged(control) => {
                     if let Ok(control) = convert::<_, ControlState>(control) {
                         let sid = session.clone();
@@ -860,93 +856,14 @@ impl std::ops::Deref for BrowserAdapter {
     }
 }
 impl BrowserController for BrowserAdapter {
-    fn start_session(&self, mut s: BrowserSession) -> AdapterFuture<'_, BrowserSession> {
-        Box::pin(async move {
-            if self.sessions.lock().await.contains_key(&s.id) {
-                return Ok(s);
-            }
-            let mut config = SessionConfig::new(self.paths.data.join("sessions").join(&s.id));
-            config.session_id = s.id.clone();
-            let daemon = self
-                .app
-                .get()
-                .and_then(std::sync::Weak::upgrade)
-                .map(Daemon);
-            let mut integrated = false;
-            if let Some(daemon) = &daemon {
-                let ui = daemon.snapshot().await.map_err(io)?.settings.ui;
-                integrated = ui.browser == SettingsUiBrowser::Integrated;
-                config.theme = theme_name(ui.theme).into();
-                // The app docks beside the page; a one-time code signs it in.
-                let code = daemon.mint_code().await.map_err(io)?;
-                config.panel_url = Some(format!(
-                    "http://127.0.0.1:{}/panel.html#code={code}",
-                    self.port
-                ));
-            }
-            config.urls = s.tabs.iter().map(|t| t.url.clone()).collect();
-            if config.urls.is_empty() {
-                let start = if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade) {
-                    Daemon(inner)
-                        .snapshot()
-                        .await
-                        .map_err(io)?
-                        .projects
-                        .into_iter()
-                        .find(|p| p.id == s.project_id)
-                        .map(|p| p.base_url)
-                } else {
-                    None
-                };
-                config.urls.push(
-                    start
-                        .filter(|url| !url.is_empty())
-                        .unwrap_or_else(|| "about:blank".into()),
-                );
-            }
-            let browser = Arc::new(Browser::start(config).await.map_err(io)?);
-            browser
-                .push_bindings(convert(self.bindings.lock().await.clone())?)
-                .await
-                .map_err(io)?;
-            browser
-                .set_review_mode(
-                    *self.review.lock().await,
-                    convert(self.bindings.lock().await.clone())?,
-                )
-                .await
-                .map_err(io)?;
-            let rx = browser.events();
-            // One window: the app now lives in this session's window.
-            if integrated {
-                self.close_app().await;
-            }
-            self.sessions.lock().await.insert(s.id.clone(), browser);
-            s.state = BrowserSessionState::Running;
-            s.control = ControlState {
-                owner: ControlStateOwner::None,
-                agent_id: None,
-                lease_expires_at: None,
-                settling: false,
-            };
-            s.tabs = self.list_tabs(s.id.clone()).await?;
-            tokio::spawn(self.0.clone().listen(s.id.clone(), rx));
-            Ok(s)
-        })
+    fn start_session(&self, s: BrowserSession) -> AdapterFuture<'_, BrowserSession> {
+        Box::pin(self.0.clone().request_session(s, false))
+    }
+    fn restart_session(&self, s: BrowserSession) -> AdapterFuture<'_, BrowserSession> {
+        Box::pin(self.0.clone().request_session(s, true))
     }
     fn stop_session(&self, session: Id) -> AdapterFuture<'_, ()> {
-        Box::pin(async move {
-            if let Some(b) = self.sessions.lock().await.remove(&session) {
-                b.stop().await.map_err(io)?;
-            }
-            if let Some(inner) = self.app.get().and_then(std::sync::Weak::upgrade)
-                && let Some(runtime) = inner.real.get()
-                && let Some(access) = runtime.access.lock().await.remove(&session)
-            {
-                access.revoke();
-            }
-            Ok(())
-        })
+        Box::pin(async move { self.0.clone().stop_managed(&session).await })
     }
     fn duplicate_session(
         &self,
@@ -959,6 +876,23 @@ impl BrowserController for BrowserAdapter {
             source.created_at = now();
             source.state = BrowserSessionState::Stopped;
             source.agent_access = false;
+            source.control = ControlState {
+                owner: ControlStateOwner::None,
+                agent_id: None,
+                lease_expires_at: None,
+                settling: false,
+            };
+            let model = source.clone();
+            self.daemon()?
+                .mutate(move |s, _| {
+                    if !s.projects.iter().any(|p| p.id == model.project_id) {
+                        return Err(invalid("project not found"));
+                    }
+                    s.sessions.push(model);
+                    Ok(())
+                })
+                .await
+                .map_err(io)?;
             self.start_session(source).await
         })
     }
@@ -1209,7 +1143,15 @@ impl Daemon {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
+        let widths = tokio::fs::read(paths.state.join("page-widths.json"))
+            .await
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
         let browsers = Arc::new(Browsers {
+            lifecycles: AsyncMutex::default(),
+            shutting_down: tokio::sync::watch::channel(false).0,
+            widths: AsyncMutex::new(widths),
             sessions: AsyncMutex::default(),
             app_window: AsyncMutex::default(),
             bindings: AsyncMutex::new(settings.bindings),
@@ -1239,35 +1181,38 @@ impl Daemon {
             speech,
             access: AsyncMutex::default(),
         });
-        let weak = Arc::downgrade(&app.0);
-        let reload = tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            while let Ok(path) = zuruf_hypr::event_socket() {
-                if let Ok(stream) = tokio::net::UnixStream::connect(path).await {
-                    let mut lines = BufReader::new(stream).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if line.starts_with("configreloaded>>") {
-                            let Some(inner) = weak.upgrade() else {
-                                return;
-                            };
-                            let daemon = Daemon(inner);
-                            if let Ok(snapshot) = daemon.snapshot().await
-                                && let Err(error) =
-                                    daemon.0.hotkeys.apply(snapshot.settings.bindings).await
-                            {
-                                let _ = daemon.0.events.send(json!({"type":"notice","payload":{"level":"warning","code":"bindings.reload_conflict","detail":error.to_string()}}));
+        #[cfg(unix)]
+        {
+            let weak = Arc::downgrade(&app.0);
+            let reload = tokio::spawn(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                while let Ok(path) = zuruf_hypr::event_socket() {
+                    if let Ok(stream) = tokio::net::UnixStream::connect(path).await {
+                        let mut lines = BufReader::new(stream).lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            if line.starts_with("configreloaded>>") {
+                                let Some(inner) = weak.upgrade() else {
+                                    return;
+                                };
+                                let daemon = Daemon(inner);
+                                if let Ok(snapshot) = daemon.snapshot().await
+                                    && let Err(error) =
+                                        daemon.0.hotkeys.apply(snapshot.settings.bindings).await
+                                {
+                                    let _ = daemon.0.events.send(json!({"type":"notice","payload":{"level":"warning","code":"bindings.reload_conflict","detail":error.to_string()}}));
+                                }
                             }
                         }
                     }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        });
-        app.0
-            .handles
-            .lock()
-            .map_err(|_| Error::Join("worker lock".into()))?
-            .push(reload.abort_handle());
+            });
+            app.0
+                .handles
+                .lock()
+                .map_err(|_| Error::Join("worker lock".into()))?
+                .push(reload.abort_handle());
+        }
         Ok(app)
     }
 }
@@ -1356,9 +1301,9 @@ pub async fn page_width(
         ),
     };
     let runtime = app.0.real.get().ok_or_else(missing)?;
-    let browser = runtime.browsers.get(&session).await?;
-    browser
-        .set_page_width(width)
+    runtime
+        .browsers
+        .set_page_width(&session, width)
         .await
         .map_err(|error| Error::Join(error.to_string()))?;
     Ok(axum::Json(json!({"ok": true, "width": width})).into_response())

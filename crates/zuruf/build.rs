@@ -1,4 +1,14 @@
 fn main() {
+    #[cfg(windows)]
+    {
+        winresource::WindowsResource::new()
+            .set_icon("../../assets/icon/zuruf.ico")
+            .set("ProductName", "Zuruf")
+            .set("FileDescription", "Zuruf Browser-Review")
+            .set("LegalCopyright", "Copyright 2026 Zuruf contributors")
+            .compile()
+            .expect("Windows resources");
+    }
     let output =
         std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default()).join("ui");
     let _ = std::fs::remove_dir_all(&output);
