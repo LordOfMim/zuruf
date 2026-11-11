@@ -77,7 +77,11 @@ if (sha1 !== file.sha1) {
 }
 
 console.log("unpacking");
-execFileSync("tar", ["-xjf", archive, "-C", location], { stdio: "inherit" });
+// Git Bash's GNU tar interprets a Windows drive letter as a remote host.
+const tar = process.platform === "win32"
+  ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+  : "tar";
+execFileSync(tar, ["-xjf", archive, "-C", location], { stdio: "inherit" });
 const extracted = join(location, file.name.replace(/\.tar\.bz2$/, ""));
 rmSync(target, { recursive: true, force: true });
 renameSync(join(extracted, "Release"), target);

@@ -943,6 +943,12 @@ pub async fn select(
     }
 }
 
+fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    zuruf_platform::background(command.as_std_mut());
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1120,10 +1126,4 @@ mod env_tests {
             ]
         );
     }
-}
-
-fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(program);
-    zuruf_platform::background(command.as_std_mut());
-    command
 }

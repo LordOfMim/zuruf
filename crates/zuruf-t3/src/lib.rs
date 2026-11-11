@@ -968,6 +968,25 @@ pub fn parse_status(v: &Value, run: &str) -> ThreadStatus {
     }
 }
 
+fn private_permissions(metadata: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        metadata.permissions().mode() & 0o077 == 0
+    }
+    // Windows credential files inherit the private owner/SYSTEM ACL from the app directory.
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        true
+    }
+}
+
+fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    zuruf_platform::background(command.as_std_mut());
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1152,23 +1171,4 @@ mod tests {
         );
         a.disconnect().await.unwrap();
     }
-}
-
-fn private_permissions(metadata: &std::fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        metadata.permissions().mode() & 0o077 == 0
-    }
-    // Windows credential files inherit the private owner/SYSTEM ACL from the app directory.
-    #[cfg(not(unix))]
-    {
-        let _ = metadata;
-        true
-    }
-}
-
-fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(program);
-    zuruf_platform::background(command.as_std_mut());
-    command
 }
