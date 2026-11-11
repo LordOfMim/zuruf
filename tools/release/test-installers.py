@@ -23,6 +23,13 @@ def smoke(prefix):
     subprocess.run(["node", "tools/release/smoke.mjs", "--prefix", str(prefix)], cwd=ROOT, check=True)
 
 
+def nsis(executable, destination_option, destination):
+    # NSIS parses the final /D= or _?= tail itself; quoting that tail breaks paths
+    # containing spaces. Pass a native command line directly, without a shell.
+    command = subprocess.list2cmdline([str(executable), "/S"])
+    subprocess.run(f"{command} {destination_option}={destination}", check=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="zuruf installer test ") as temporary:
         directory = Path(temporary)
@@ -32,7 +39,7 @@ def main():
         unrelated.write_text("not owned by Zuruf")
         if os.name == "nt":
             installer = ROOT / "artifacts/Zuruf-Setup-windows-x64.exe"
-            subprocess.run([str(installer), "/S", f"/D={prefix}"], check=True)
+            nsis(installer, "/D", prefix)
             wait_for("Windows installation", lambda: (prefix / "Uninstall.exe").is_file())
             assert (prefix / "Zuruf.exe").is_file()
             smoke(prefix)
@@ -41,8 +48,8 @@ def main():
             assert not marker.exists()
             try:
                 marker.write_text("keep this data")
-                subprocess.run([str(installer), "/S", f"/D={prefix}"], check=True)
-                subprocess.run([str(prefix / "Uninstall.exe"), "/S", f"_?={prefix}"], check=True)
+                nsis(installer, "/D", prefix)
+                nsis(prefix / "Uninstall.exe", "_?", prefix)
                 wait_for("Windows uninstall", lambda: not (prefix / "bin/zuruf.exe").exists())
                 assert marker.read_text() == "keep this data"
             finally:

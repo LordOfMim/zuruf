@@ -55,7 +55,7 @@ def windows(stage, cef, target, artifacts, version):
     copy(target / "zuruf-launcher.exe", stage / "Zuruf.exe")
     installer = artifacts / "Zuruf-Setup-windows-x64.exe"
     compiler = shutil.which("makensis") or str(Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "NSIS/makensis.exe")
-    subprocess.run([compiler, f"/DVERSION={version}", f"/DSTAGE={stage}", f"/DOUTPUT={installer}", "packaging/windows/zuruf.nsi"], cwd=ROOT, check=True)
+    subprocess.run([compiler, "/INPUTCHARSET", "UTF8", f"/DVERSION={version}", f"/DSTAGE={stage}", f"/DOUTPUT={installer}", "packaging/windows/zuruf.nsi"], cwd=ROOT, check=True)
     with zipfile.ZipFile(artifacts / "zuruf-windows-x64.zip", "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for file in stage.rglob("*"):
             if file.is_file():
