@@ -55,7 +55,7 @@ pub enum Message {
         kind: String,
         cursor: Point,
         rect: Option<Rect>,
-        dom: Option<DomCapture>,
+        dom: Option<Box<DomCapture>>,
     },
     #[serde(rename = "overlay.hide")]
     Hide,
@@ -94,7 +94,7 @@ enum FromPage {
         kind: String,
         cursor: Point,
         rect: Option<Rect>,
-        dom: Option<DomCapture>,
+        dom: Option<Box<DomCapture>>,
     },
 }
 
@@ -341,10 +341,7 @@ impl PageBridge {
     }
 
     async fn evaluate(&self, session: &str, context: i64, message: &Message) -> Result<Value> {
-        let expression = format!(
-            "globalThis.{RECEIVER}({})",
-            serde_json::to_string(message)?
-        );
+        let expression = format!("globalThis.{RECEIVER}({})", serde_json::to_string(message)?);
         let value = self
             .cdp
             .call(
@@ -498,7 +495,7 @@ impl PageBridge {
                     return;
                 };
                 match serde_json::from_str::<FromPage>(payload) {
-                    Ok(message) => self.from_page(session, context, message).await,
+                    Ok(message) => self.page_message(session, context, message).await,
                     Err(error) => tracing::debug!(%error, "unreadable page message"),
                 }
             }
@@ -621,7 +618,8 @@ impl PageBridge {
         Ok(())
     }
 
-    async fn from_page(&self, session: &str, context: i64, message: FromPage) {
+    /// Take in what a page agent sent through the binding.
+    async fn page_message(&self, session: &str, context: i64, message: FromPage) {
         let (tab, frame, document, top_changed) = {
             let mut state = self.state.lock().await;
             let Some(target_id) = state.sessions.get(session).cloned() else {

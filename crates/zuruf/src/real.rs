@@ -753,16 +753,37 @@ impl Browsers {
                         })
                         .await;
                 }
-                zuruf_browser::BrowserEvent::Crashed => {
+                ended @ (zuruf_browser::BrowserEvent::Crashed
+                | zuruf_browser::BrowserEvent::Closed) => {
+                    // The window is gone either way: forget the browser so the session can be
+                    // started again, and withdraw whatever an agent held on it.
+                    self.sessions.lock().await.remove(&session);
+                    if let Some(runtime) = app.0.real.get()
+                        && let Some(access) = runtime.access.lock().await.remove(&session)
+                    {
+                        access.revoke();
+                    }
+                    let state = if matches!(ended, zuruf_browser::BrowserEvent::Closed) {
+                        BrowserSessionState::Stopped
+                    } else {
+                        BrowserSessionState::Crashed
+                    };
                     let sid = session.clone();
                     let _ = app
                         .mutate(move |s, _| {
                             if let Some(session) = s.sessions.iter_mut().find(|x| x.id == sid) {
-                                session.state = BrowserSessionState::Crashed;
+                                session.state = state;
+                                session.control = ControlState {
+                                    owner: ControlStateOwner::None,
+                                    agent_id: None,
+                                    lease_expires_at: None,
+                                    settling: false,
+                                };
                             }
                             Ok(())
                         })
                         .await;
+                    break;
                 }
                 zuruf_browser::BrowserEvent::ControlChanged(control) => {
                     if let Ok(control) = convert::<_, ControlState>(control) {
@@ -844,8 +865,7 @@ impl BrowserController for BrowserAdapter {
             if self.sessions.lock().await.contains_key(&s.id) {
                 return Ok(s);
             }
-            let mut config =
-                SessionConfig::new(self.paths.data.join("sessions").join(&s.id));
+            let mut config = SessionConfig::new(self.paths.data.join("sessions").join(&s.id));
             config.session_id = s.id.clone();
             let daemon = self
                 .app

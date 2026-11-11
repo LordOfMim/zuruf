@@ -19,6 +19,32 @@ wrap_app! {
         fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
             Some(ShellProcess::new(self.options.clone()))
         }
+
+        fn on_before_command_line_processing(
+            &self,
+            process_type: Option<&CefString>,
+            command_line: Option<&mut CommandLine>,
+        ) {
+            // Only the main process chooses; its helpers inherit the choice.
+            let main_process = process_type.is_none_or(|kind| kind.to_string().is_empty());
+            let Some(command_line) = command_line else {
+                return;
+            };
+            if !main_process {
+                return;
+            }
+            // Chromium picks X11 unless told otherwise, even inside a Wayland session, where
+            // that means XWayland or no window at all.
+            let platform = CefString::from("ozone-platform");
+            let chosen = command_line.has_switch(Some(&platform)) == 1;
+            if cfg!(target_os = "linux")
+                && !chosen
+                && std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty())
+            {
+                command_line
+                    .append_switch_with_value(Some(&platform), Some(&CefString::from("wayland")));
+            }
+        }
     }
 }
 

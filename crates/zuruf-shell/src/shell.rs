@@ -147,10 +147,16 @@ pub fn theme(window: &Window) {
         (color::CEF_ColorButtonBackground, palette.background),
         (color::CEF_ColorTextfieldBackground, palette.field),
         (color::CEF_ColorTextfieldForeground, palette.text),
-        (color::CEF_ColorTextfieldForegroundPlaceholder, palette.muted),
+        (
+            color::CEF_ColorTextfieldForegroundPlaceholder,
+            palette.muted,
+        ),
         (color::CEF_ColorTextfieldOutline, palette.surface),
         (color::CEF_ColorTextfieldSelectionBackground, palette.signal),
-        (color::CEF_ColorTextfieldSelectionForeground, palette.background),
+        (
+            color::CEF_ColorTextfieldSelectionForeground,
+            palette.background,
+        ),
         (color::CEF_ColorFocusableBorderFocused, palette.signal),
     ] {
         window.set_theme_color(id as i32, value);
@@ -599,9 +605,12 @@ pub fn browser_closing(browser: &mut Browser) -> bool {
     true
 }
 
-/// The window is about to close.
+/// The window is about to close. The daemon learns that this is an ending, not a crash.
 pub fn window_closing() {
-    with(|shell| shell.closing = true);
+    let first = with(|shell| !std::mem::replace(&mut shell.closing, true));
+    if first {
+        commands::emit("closed");
+    }
 }
 
 pub fn title_changed(browser: &mut Browser, title: &str) {

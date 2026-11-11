@@ -96,7 +96,10 @@ pub struct CaptureResult {
 #[derive(Debug, Clone)]
 pub enum BrowserEvent {
     TabsChanged(Vec<BrowserTab>),
+    /// The browser went away unexpectedly.
     Crashed,
+    /// The user closed the session's window.
+    Closed,
     ControlChanged(ControlState),
     /// A key press, picker result or other message from a page.
     Page(Box<crate::bridge::Envelope>),

@@ -9,6 +9,19 @@ type NativeEvent = sys::XEvent;
 #[cfg(target_os = "windows")]
 type NativeEvent = sys::MSG;
 
+/// A string for a structure that CEF reads after our callback has returned. The bindings pass
+/// such a field on only if it wraps a raw CEF string, which CEF then frees itself; a string
+/// built with `CefString::from(&str)` would arrive empty.
+fn handed_over(text: &str) -> CefString {
+    let mut raw: sys::_cef_string_utf16_t = unsafe { std::mem::zeroed() };
+    // SAFETY: `text` is valid UTF-8 of the given length and `raw` is an empty CEF string for
+    // the function to fill. It allocates the copy and records how to free it.
+    unsafe {
+        sys::cef_string_utf8_to_utf16(text.as_ptr().cast(), text.len(), &mut raw);
+    }
+    CefString::from(raw)
+}
+
 pub fn client() -> Client {
     ShellClient::new()
 }
@@ -167,14 +180,42 @@ wrap_browser_view_delegate! {
     }
 }
 
+// Unlike CEF's C++ defaults, an unanswered question here means "no": a window that does not
+// say it can be resized is fixed-size, and tiling compositors then float it.
 wrap_window_delegate! {
     struct ShellWindow {}
 
-    impl ViewDelegate {}
+    impl ViewDelegate {
+        fn preferred_size(&self, _view: Option<&mut View>) -> Size {
+            Size {
+                width: 1500,
+                height: 950,
+            }
+        }
+
+        fn minimum_size(&self, _view: Option<&mut View>) -> Size {
+            Size {
+                width: 640,
+                height: 400,
+            }
+        }
+    }
 
     impl PanelDelegate {}
 
     impl WindowDelegate {
+        fn can_resize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
+        fn can_maximize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
+        fn can_minimize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
         fn on_window_created(&self, window: Option<&mut Window>) {
             if let Some(window) = window {
                 shell::build(window);
@@ -223,9 +264,9 @@ wrap_window_delegate! {
                 return 0;
             };
             // Window rules and the desktop entry find the window by this name.
-            properties.wayland_app_id = CefString::from("zuruf");
-            properties.wm_class_class = CefString::from("zuruf");
-            properties.wm_class_name = CefString::from("zuruf");
+            properties.wayland_app_id = handed_over("zuruf");
+            properties.wm_class_class = handed_over("zuruf");
+            properties.wm_class_name = handed_over("zuruf");
             1
         }
     }
@@ -236,11 +277,30 @@ wrap_window_delegate! {
         view: RefCell<Option<BrowserView>>,
     }
 
-    impl ViewDelegate {}
+    impl ViewDelegate {
+        fn preferred_size(&self, _view: Option<&mut View>) -> Size {
+            Size {
+                width: 1100,
+                height: 760,
+            }
+        }
+    }
 
     impl PanelDelegate {}
 
     impl WindowDelegate {
+        fn can_resize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
+        fn can_maximize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
+        fn can_minimize(&self, _window: Option<&mut Window>) -> ::std::os::raw::c_int {
+            1
+        }
+
         fn on_window_created(&self, window: Option<&mut Window>) {
             let view = self.view.borrow();
             let (Some(window), Some(view)) = (window, view.as_ref()) else {

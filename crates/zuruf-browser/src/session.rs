@@ -175,7 +175,7 @@ impl Browser {
             command.arg(format!("--zuruf-url={url}"));
         }
         command.args(&config.shell_args);
-        let (mut child, stdin) = spawn_shell(command, &config.shell_path, &config.root)?;
+        let (mut child, stdin, closed) = spawn_shell(command, &config.shell_path, &config.root)?;
         let pid = child.id();
         let endpoint = tokio::time::timeout(Duration::from_secs(20), async {
             loop {
@@ -195,7 +195,8 @@ impl Browser {
             Some(panel) => panel_targets(&cdp, panel).await?,
             None => HashSet::new(),
         };
-        let page = PageBridge::start(cdp.clone(), config.session_id.clone(), private.clone()).await?;
+        let page =
+            PageBridge::start(cdp.clone(), config.session_id.clone(), private.clone()).await?;
         // The first tabs exist already; give their attach events a moment to arrive.
         for _ in 0..120 {
             if !page.tabs().await.is_empty() {
@@ -216,7 +217,13 @@ impl Browser {
                 match disconnected.recv().await {
                     Ok(event) if event["method"] == "Zuruf.disconnected" => {
                         if !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                            let _ = notify.send(BrowserEvent::Crashed);
+                            // A window the user closed said so before it went away.
+                            let ended = if closed.load(std::sync::atomic::Ordering::Relaxed) {
+                                BrowserEvent::Closed
+                            } else {
+                                BrowserEvent::Crashed
+                            };
+                            let _ = notify.send(ended);
                         }
                         break;
                     }
@@ -464,7 +471,7 @@ impl Browser {
         let pointer_frame = self.page.pointer(tab).await.0;
         let pointer_document = self.page.document(tab, pointer_frame).await;
         // Keyboard focus can remain in the top frame while the pointer is in a child.
-        let context = (pointer_frame == frame).then(|| (*cursor, dom.clone()));
+        let context = (pointer_frame == frame).then(|| (*cursor, dom.as_deref().cloned()));
         let result = self
             .capture_stage(&target, kind, *rect, ring, context)
             .await?;
@@ -533,9 +540,7 @@ impl Browser {
         let result = self
             .capture_inner(&session, tab, kind, rect, cursor, &mut dom, ring)
             .await;
-        self.page
-            .send(Message::Show, Some(page.tab_id), None)
-            .await;
+        self.page.send(Message::Show, Some(page.tab_id), None).await;
         result
     }
     #[allow(clippy::too_many_arguments)] // Capture context stays explicit across CDP steps.
@@ -816,7 +821,7 @@ impl Browser {
 
 /// The shell's command line up to its own switches, inside a memory-limited scope if possible.
 fn shell_command(shell: &Path, scope: &Scope, memory: &str) -> Command {
-    let mut command = match &scope.0 {
+    match &scope.0 {
         Some(unit) => {
             let mut command = Command::new("systemd-run");
             command.args([
@@ -835,20 +840,18 @@ fn shell_command(shell: &Path, scope: &Scope, memory: &str) -> Command {
             command
         }
         None => Command::new(shell),
-    };
-    if cfg!(target_os = "linux") {
-        // Native Wayland where there is one, X11 otherwise.
-        command.arg("--ozone-platform-hint=auto");
     }
-    command
 }
+
+/// Set once the shell reports that its window was closed, by the user or on request.
+type ClosedFlag = Arc<std::sync::atomic::AtomicBool>;
 
 /// Start a shell with its command channel open. Chromium's own log goes to `shell.log`.
 fn spawn_shell(
     mut command: Command,
     shell: &Path,
     directory: &Path,
-) -> Result<(Child, ChildStdin)> {
+) -> Result<(Child, ChildStdin, ClosedFlag)> {
     let log = std::fs::File::create(directory.join("shell.log"))?;
     command
         .stdin(Stdio::piped())
@@ -859,15 +862,21 @@ fn spawn_shell(
         std::io::Error::new(error.kind(), format!("{}: {error}", shell.display()))
     })?;
     let stdin = child.stdin.take().ok_or(Error::Closed)?;
+    let closed = ClosedFlag::default();
     if let Some(stdout) = child.stdout.take() {
+        let closed = closed.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
+                let event = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_default();
+                if event["event"] == "closed" {
+                    closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 tracing::debug!(line, "shell");
             }
         });
     }
-    Ok((child, stdin))
+    Ok((child, stdin, closed))
 }
 
 /// One command for a shell: a line of JSON on its stdin.
@@ -908,7 +917,7 @@ impl AppWindow {
             .arg(format!("--zuruf-theme={theme}"))
             .arg("--zuruf-app-only")
             .args(args);
-        let (child, stdin) = spawn_shell(command, shell, directory)?;
+        let (child, stdin, _closed) = spawn_shell(command, shell, directory)?;
         Ok(Self {
             pid: child.id(),
             child: Mutex::new(child),
@@ -963,8 +972,9 @@ fn free_port() -> Result<u16> {
 /// Ask the shell's DevTools endpoint for its browser-level WebSocket address.
 async fn debugger_endpoint(port: u16) -> Result<String> {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
-    let request =
-        format!("GET /json/version HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let request = format!(
+        "GET /json/version HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
     stream.write_all(request.as_bytes()).await?;
     let mut response = Vec::new();
     let mut chunk = [0u8; 2048];
@@ -976,7 +986,8 @@ async fn debugger_endpoint(port: u16) -> Result<String> {
         response.extend_from_slice(&chunk[..read]);
         let text = String::from_utf8_lossy(&response);
         let body = text.split_once("\r\n\r\n").map(|(_, body)| body);
-        if let Some(value) = body.and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
+        if let Some(value) =
+            body.and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
             && let Some(address) = value["webSocketDebuggerUrl"].as_str()
         {
             return Ok(address.to_owned());

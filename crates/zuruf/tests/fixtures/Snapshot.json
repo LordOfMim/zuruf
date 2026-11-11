@@ -289,7 +289,7 @@
       "theme": "system",
       "language": "de",
       "openPanelOnReviewStart": true,
-      "browser": "separate"
+      "browser": "integrated"
     },
     "dataDir": "example"
   }

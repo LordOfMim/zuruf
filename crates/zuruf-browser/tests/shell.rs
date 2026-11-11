@@ -40,7 +40,11 @@ async fn serve_fixture() -> String {
                 let read = stream.read(&mut request).await.unwrap_or(0);
                 let text = String::from_utf8_lossy(&request[..read]);
                 let path = text.split_whitespace().nth(1).unwrap_or("/");
-                let name = path.split('?').next().unwrap_or("/").trim_start_matches('/');
+                let name = path
+                    .split('?')
+                    .next()
+                    .unwrap_or("/")
+                    .trim_start_matches('/');
                 let name = if name.is_empty() { "index.html" } else { name };
                 let response = match tokio::fs::read(fixture_directory().join(name)).await {
                     Ok(body) if !name.contains("..") => {
@@ -52,8 +56,10 @@ async fn serve_fixture() -> String {
                         head.extend(body);
                         head
                     }
-                    _ => b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
-                        .to_vec(),
+                    _ => {
+                        b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                            .to_vec()
+                    }
                 };
                 let _ = stream.write_all(&response).await;
             });
@@ -87,10 +93,7 @@ impl Agent {
         self.next += 1;
         let id = self.next;
         let command = json!({"id": id, "method": method, "params": params, "sessionId": session});
-        self.socket
-            .send(command.to_string().into())
-            .await
-            .unwrap();
+        self.socket.send(command.to_string().into()).await.unwrap();
         loop {
             let message = tokio::time::timeout(Duration::from_secs(10), self.socket.next())
                 .await
@@ -188,7 +191,10 @@ async fn session_in_shell_window() {
     browser
         .set_review_mode(
             true,
-            vec![binding("capture.viewport", "KeyW"), binding("speech.toggle", "KeyR")],
+            vec![
+                binding("capture.viewport", "KeyW"),
+                binding("speech.toggle", "KeyR"),
+            ],
         )
         .await
         .unwrap();
@@ -247,7 +253,10 @@ async fn session_in_shell_window() {
         .expect("region capture");
     assert_eq!(
         image_size(&region.raw_png),
-        ((200.0 * scale).round() as u32, (120.0 * scale).round() as u32)
+        (
+            (200.0 * scale).round() as u32,
+            (120.0 * scale).round() as u32
+        )
     );
 
     // The element picker describes what is under the pointer.
@@ -301,7 +310,10 @@ async fn session_in_shell_window() {
     assert!(tabs.iter().any(|tab| tab.id == created));
 
     // The daemon opens tabs the same way.
-    let opened = browser.open_tab(&format!("{origin}/popup.html")).await.unwrap();
+    let opened = browser
+        .open_tab(&format!("{origin}/popup.html"))
+        .await
+        .unwrap();
     assert_eq!(browser.list_tabs().await.unwrap().len(), 3);
     assert_ne!(opened, created);
 

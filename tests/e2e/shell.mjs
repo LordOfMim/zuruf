@@ -8,7 +8,7 @@
 // directory (or ZURUF_E2E_BINARY and ZURUF_SHELL), and optionally ZURUF_SHELL_ARGS, for example
 // "--no-sandbox --disable-gpu" inside a container.
 import { chromium } from "../../apps/page/node_modules/playwright-core/index.mjs";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -221,6 +221,37 @@ try {
   const stopped = await api("POST", `/sessions/${session.id}/stop`, {});
   assert.equal(stopped.state, "stopped");
   passed("session stops");
+
+  // A browser that dies is noticed, and the session can simply be started again.
+  const sessionState = async () =>
+    (await state()).sessions.find((entry) => entry.id === session.id)?.state;
+  assert.equal((await api("POST", `/sessions/${session.id}/start`, {})).state, "running");
+  await new Promise((done) =>
+    execFile("pkill", ["-KILL", "-f", `zuruf-profile=${env.ZURUF_DATA_DIR}`], done),
+  );
+  await until("the crash to be noticed", async () => (await sessionState()) === "crashed");
+  assert.equal((await api("POST", `/sessions/${session.id}/start`, {})).state, "running");
+  await until("the page after the restart", async () =>
+    (await state()).sessions
+      .find((entry) => entry.id === session.id)
+      ?.tabs.some((tab) => tab.url.startsWith(fixture) && tab.scriptable),
+  );
+  passed("a crashed browser is noticed and restarts");
+
+  // Closing the window is an ordinary ending, not a crash. Only the compositor can ask a
+  // window to close the way a person does, so this needs one we know how to talk to.
+  const closeRequest = process.env.SWAYSOCK
+    ? ["swaymsg", ["[app_id=zuruf]", "kill"]]
+    : process.env.HYPRLAND_INSTANCE_SIGNATURE
+      ? ["hyprctl", ["dispatch", "closewindow", "class:zuruf"]]
+      : null;
+  if (closeRequest) {
+    await new Promise((done) => execFile(closeRequest[0], closeRequest[1], done));
+    await until("the closed window to be noticed", async () => (await sessionState()) === "stopped");
+    passed("closing the window stops the session");
+  } else {
+    console.log("SKIP closing the window (needs sway or Hyprland)");
+  }
 } catch (error) {
   console.error(log.split("\n").slice(-15).join("\n"));
   throw error;
