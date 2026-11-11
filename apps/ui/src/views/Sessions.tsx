@@ -7,6 +7,7 @@ import { sessionModeLabel, shortUrl } from "../lib/text";
 import { Segmented } from "./Settings";
 
 function controlLine(session: BrowserSession): string {
+  if (session.state === "starting") return "wird wiederhergestellt …";
   if (session.state !== "running") return session.state === "crashed" ? "abgestürzt" : "aus";
   if (session.control.owner === "agent") return `${session.control.agentId ?? "Agent"} steuert`;
   return session.tabs.find((tab) => tab.active)?.title ?? "läuft";
@@ -34,7 +35,7 @@ function SessionRow(props: { session: BrowserSession; store: AppStore }) {
           </Button>
         </Show>
         <Button size="sm" onClick={() => commands.sessionCommand(session().id, running() ? "stop" : "start")}>
-          {running() ? "Schließen" : "Öffnen"}
+          {running() ? "Stoppen" : "Öffnen"}
         </Button>
       </div>
 

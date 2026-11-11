@@ -133,6 +133,12 @@ pub struct CaptureResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 pub trait BrowserController: Send + Sync {
+    fn restart_session(&self, source: BrowserSession) -> AdapterFuture<'_, BrowserSession> {
+        Box::pin(async move {
+            self.stop_session(source.id.clone()).await?;
+            self.start_session(source).await
+        })
+    }
     fn start_session(&self, session: BrowserSession) -> AdapterFuture<'_, BrowserSession>;
     fn stop_session(&self, session: Id) -> AdapterFuture<'_, ()>;
     fn duplicate_session(

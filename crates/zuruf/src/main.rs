@@ -115,10 +115,6 @@ async fn run() -> Result<(), Error> {
             if seed_demo {
                 daemon.seed_demo().await?;
             }
-            if let Err(error) = daemon.recover().await {
-                let _ = daemon.close().await;
-                return Err(error);
-            }
             let listener = match bind(port).await {
                 Ok(listener) => listener,
                 Err(error) => {
@@ -130,34 +126,45 @@ async fn run() -> Result<(), Error> {
                 port = listener.local_addr().map_err(StoreError::from)?.port(),
                 "daemon listening"
             );
-            let result = axum::serve(listener, daemon.router())
-                .with_graceful_shutdown({
-                    let daemon = daemon.clone();
-                    async move {
-                        tokio::select! { _ = daemon.stopped() => {}, _ = async {
-                            #[cfg(unix)]
-                            {
-                                if let Ok(mut term) = tokio::signal::unix::signal(
-                                    tokio::signal::unix::SignalKind::terminate(),
-                                ) {
-                                    tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}
-                                } else {
-                                    let _ = tokio::signal::ctrl_c().await;
-                                }
-                            }
-                            #[cfg(not(unix))]
-                            {
+            let server = axum::serve(listener, daemon.router()).with_graceful_shutdown({
+                let daemon = daemon.clone();
+                async move {
+                    tokio::select! { _ = daemon.stopped() => {}, _ = async {
+                        #[cfg(unix)]
+                        {
+                            if let Ok(mut term) = tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::terminate(),
+                            ) {
+                                tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}
+                            } else {
                                 let _ = tokio::signal::ctrl_c().await;
                             }
-                        } => {} }
-                        if let Err(e) = daemon.close().await {
-                            tracing::warn!(error=%e, "shutdown cleanup failed");
                         }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = tokio::signal::ctrl_c().await;
+                        }
+                    } => {} }
+                    if let Err(e) = daemon.close().await {
+                        tracing::warn!(error=%e, "shutdown cleanup failed");
                     }
-                })
-                .await;
+                }
+            });
+            // Serve the panel before recovery launches its browser windows. Otherwise a
+            // restored panel can load an error page while the HTTP port is still closed.
+            let recovery = async {
+                tokio::select! {
+                    result = daemon.recover() => result,
+                    _ = daemon.stopped() => Ok(()),
+                }
+            };
+            let result = tokio::try_join!(recovery, async {
+                server
+                    .await
+                    .map_err(|error| Error::from(StoreError::from(error)))
+            });
             daemon.close().await?;
-            result.map_err(StoreError::from)?;
+            result?;
         }
         command => {
             let token = tokio::fs::read_to_string(paths.state.join("token"))

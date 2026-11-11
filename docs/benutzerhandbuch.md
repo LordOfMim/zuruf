@@ -103,7 +103,7 @@ In die Adressleiste getippte Adressen ohne Schema werden für `localhost` und IP
 
 Das Fenster ist ein Review-Browser, kein Alltagsbrowser: Downloads, Berechtigungsabfragen (Kamera, Mikrofon, Standort) und eine Passwortverwaltung gibt es nicht. Anmeldungen bleiben im Profil der Sitzung erhalten.
 
-Wer das Sitzungsfenster schließt, beendet die Sitzung; sie lässt sich unter „Sitzungen“ oder mit `zuruf open` jederzeit wieder starten. Stürzt der Browser ab, zeigt Zuruf die Sitzung als abgestürzt an – ein erneuter Start genügt.
+Wird das Sitzungsfenster geschlossen, stürzt der Browser ab oder reagiert er nicht mehr, öffnet Zuruf ihn automatisch erneut. Die zuletzt gespeicherten Tab-Adressen, das Sitzungsprofil und die über die App eingestellte Seitenbreite bleiben erhalten. Falls ein Start fehlschlägt, versucht Zuruf es mit wachsendem Abstand erneut. Unter „Sitzungen“ beendet **Stoppen** die Sitzung einschließlich aller ausstehenden Startversuche dauerhaft. Auch nach einem Dienstneustart werden aktive Sitzungen wiederhergestellt; gestoppte bleiben beendet. Nicht gespeicherte Formulareingaben sind kein Bestandteil dieser Wiederherstellung.
 
 ## Ein Fenster oder zwei
 

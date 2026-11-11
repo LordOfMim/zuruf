@@ -9,10 +9,10 @@
 // "--no-sandbox --disable-gpu" inside a container.
 import { chromium } from "../../apps/page/node_modules/playwright-core/index.mjs";
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, readlink, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 
@@ -70,16 +70,22 @@ async function api(method, path, body) {
   return data;
 }
 const state = () => api("GET", "/state");
+async function sessionPids(session) {
+  const profile = `--zuruf-profile=${join(env.ZURUF_DATA_DIR, "sessions", session.id, "profile")}`;
+  const pids = await Promise.all((await readdir("/proc")).filter((pid) => /^\d+$/.test(pid)).map(async (pid) => {
+    try {
+      const args = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0");
+      return args.includes(profile) && !args.some((arg) => arg.startsWith("--type="))
+        && basename(await readlink(`/proc/${pid}/exe`)) === "zuruf-shell" ? Number(pid) : null;
+    } catch { return null; }
+  }));
+  return pids.filter(Boolean);
+}
 
 let daemon;
 let browser;
 let log = "";
-let existingWindows = new Set();
 try {
-  if (process.env.HYPRLAND_INSTANCE_SIGNATURE) {
-    const { stdout } = await exec("hyprctl", ["clients", "-j"]);
-    existingWindows = new Set(JSON.parse(stdout).map((window) => window.address));
-  }
   daemon = spawn(binary, ["daemon"], { cwd: root, env, stdio: ["ignore", "ignore", "pipe"] });
   daemon.stderr.on("data", (chunk) => (log += chunk));
   await until("the daemon", async () => {
@@ -273,36 +279,38 @@ try {
   assert.equal(stopped.state, "stopped");
   passed("session stops");
 
-  // A browser that dies is noticed, and the session can simply be started again.
+  // A browser that dies comes back without another start request.
   const sessionState = async () =>
     (await state()).sessions.find((entry) => entry.id === session.id)?.state;
   assert.equal((await api("POST", `/sessions/${session.id}/start`, {})).state, "running");
-  await new Promise((done) =>
-    execFile("pkill", ["-KILL", "-f", `zuruf-profile=${env.ZURUF_DATA_DIR}`], done),
-  );
-  await until("the crash to be noticed", async () => (await sessionState()) === "crashed");
-  assert.equal((await api("POST", `/sessions/${session.id}/start`, {})).state, "running");
+  const oldTabs = (await state()).sessions.find((entry) => entry.id === session.id).tabs.map((tab) => tab.id);
+  const beforeCrash = await sessionPids(session);
+  assert.equal(beforeCrash.length, 1);
+  process.kill(beforeCrash[0], "SIGKILL");
   await until("the page after the restart", async () =>
     (await state()).sessions
       .find((entry) => entry.id === session.id)
-      ?.tabs.some((tab) => tab.url.startsWith(fixture) && tab.scriptable),
+      ?.tabs.some((tab) => !oldTabs.includes(tab.id) && tab.url.startsWith(fixture) && tab.scriptable)
+      && (await sessionState()) === "running",
   );
-  passed("a crashed browser is noticed and restarts");
+  passed("a crashed browser restarts automatically");
 
-  // Closing the window is an ordinary ending, not a crash. Only the compositor can ask a
-  // window to close the way a person does, so this needs one we know how to talk to.
+  // Losing the window also recovers; only the explicit stop command ends the session.
   let ownWindow;
+  const ownPids = await sessionPids(session);
+  assert.equal(ownPids.length, 1);
+  const ownPid = ownPids[0];
   if (process.env.HYPRLAND_INSTANCE_SIGNATURE) {
     const { stdout } = await exec("hyprctl", ["clients", "-j"]);
     const windows = JSON.parse(stdout).filter(
-      (window) => window.class === "zuruf" && !existingWindows.has(window.address),
+      (window) => window.class === "zuruf" && window.pid === ownPid,
     );
     assert.equal(windows.length, 1, "close only the test's session window");
     ownWindow = windows[0].address;
     assert.match(ownWindow, /^0x[0-9a-f]+$/i);
   }
   const closeRequest = process.env.SWAYSOCK
-    ? ["swaymsg", ["[app_id=zuruf]", "kill"]]
+    ? ["swaymsg", [`[app_id=zuruf pid=${ownPid}]`, "kill"]]
     : process.env.HYPRLAND_INSTANCE_SIGNATURE
       ? ["hyprctl", ["dispatch", `hl.dsp.window.close({ window = "address:${ownWindow}" })`]]
       : null;
@@ -311,13 +319,21 @@ try {
       if (closeRequest[0] !== "hyprctl") throw error;
       await exec("hyprctl", ["dispatch", "closewindow", `address:${ownWindow}`]);
     });
-    await until("the closed window to be noticed", async () => (await sessionState()) === "stopped");
-    passed("closing the window stops the session");
+    await until("the closed window to recover", async () => {
+      if ((await sessionState()) !== "running") return false;
+      const pids = await sessionPids(session);
+      return pids.length === 1 && pids[0] !== ownPid;
+    });
+    passed("closing the window restores the running session");
   } else {
     console.log("SKIP closing the window (needs sway or Hyprland)");
   }
+  assert.equal((await api("POST", `/sessions/${session.id}/stop`, {})).state, "stopped");
+  await sleep(800);
+  assert.equal(await sessionState(), "stopped", "a deliberate stop cancels recovery");
+  passed("an explicit stop stays stopped");
 } catch (error) {
-  console.error(log.split("\n").slice(-15).join("\n"));
+  console.error(log.split("\n").slice(-15).join("\n").replace(/([#?](?:code|token)=)[^\s"<>]+/g, "$1<redacted>"));
   throw error;
 } finally {
   await browser?.close().catch(() => {});

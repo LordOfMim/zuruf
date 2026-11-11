@@ -189,6 +189,9 @@ impl Daemon {
     }
     pub async fn close(&self) -> Result<()> {
         self.shutdown();
+        if let Some(runtime) = self.0.real.get() {
+            runtime.browsers.cancel_recovery();
+        }
         for task in self.snapshot().await?.tasks {
             self.revoke_mcp_task(&task.id);
         }
@@ -197,11 +200,12 @@ impl Daemon {
             failure.get_or_insert(e.into());
         }
         if let Some(runtime) = self.0.real.get() {
-            runtime.browsers.close_app().await;
-        }
-        for session in self.snapshot().await?.sessions {
-            if let Err(e) = self.0.browser.stop_session(session.id).await {
-                failure.get_or_insert(e.into());
+            runtime.browsers.shutdown().await;
+        } else {
+            for session in self.snapshot().await?.sessions {
+                if let Err(e) = self.0.browser.stop_session(session.id).await {
+                    failure.get_or_insert(e.into());
+                }
             }
         }
         match failure {
@@ -389,10 +393,18 @@ impl Daemon {
         })
         .await?;
         for s in self.snapshot().await?.sessions {
-            if s.state == BrowserSessionState::Running {
+            if matches!(
+                s.state,
+                BrowserSessionState::Running
+                    | BrowserSessionState::Starting
+                    | BrowserSessionState::Crashed
+            ) {
                 let id = s.id.clone();
                 match self.0.browser.start_session(s).await {
                     Ok(updated) => {
+                        if self.0.real.get().is_some() {
+                            continue;
+                        }
                         self.mutate(move |s, _| {
                             if let Some(session) =
                                 s.sessions.iter_mut().find(|s| s.id == updated.id)
@@ -405,6 +417,9 @@ impl Daemon {
                     }
                     Err(error) => {
                         tracing::warn!(error=%error, "session restart failed");
+                        if self.0.real.get().is_some() {
+                            continue;
+                        }
                         self.mutate(move |s, _| {
                             if let Some(session) = s.sessions.iter_mut().find(|s| s.id == id) {
                                 session.state = BrowserSessionState::Crashed;
@@ -2046,10 +2061,7 @@ async fn api(
                 .ok_or_else(missing)?;
             let updated = match operation {
                 "start" => app.0.browser.start_session(s).await?,
-                "restart" => {
-                    app.0.browser.stop_session(key.clone()).await?;
-                    app.0.browser.start_session(s).await?
-                }
+                "restart" => app.0.browser.restart_session(s).await?,
                 "stop" => {
                     app.0.browser.stop_session(key.clone()).await?;
                     BrowserSession {
@@ -2078,12 +2090,24 @@ async fn api(
                     s
                 }
             };
-            app.mutate(move |s, _| {
-                s.sessions.retain(|x| x.id != updated.id);
-                s.sessions.push(updated.clone());
-                val(updated)
-            })
-            .await?
+            if app.0.real.get().is_some() {
+                // The session owner committed the newest intent. Never overwrite a later
+                // stop/restart or live tab event with a stale HTTP request's session.
+                val(app
+                    .snapshot()
+                    .await?
+                    .sessions
+                    .into_iter()
+                    .find(|s| s.id == updated.id)
+                    .ok_or_else(missing)?)?
+            } else {
+                app.mutate(move |s, _| {
+                    s.sessions.retain(|x| x.id != updated.id);
+                    s.sessions.push(updated.clone());
+                    val(updated)
+                })
+                .await?
+            }
         }
         ("GET", "projects" | "profiles", "", _) => {
             let s = val(app.snapshot().await?)?;
