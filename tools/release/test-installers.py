@@ -30,6 +30,30 @@ def nsis(executable, destination_option, destination):
     subprocess.run(f"{command} {destination_option}={destination}", check=True)
 
 
+def macos(directory, prefix):
+    """Install from the disk image the way a user would: copy the app out of it."""
+    mount = directory / "image"
+    mount.mkdir()
+    subprocess.run(["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(mount), str(ROOT / "artifacts/Zuruf-macos-arm64.dmg")], check=True)
+    try:
+        assert (mount / "Applications").is_symlink()
+        app = prefix / "Zuruf.app"
+        subprocess.run(["ditto", str(mount / "Zuruf.app"), str(app)], check=True)
+    finally:
+        subprocess.run(["hdiutil", "detach", str(mount)], check=True)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+    helpers = app / "Contents/Frameworks"
+    for suffix in ["", " (GPU)", " (Renderer)", " (Plugin)", " (Alerts)"]:
+        assert (helpers / f"zuruf-shell Helper{suffix}.app/Contents/MacOS/zuruf-shell Helper{suffix}").is_file()
+    smoke(app)
+    # An update replaces the bundle; user data lives in Application Support and stays.
+    shutil.rmtree(app)
+    with zipfile.ZipFile(ROOT / "artifacts/zuruf-macos-arm64.zip") as archive:
+        names = archive.namelist()
+        assert "Zuruf.app/Contents/MacOS/zuruf-launcher" in names
+        assert "Zuruf.app/Contents/Info.plist" in names
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="zuruf installer test ") as temporary:
         directory = Path(temporary)
@@ -37,7 +61,9 @@ def main():
         prefix.mkdir()
         unrelated = prefix / "keep unrelated file.txt"
         unrelated.write_text("not owned by Zuruf")
-        if os.name == "nt":
+        if sys.platform == "darwin":
+            macos(directory, prefix)
+        elif os.name == "nt":
             installer = ROOT / "artifacts/Zuruf-Setup-windows-x64.exe"
             nsis(installer, "/D", prefix)
             wait_for("Windows installation", lambda: (prefix / "Uninstall.exe").is_file())

@@ -29,7 +29,7 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: zuruf-*-x64
+          pattern: zuruf-*
           path: artifacts
           merge-multiple: true
       - name: Validate tag and checksums
@@ -39,6 +39,7 @@ jobs:
         with:
           subject-path: |
             artifacts/*.exe
+            artifacts/*.dmg
             artifacts/*.zip
             artifacts/*.deb
             artifacts/*.tar.gz

@@ -11,12 +11,14 @@ VERSION = "0.9.3"
 TARGETS = {
     "Linux": ("x86_64-unknown-linux-musl", "3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4"),
     "Windows": ("x86_64-pc-windows-msvc", "9e2942533ef1c592c4a70bdb384cae1550a3f5fc9ae40379b6662e3d2f16fe02"),
+    "Darwin": ("aarch64-apple-darwin", "45520df8680978a6e7c4023ace0e3f311c73efc208cd68e5a7f4ed4822fa0349"),
 }
+MACHINES = {"Linux": {"x86_64", "amd64"}, "Windows": {"x86_64", "amd64"}, "Darwin": {"arm64"}}
 
 
 def install():
-    if platform.machine().lower() not in {"amd64", "x86_64"}:
-        raise SystemExit("Release tooling currently supports x64 hosts")
+    if platform.machine().lower() not in MACHINES.get(platform.system(), set()):
+        raise SystemExit("Release tooling supports x64 Linux/Windows and Apple silicon macOS hosts")
     target, checksum = TARGETS[platform.system()]
     directory = ROOT / ".release-tools" / f"cargo-about-{VERSION}"
     executable = directory / ("cargo-about.exe" if os.name == "nt" else "cargo-about")
