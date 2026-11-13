@@ -3340,7 +3340,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zuruf"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "clap",
@@ -3373,7 +3373,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-browser"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3401,7 +3401,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-hypr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3412,7 +3412,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3425,7 +3425,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-platform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "getrandom 0.4.3",
  "tempfile",
@@ -3434,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-shell"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cef",
  "objc2",
@@ -3446,7 +3446,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-speech"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "hound",
@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3477,7 +3477,7 @@ dependencies = [
 
 [[package]]
 name = "zuruf-t3"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "reqwest",
