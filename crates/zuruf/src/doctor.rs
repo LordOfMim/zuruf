@@ -26,11 +26,14 @@ fn version(program: &str) -> bool {
 }
 pub fn run() -> bool {
     // The browser is Zuruf's own shell with Chromium built in; it must sit next to its library.
+    // On macOS the library is a framework in the app bundle's Frameworks folder.
     let shell = zuruf_browser::default_shell_path();
     let library = shell.parent().is_some_and(|directory| {
         directory
             .join(if cfg!(windows) {
                 "libcef.dll"
+            } else if cfg!(target_os = "macos") {
+                "../Frameworks/Chromium Embedded Framework.framework"
             } else {
                 "libcef.so"
             })
@@ -47,12 +50,29 @@ pub fn run() -> bool {
             ""
         }
     );
-    if cfg!(target_os = "linux") {
-        let _ = version("voxtype");
-        println!("Hinweis: Voxtype/PipeWire sind optional für das Diktat.");
-    } else {
+    if cfg!(windows) {
         println!(
-            "Hinweis: Diktat und desktopweite Hotkeys stehen derzeit nur unter Linux/Hyprland bereit."
+            "Hinweis: Diktat und desktopweite Hotkeys stehen unter Windows noch nicht bereit."
+        );
+    } else {
+        if cfg!(target_os = "linux") {
+            let _ = version("voxtype");
+        }
+        let whisper = Command::new("whisper-cli")
+            .arg("--help")
+            .output()
+            .is_ok_and(|o| o.status.success());
+        println!(
+            "{}: whisper-cli (whisper.cpp, optional)",
+            if whisper { "ok" } else { "fehlt" }
+        );
+        println!(
+            "Hinweis: Diktat ist optional. Dienst und API-Schlüssel unter Einstellungen › Diktat wählen{}.",
+            if cfg!(target_os = "macos") {
+                "; desktopweite Hotkeys gibt es unter macOS nicht"
+            } else {
+                ""
+            }
         );
     }
     ok = version("t3") && ok;

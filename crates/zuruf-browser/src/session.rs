@@ -61,8 +61,10 @@ pub fn default_shell_path() -> PathBuf {
     if let Some(path) = std::env::var_os("ZURUF_SHELL") {
         return path.into();
     }
+    // Resolved, so a `zuruf` symlinked onto the PATH (macOS) still finds its app bundle.
     let beside = std::env::current_exe()
         .ok()
+        .map(|exe| exe.canonicalize().unwrap_or(exe))
         .and_then(|exe| exe.parent().map(Path::to_owned));
     if let Some(directory) = beside {
         let candidates = [
