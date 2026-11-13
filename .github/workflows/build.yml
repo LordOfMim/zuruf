@@ -20,8 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 runs on Apple silicon; the macOS package targets arm64 only.
-        os: [ubuntu-22.04, windows-2022, macos-14]
+        # macos-15 runs on Apple silicon; the macOS package targets arm64 only.
+        os: [ubuntu-22.04, windows-2022, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
