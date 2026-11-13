@@ -7,6 +7,7 @@ import type {
   Settings,
   Project,
   Snapshot,
+  SpeechService,
   Task,
   TaskStatus,
 } from "@zuruf/protocol";
@@ -41,6 +42,36 @@ function placeholderShot(kind: Annotation["type"]): string {
     <rect x="36" y="130" width="120" height="8" rx="4" fill="#c9c8c2"/><rect x="36" y="148" width="200" height="8" rx="4" fill="#e3e2dc"/>
     ${mark}</svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function createDemoSpeechServices(): SpeechService[] {
+  const cloud = (
+    id: SpeechService["id"],
+    label: string,
+    keyEnv: string | null,
+    defaultModel: string,
+    defaultEndpoint: string | null,
+  ): SpeechService => ({
+    id,
+    label,
+    supported: true,
+    local: false,
+    needsKey: keyEnv !== null,
+    key: id === "groq" ? "environment" : "none",
+    keyEnv,
+    defaultModel,
+    defaultEndpoint,
+  });
+  return [
+    { id: "voxtype", label: "Voxtype", supported: true, local: true, needsKey: false, key: "none" },
+    { id: "whisper_cpp", label: "whisper.cpp", supported: true, local: true, needsKey: false, key: "none" },
+    cloud("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4o-mini-transcribe", "https://api.openai.com/v1"),
+    cloud("groq", "Groq", "GROQ_API_KEY", "whisper-large-v3-turbo", "https://api.groq.com/openai/v1"),
+    cloud("mistral", "Mistral", "MISTRAL_API_KEY", "voxtral-mini-latest", "https://api.mistral.ai/v1"),
+    cloud("deepgram", "Deepgram", "DEEPGRAM_API_KEY", "nova-3", "https://api.deepgram.com/v1"),
+    cloud("elevenlabs", "ElevenLabs", "ELEVENLABS_API_KEY", "scribe_v2", "https://api.elevenlabs.io/v1"),
+    cloud("openai_compatible", "OpenAI-kompatibel", null, "whisper-1", null),
+  ];
 }
 
 function createDemoSnapshot(): Snapshot {
@@ -327,6 +358,7 @@ function emptied(snapshot: Snapshot): Snapshot {
 }
 
 export function createDemoTransport(empty = false): Transport {
+  const speechServices = createDemoSpeechServices();
   const snapshot = empty ? emptied(createDemoSnapshot()) : createDemoSnapshot();
   const listeners = new Set<(event: ServerEnvelope) => void>();
   let seq = 0;
@@ -597,6 +629,16 @@ export function createDemoTransport(empty = false): Transport {
       if (method === "PATCH") Object.assign(target, data);
       emit({ type: "session.upserted", payload: target });
       return reply(target);
+    }
+
+    if (resource === "speech" && resourceId === "services") {
+      // Path: /speech/services/:id/key
+      const service = speechServices.find((entry) => entry.id === verb);
+      if (service) {
+        service.key = method === "PUT" && String(data.apiKey ?? "").trim() ? "stored" : "none";
+        return reply(service);
+      }
+      return reply(speechServices);
     }
 
     if (resource === "settings") {
