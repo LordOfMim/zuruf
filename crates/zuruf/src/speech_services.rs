@@ -200,6 +200,7 @@ pub fn build(
 mod tests {
     use super::*;
 
+    #[cfg(not(windows))]
     fn settings(provider: SpeechProvider) -> SettingsSpeech {
         let mut speech = zuruf_core::Settings::default().speech;
         speech.provider = provider;

@@ -633,6 +633,7 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    #[cfg(unix)]
     fn tempfile_dir() -> PathBuf {
         let directory =
             std::env::temp_dir().join(format!("zuruf-whisper-{}", uuid::Uuid::new_v4()));
