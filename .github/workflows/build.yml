@@ -20,7 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        # macos-15 runs on Apple silicon; the macOS package targets arm64 only.
+        os: [ubuntu-22.04, windows-2022, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
@@ -50,6 +51,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build clang pkg-config libgtk-3-dev libnss3 libnspr4 libasound2 libgbm1 libxshmfence1 libxss1 xvfb xauth
+      - name: macOS build dependencies
+        if: runner.os == 'macOS'
+        # cmake is part of the runner image; the CEF wrapper library also needs ninja.
+        run: brew install ninja
       - name: CEF version and native library search path
         run: |
           echo "CEF_VERSION=$(node tools/release/cef-version.mjs)" >> "$GITHUB_ENV"
@@ -69,7 +74,7 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Rust tests
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: cargo test --workspace --locked -j 4
       - name: Rust tests (Windows)
         if: runner.os == 'Windows'
@@ -77,14 +82,14 @@ jobs:
         shell: pwsh
         run: cargo test --workspace --locked -j 4
       - name: Rust lint
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
       - name: Rust lint (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: cargo clippy --workspace --all-targets --locked -j 4 -- -D warnings
       - name: Build release
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: cargo build --workspace --release --locked -j 4
       - name: Build release (Windows)
         if: runner.os == 'Windows'
@@ -104,9 +109,15 @@ jobs:
         env:
           ZURUF_SHELL_ARGS: --disable-gpu
         run: python tools/release/test-installers.py
+      - name: Test macOS disk image and native browser
+        if: runner.os == 'macOS'
+        env:
+          # The CI keychain must not stop the run with an access prompt.
+          ZURUF_SHELL_ARGS: --disable-gpu --use-mock-keychain
+        run: python tools/release/test-installers.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: zuruf-${{ runner.os }}-x64
+          name: zuruf-${{ runner.os }}-${{ runner.arch }}
           path: artifacts/*
           if-no-files-found: error
           compression-level: 0

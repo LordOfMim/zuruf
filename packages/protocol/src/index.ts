@@ -373,6 +373,35 @@ export interface BindingIssue {
   detail?: string | null;
 }
 
+// ───────────────────────────── Speech services
+
+export type SpeechProvider =
+  | "voxtype"
+  | "whisper_cpp"
+  | "openai"
+  | "groq"
+  | "mistral"
+  | "deepgram"
+  | "elevenlabs"
+  | "openai_compatible";
+
+/** GET /speech/services. API keys are write-only: only where one comes from is reported. */
+export interface SpeechService {
+  id: SpeechProvider;
+  label: string;
+  /** Usable on this platform (Voxtype is Linux-only). */
+  supported: boolean;
+  unsupportedReason?: string | null;
+  /** Audio stays on this machine. */
+  local: boolean;
+  needsKey: boolean;
+  /** stored: saved privately by Zuruf; environment: taken from keyEnv; none: missing. */
+  key: "stored" | "environment" | "none";
+  keyEnv?: string | null;
+  defaultModel?: string | null;
+  defaultEndpoint?: string | null;
+}
+
 export interface Settings {
   bindings: Binding[];
   capture: {
@@ -384,14 +413,24 @@ export interface Settings {
   };
   speech: {
     enabled: boolean;
-    /** continuous: own recording sliced at markers. daemon: Voxtype record start/stop with a gap. */
+    /** Where dictation is transcribed; see SpeechService. Older settings without it mean Voxtype. */
+    provider: SpeechProvider;
+    /** Voxtype only. continuous: own recording sliced at markers. daemon: Voxtype record start/stop with a gap. */
     backend: "continuous" | "daemon";
+    /**
+     * Voxtype: Whisper model name (empty: Voxtype's own configuration). whisper_cpp: path of the
+     * ggml model file. HTTP services: model id (empty: SpeechService.defaultModel).
+     */
     model?: string | null;
     language?: string | null;
+    /** Base URL of an HTTP service; empty: SpeechService.defaultEndpoint. Required for openai_compatible. */
+    endpoint?: string | null;
     /** Speech after a capture belongs to it ("after") or the speech before it ("before"). */
     attach: "after" | "before";
     keepAudio: boolean;
     voxtypePath: string;
+    /** whisper.cpp command-line program. */
+    whisperCppPath: string;
   };
   redaction: {
     stripQuery: boolean;
@@ -571,6 +610,10 @@ export interface ControlRequest {
  * POST   /tasks/:id/retry | /cancel               → Task
  * POST   /tasks/:id/resolve    ResolveRequest     → Task
  * POST   /tasks/:id/follow-up  FollowUpRequest    → Task
+ *
+ * GET    /speech/services                         → SpeechService[]
+ * PUT    /speech/services/:id/key { apiKey }      → SpeechService   stored privately, never returned
+ * DELETE /speech/services/:id/key                 → SpeechService
  *
  * GET    /settings                                → Settings
  * PUT    /settings             Settings           → Settings | 422 ApiError with issues

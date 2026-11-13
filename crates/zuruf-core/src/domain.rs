@@ -376,12 +376,15 @@ impl Default for Settings {
             },
             speech: SettingsSpeech {
                 enabled: false,
+                provider: SpeechProvider::platform_default(),
                 backend: SettingsSpeechBackend::Continuous,
                 model: None,
                 language: Some("de".into()),
+                endpoint: None,
                 attach: SettingsSpeechAttach::Before,
                 keep_audio: false,
                 voxtype_path: "voxtype".into(),
+                whisper_cpp_path: "whisper-cli".into(),
             },
             redaction: SettingsRedaction {
                 strip_query: true,

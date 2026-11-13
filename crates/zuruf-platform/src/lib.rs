@@ -130,6 +130,17 @@ pub fn background(command: &mut std::process::Command) {
     let _ = command;
 }
 
+/// A process that outlives the one starting it. On Unix it leaves the caller's process group,
+/// so neither Ctrl+C in a terminal nor the end of the launching app reaches it.
+pub fn detach(command: &mut std::process::Command) {
+    background(command);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

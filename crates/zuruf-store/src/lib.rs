@@ -46,7 +46,19 @@ impl Paths {
                 local.join("config"),
             )
         };
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        let (data, state, config) = {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .ok_or_else(|| StoreError::Invalid("HOME missing".into()))?;
+            let support = home.join("Library/Application Support/Zuruf");
+            (
+                support.join("data"),
+                support.join("state"),
+                support.join("config"),
+            )
+        };
+        #[cfg(not(any(windows, target_os = "macos")))]
         let (data, state, config) = {
             let home = std::env::var_os("HOME")
                 .map(PathBuf::from)

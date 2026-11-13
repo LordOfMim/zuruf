@@ -409,7 +409,7 @@ pub fn build(window: &Window) {
             right: 8,
         },
     )));
-    if let Some(add) = tool_button(NEW_TAB, "+", "Neuer Tab (Strg+T)") {
+    if let Some(add) = tool_button(NEW_TAB, "+", hint::NEW_TAB) {
         strip.add_child_view(Some(&mut View::from(&add)));
     }
 
@@ -425,9 +425,9 @@ pub fn build(window: &Window) {
     let mut reload = None;
     let mut tools = Vec::new();
     for (id, glyph, tooltip) in [
-        (BACK, "←", "Zurück (Alt+←)"),
-        (FORWARD, "→", "Vorwärts (Alt+→)"),
-        (RELOAD, "↻", "Neu laden (Strg+R)"),
+        (BACK, "←", hint::BACK),
+        (FORWARD, "→", hint::FORWARD),
+        (RELOAD, "↻", hint::RELOAD),
     ] {
         if let Some(button) = tool_button(id, glyph, tooltip) {
             toolbar.add_child_view(Some(&mut View::from(&button)));
@@ -615,7 +615,7 @@ pub fn adopt_tab(view: BrowserView, url: &str) {
     }));
     close.set_font_list(Some(&text(SYMBOL_FONT)));
     close.set_horizontal_alignment(HorizontalAlignment::CENTER);
-    close.set_tooltip_text(Some(&text("Tab schließen (Strg+W)")));
+    close.set_tooltip_text(Some(&text(hint::CLOSE_TAB)));
     close.set_accessible_name(Some(&text("Tab schließen")));
     close.set_minimum_size(Some(&Size {
         width: 24,
@@ -850,7 +850,7 @@ fn show_loading(reload: Option<LabelButton>, loading: bool) {
         let (glyph, tooltip) = if loading {
             ("×", "Laden abbrechen")
         } else {
-            ("↻", "Neu laden (Strg+R)")
+            ("↻", hint::RELOAD)
         };
         reload.set_text(Some(&text(glyph)));
         reload.set_tooltip_text(Some(&text(tooltip)));
@@ -1048,17 +1048,46 @@ mod key {
     pub const W: i32 = 0x57;
     pub const F5: i32 = 0x74;
     pub const F12: i32 = 0x7B;
+    pub const I: i32 = 0x49;
     pub const PLUS: i32 = 0xBB;
     pub const MINUS: i32 = 0xBD;
+    pub const OPEN_BRACKET: i32 = 0xDB;
+    pub const CLOSE_BRACKET: i32 = 0xDD;
 }
 const SHIFT: u32 = 1 << 1;
 const CONTROL: u32 = 1 << 2;
 const ALT: u32 = 1 << 3;
+const COMMAND: u32 = 1 << 7;
+/// The modifier of the usual browser shortcuts: Command on macOS, Control elsewhere.
+const PRIMARY: u32 = if cfg!(target_os = "macos") {
+    COMMAND
+} else {
+    CONTROL
+};
+
+/// Shortcut names in tooltips, as each platform writes them.
+#[cfg(target_os = "macos")]
+mod hint {
+    pub const NEW_TAB: &str = "Neuer Tab (⌘T)";
+    pub const CLOSE_TAB: &str = "Tab schließen (⌘W)";
+    pub const RELOAD: &str = "Neu laden (⌘R)";
+    pub const BACK: &str = "Zurück (⌘[)";
+    pub const FORWARD: &str = "Vorwärts (⌘])";
+}
+#[cfg(not(target_os = "macos"))]
+mod hint {
+    pub const NEW_TAB: &str = "Neuer Tab (Strg+T)";
+    pub const CLOSE_TAB: &str = "Tab schließen (Strg+W)";
+    pub const RELOAD: &str = "Neu laden (Strg+R)";
+    pub const BACK: &str = "Zurück (Alt+←)";
+    pub const FORWARD: &str = "Vorwärts (Alt+→)";
+}
 
 /// Browser shortcuts. Returns true when the key was ours, so the page never sees it.
 /// Review hotkeys are not handled here: the page agent decides those inside the page.
 pub fn shortcut(browser: &mut Browser, code: i32, modifiers: u32) -> bool {
-    let held = modifiers & (SHIFT | CONTROL | ALT);
+    let held = modifiers & (SHIFT | CONTROL | ALT | COMMAND);
+    let mac = cfg!(target_os = "macos");
     let in_tab = tab_of(browser).is_some();
     let zoom = |command: ZoomCommand| {
         if let Some(host) = browser.host() {
@@ -1066,23 +1095,27 @@ pub fn shortcut(browser: &mut Browser, code: i32, modifiers: u32) -> bool {
         }
     };
     match (held, code) {
-        (CONTROL, key::T) => new_tab(),
-        (CONTROL, key::W) => {
+        (PRIMARY, key::T) => new_tab(),
+        (PRIMARY, key::W) => {
             if let Some((id, _)) = active_tab() {
                 close_tab(id);
             }
         }
-        (CONTROL, key::L) => focus_address(),
+        (PRIMARY, key::L) => focus_address(),
+        // Control+Tab switches tabs on every platform, macOS included.
         (CONTROL, key::TAB) => step_tab(true),
         (held, key::TAB) if held == CONTROL | SHIFT => step_tab(false),
-        (CONTROL, key::R) | (0, key::F5) if in_tab => browser.reload(),
-        (held, key::R) if held == CONTROL | SHIFT && in_tab => browser.reload_ignore_cache(),
-        (ALT, key::LEFT) if in_tab => browser.go_back(),
-        (ALT, key::RIGHT) if in_tab => browser.go_forward(),
-        (CONTROL, key::PLUS) if in_tab => zoom(ZoomCommand::IN),
-        (CONTROL, key::MINUS) if in_tab => zoom(ZoomCommand::OUT),
-        (CONTROL, key::ZERO) if in_tab => zoom(ZoomCommand::RESET),
+        (PRIMARY, key::R) | (0, key::F5) if in_tab => browser.reload(),
+        (held, key::R) if held == PRIMARY | SHIFT && in_tab => browser.reload_ignore_cache(),
+        (ALT, key::LEFT) if in_tab && !mac => browser.go_back(),
+        (ALT, key::RIGHT) if in_tab && !mac => browser.go_forward(),
+        (COMMAND, key::OPEN_BRACKET | key::LEFT) if in_tab && mac => browser.go_back(),
+        (COMMAND, key::CLOSE_BRACKET | key::RIGHT) if in_tab && mac => browser.go_forward(),
+        (PRIMARY, key::PLUS) if in_tab => zoom(ZoomCommand::IN),
+        (PRIMARY, key::MINUS) if in_tab => zoom(ZoomCommand::OUT),
+        (PRIMARY, key::ZERO) if in_tab => zoom(ZoomCommand::RESET),
         (0, key::F12) => open_dev_tools(browser),
+        (held, key::I) if held == COMMAND | ALT && mac => open_dev_tools(browser),
         _ => return false,
     }
     true

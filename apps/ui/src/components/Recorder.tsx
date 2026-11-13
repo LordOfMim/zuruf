@@ -65,7 +65,7 @@ export function Recorder(props: { store: AppStore }) {
   const hint = () => {
     switch (speech()?.state) {
       case "unavailable":
-        return speech()?.error ?? "Voxtype nicht erreichbar";
+        return speech()?.error ?? "Diktat nicht verfügbar";
       case "busy_external":
         return "Voxtype nimmt woanders auf";
       case "error":

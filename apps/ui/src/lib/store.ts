@@ -13,6 +13,7 @@ import type {
   ServerEnvelope,
   Settings,
   Snapshot,
+  SpeechService,
   T3Catalog,
   T3ProjectRef,
   Task,
@@ -263,6 +264,12 @@ export function createAppStore(transport: Transport) {
     saveSettings: (next: Settings) => run(() => api<Settings>("PUT", "/settings", next)),
     checkBindings: (bindings: Binding[]) =>
       run(() => api<BindingIssue[]>("POST", "/settings/bindings/check", bindings)),
+    speechServices: () => run(() => api<SpeechService[]>("GET", "/speech/services")),
+    /** Keys are write-only: the reply only says where the key now comes from. */
+    saveSpeechKey: (id: SpeechService["id"], apiKey: string) =>
+      run(() => api<SpeechService>("PUT", `/speech/services/${id}/key`, { apiKey })),
+    removeSpeechKey: (id: SpeechService["id"]) =>
+      run(() => api<SpeechService>("DELETE", `/speech/services/${id}/key`)),
   };
 
   return {

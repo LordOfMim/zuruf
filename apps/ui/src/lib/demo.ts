@@ -7,6 +7,7 @@ import type {
   Settings,
   Project,
   Snapshot,
+  SpeechService,
   Task,
   TaskStatus,
 } from "@zuruf/protocol";
@@ -43,6 +44,36 @@ function placeholderShot(kind: Annotation["type"]): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function createDemoSpeechServices(): SpeechService[] {
+  const cloud = (
+    id: SpeechService["id"],
+    label: string,
+    keyEnv: string | null,
+    defaultModel: string,
+    defaultEndpoint: string | null,
+  ): SpeechService => ({
+    id,
+    label,
+    supported: true,
+    local: false,
+    needsKey: keyEnv !== null,
+    key: id === "groq" ? "environment" : "none",
+    keyEnv,
+    defaultModel,
+    defaultEndpoint,
+  });
+  return [
+    { id: "voxtype", label: "Voxtype", supported: true, local: true, needsKey: false, key: "none" },
+    { id: "whisper_cpp", label: "whisper.cpp", supported: true, local: true, needsKey: false, key: "none" },
+    cloud("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4o-mini-transcribe", "https://api.openai.com/v1"),
+    cloud("groq", "Groq", "GROQ_API_KEY", "whisper-large-v3-turbo", "https://api.groq.com/openai/v1"),
+    cloud("mistral", "Mistral", "MISTRAL_API_KEY", "voxtral-mini-latest", "https://api.mistral.ai/v1"),
+    cloud("deepgram", "Deepgram", "DEEPGRAM_API_KEY", "nova-3", "https://api.deepgram.com/v1"),
+    cloud("elevenlabs", "ElevenLabs", "ELEVENLABS_API_KEY", "scribe_v2", "https://api.elevenlabs.io/v1"),
+    cloud("openai_compatible", "OpenAI-kompatibel", null, "whisper-1", null),
+  ];
+}
+
 function createDemoSnapshot(): Snapshot {
   const projectId = "project-demo";
   const reviewId = "review-demo";
@@ -75,12 +106,14 @@ function createDemoSnapshot(): Snapshot {
     capture: { ringColor: "#ff5a36", ringRadius: 28, keepRawScreenshot: true, mode: "new_entry" },
     speech: {
       enabled: true,
+      provider: "voxtype",
       backend: "continuous",
       model: "large-v3-turbo",
       language: "de",
       attach: "after",
       keepAudio: false,
       voxtypePath: "/usr/bin/voxtype",
+      whisperCppPath: "whisper-cli",
     },
     redaction: { stripQuery: false, patterns: ["token", "session", "secret"] },
     t3: { cliPath: "~/.local/bin/t3", pollSeconds: 3 },
@@ -325,6 +358,7 @@ function emptied(snapshot: Snapshot): Snapshot {
 }
 
 export function createDemoTransport(empty = false): Transport {
+  const speechServices = createDemoSpeechServices();
   const snapshot = empty ? emptied(createDemoSnapshot()) : createDemoSnapshot();
   const listeners = new Set<(event: ServerEnvelope) => void>();
   let seq = 0;
@@ -595,6 +629,16 @@ export function createDemoTransport(empty = false): Transport {
       if (method === "PATCH") Object.assign(target, data);
       emit({ type: "session.upserted", payload: target });
       return reply(target);
+    }
+
+    if (resource === "speech" && resourceId === "services") {
+      // Path: /speech/services/:id/key
+      const service = speechServices.find((entry) => entry.id === verb);
+      if (service) {
+        service.key = method === "PUT" && String(data.apiKey ?? "").trim() ? "stored" : "none";
+        return reply(service);
+      }
+      return reply(speechServices);
     }
 
     if (resource === "settings") {

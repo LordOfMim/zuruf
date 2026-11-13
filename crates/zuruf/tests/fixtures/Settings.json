@@ -19,12 +19,15 @@
   },
   "speech": {
     "enabled": true,
+    "provider": "openai",
     "backend": "continuous",
     "model": "example",
     "language": "example",
+    "endpoint": "example",
     "attach": "after",
     "keepAudio": true,
-    "voxtypePath": "example"
+    "voxtypePath": "example",
+    "whisperCppPath": "example"
   },
   "redaction": {
     "stripQuery": true,

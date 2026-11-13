@@ -3,11 +3,14 @@ use crate::{commands, shell};
 use cef::*;
 use std::cell::RefCell;
 
-/// The platform's own key event, which CEF hands through untouched.
+/// The platform's own key event, which CEF hands through untouched. The bindings pass a
+/// reference on Linux and Windows and the raw NSEvent pointer on macOS.
 #[cfg(target_os = "linux")]
-type NativeEvent = sys::XEvent;
+type NativeEvent<'a> = Option<&'a mut sys::XEvent>;
 #[cfg(target_os = "windows")]
-type NativeEvent = sys::MSG;
+type NativeEvent<'a> = Option<&'a mut sys::MSG>;
+#[cfg(target_os = "macos")]
+type NativeEvent<'a> = *mut u8;
 
 /// A string for a structure that CEF reads after our callback has returned. The bindings pass
 /// such a field on only if it wraps a raw CEF string, which CEF then frees itself; a string
@@ -171,7 +174,7 @@ wrap_keyboard_handler! {
             &self,
             browser: Option<&mut Browser>,
             event: Option<&KeyEvent>,
-            _os_event: Option<&mut NativeEvent>,
+            _os_event: NativeEvent<'_>,
             _is_keyboard_shortcut: Option<&mut ::std::os::raw::c_int>,
         ) -> ::std::os::raw::c_int {
             let (Some(browser), Some(event)) = (browser, event) else {

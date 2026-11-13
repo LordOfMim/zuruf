@@ -1,0 +1,12 @@
+{
+  "id": "deepgram",
+  "label": "example",
+  "supported": true,
+  "unsupportedReason": "example",
+  "local": false,
+  "needsKey": true,
+  "key": "environment",
+  "keyEnv": "example",
+  "defaultModel": "example",
+  "defaultEndpoint": "example"
+}

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -25,16 +26,23 @@ def sha256(path):
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
+MACOS = sys.platform == "darwin"
+
+
 def cef_directory():
-    name = "cef_windows_x86_64" if os.name == "nt" else "cef_linux_x86_64"
+    if os.name == "nt":
+        name = "cef_windows_x86_64"
+    elif MACOS:
+        name = "cef_macos_aarch64"
+    else:
+        name = "cef_linux_x86_64"
     root = Path(os.environ["CEF_PATH"]).resolve()
     version = subprocess.check_output(["node", "tools/release/cef-version.mjs"], cwd=ROOT, text=True).strip()
     candidates = [root / version / name, root / name, root]
     return next((candidate for candidate in candidates if (candidate / "archive.json").exists()), None)
 
 
-def licenses(stage, cef):
-    destination = stage / "share/doc/zuruf"
+def licenses(destination, cef):
     destination.mkdir(parents=True, exist_ok=True)
     for filename in ["LICENSE", "README.md", "SECURITY.md"]:
         copy(ROOT / filename, destination / filename)
@@ -92,17 +100,126 @@ def linux(stage, artifacts, version):
     subprocess.run(["dpkg-deb", "--build", "--root-owner-group", "-Zxz", "-z3", str(deb), str(artifacts / "zuruf-linux-amd64.deb")], check=True)
 
 
+FRAMEWORK = "Chromium Embedded Framework.framework"
+BUNDLE_ID = "io.github.lordofmim.zuruf"
+# Chromium starts each helper kind from its own bundle, named after the main executable.
+HELPERS = {"": "helper", " (GPU)": "helper.gpu", " (Renderer)": "helper.renderer", " (Plugin)": "helper.plugin", " (Alerts)": "helper.alerts"}
+
+
+def info_plist(path, executable, identifier, version, helper):
+    info = {
+        "CFBundleDevelopmentRegion": "de",
+        "CFBundleDisplayName": "Zuruf",
+        "CFBundleExecutable": executable,
+        "CFBundleIdentifier": identifier,
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleName": "Zuruf" if not helper else executable,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": version,
+        "LSMinimumSystemVersion": "12.0",
+        # Chromium's allocator does not cooperate with the nano zone.
+        "LSEnvironment": {"MallocNanoZone": "0"},
+        "NSHighResolutionCapable": True,
+        "NSSupportsAutomaticGraphicsSwitching": True,
+        "NSMicrophoneUsageDescription": "Zuruf nimmt dein Diktat auf und wandelt es in Text um. Webseiten in Zuruf können ebenfalls nach dem Mikrofon fragen.",
+        "NSCameraUsageDescription": "Webseiten, die du in Zuruf öffnest, können nach der Kamera fragen.",
+    }
+    if helper:
+        info["LSUIElement"] = "1"
+    else:
+        info["CFBundleIconFile"] = "zuruf"
+        info["LSApplicationCategoryType"] = "public.app-category.developer-tools"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as file:
+        plistlib.dump(info, file)
+
+
+def sign(path):
+    # Ad-hoc signature: required to run on Apple silicon, but not a notarised Developer ID.
+    subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(path)], check=True)
+
+
+def macos(cef, target, artifacts, version, commit, stage_only):
+    stage = ROOT / ".release-stage/macos-arm64"
+    if stage.exists():
+        shutil.rmtree(stage)
+    app = stage / "Zuruf.app"
+    contents = app / "Contents"
+    executables = contents / "MacOS"
+    frameworks = contents / "Frameworks"
+    resources = contents / "Resources"
+    # The launcher is the bundle's main program. It keeps its own name: "Zuruf" would be the
+    # same file as the "zuruf" CLI on the usual case-insensitive file system.
+    for name in ["zuruf-launcher", "zuruf", "zuruf-shell"]:
+        copy(target / name, executables / name)
+        (executables / name).chmod(0o755)
+    info_plist(contents / "Info.plist", "zuruf-launcher", BUNDLE_ID, version, helper=False)
+    copy(ROOT / "assets/icon/zuruf.icns", resources / "zuruf.icns")
+
+    framework = frameworks / FRAMEWORK
+    shutil.copytree(cef / FRAMEWORK, framework, symlinks=True)
+    # Like the Linux and Windows packages, ship only the German and English UI strings.
+    for localisation in (framework / "Resources").glob("*.lproj"):
+        if localisation.name not in {"de.lproj", "en.lproj", "en_GB.lproj"}:
+            shutil.rmtree(localisation)
+    for suffix, identifier in HELPERS.items():
+        name = f"zuruf-shell Helper{suffix}"
+        helper = frameworks / f"{name}.app/Contents"
+        copy(target / "zuruf-shell-helper", helper / "MacOS" / name)
+        (helper / "MacOS" / name).chmod(0o755)
+        info_plist(helper / "Info.plist", name, f"{BUNDLE_ID}.{identifier}", version, helper=True)
+
+    licenses(resources / "doc", cef)
+    copy(ROOT / "LICENSE", resources / "doc/LICENSE")
+    (resources / "BUILD.json").write_text(json.dumps({"version": version, "commit": commit, "cef": json.loads((cef / "archive.json").read_text()), "platform": "Darwin", "arch": "arm64"}, indent=2))
+
+    # Sign from the inside out: framework, helpers, programs, then the bundle itself.
+    sign(framework)
+    for suffix in HELPERS:
+        sign(frameworks / f"zuruf-shell Helper{suffix}.app")
+    for name in ["zuruf", "zuruf-shell", "zuruf-launcher"]:
+        sign(executables / name)
+    sign(app)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+    if stage_only:
+        print(app)
+        return
+
+    image_root = stage / "image"
+    image_root.mkdir()
+    subprocess.run(["ditto", str(app), str(image_root / "Zuruf.app")], check=True)
+    (image_root / "Applications").symlink_to("/Applications")
+    image = artifacts / "Zuruf-macos-arm64.dmg"
+    image.unlink(missing_ok=True)
+    subprocess.run(["hdiutil", "create", "-volname", "Zuruf", "-srcfolder", str(image_root), "-ov", "-format", "UDZO", str(image)], check=True)
+    shutil.rmtree(image_root)
+    archive = artifacts / "zuruf-macos-arm64.zip"
+    archive.unlink(missing_ok=True)
+    subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(archive)], check=True)
+    outputs = [image, archive]
+    (artifacts / "SHA256SUMS-macos-arm64.txt").write_text("".join(f"{sha256(file)}  {file.name}\n" for file in outputs))
+    print(f"Created {len(outputs)} packages in {artifacts}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage-only", action="store_true")
     args = parser.parse_args()
-    if platform.machine().lower() not in {"amd64", "x86_64"}:
-        raise SystemExit("Release packages currently target x64")
+    machine = platform.machine().lower()
+    if (MACOS and machine != "arm64") or (not MACOS and machine not in {"amd64", "x86_64"}):
+        raise SystemExit("Release packages target x64 on Linux and Windows and Apple silicon on macOS")
     cef = cef_directory()
     if cef is None:
         raise SystemExit("CEF_PATH does not contain the pinned SDK")
     version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "release"
+    if MACOS:
+        artifacts = ROOT / "artifacts"
+        artifacts.mkdir(exist_ok=True)
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        macos(cef, target, artifacts, version, commit, args.stage_only)
+        return
     stage = ROOT / ".release-stage" / ("windows-x64" if os.name == "nt" else "linux-x64")
     artifacts = ROOT / "artifacts"
     if stage.exists():
@@ -127,7 +244,7 @@ def main():
         (stage / "bin/zuruf").chmod(0o755)
         (runtime / "zuruf-shell").chmod(0o755)
     copy(ROOT / "assets/icon/zuruf.svg", stage / "share/icons/zuruf.svg")
-    licenses(stage, cef)
+    licenses(stage / "share/doc/zuruf", cef)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     copy(ROOT / "LICENSE", stage / "LICENSE")
     (stage / "BUILD.json").write_text(json.dumps({"version": version, "commit": commit, "cef": json.loads((cef / "archive.json").read_text()), "platform": platform.system(), "arch": "x64"}, indent=2))

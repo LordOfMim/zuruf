@@ -1,4 +1,10 @@
-import type { AgentProfile, Settings as SettingsData, WorkspaceStrategy } from "@zuruf/protocol";
+import type {
+  AgentProfile,
+  Settings as SettingsData,
+  SpeechProvider,
+  SpeechService,
+  WorkspaceStrategy,
+} from "@zuruf/protocol";
 import { For, type JSX, Show, createMemo, createSignal, onMount } from "solid-js";
 import { Button, Icon } from "../components/basics";
 import type { AppStore } from "../lib/store";
@@ -81,62 +87,245 @@ function useSettings(store: AppStore) {
   };
 }
 
+/** Where the audio goes, said plainly: dictation may contain anything that is on screen. */
+function destination(service: SpeechService | undefined) {
+  if (!service) return undefined;
+  if (service.local) return "Ton bleibt auf diesem Rechner";
+  if (service.id === "openai_compatible") return "Ton geht an die eingetragene Adresse";
+  return `Ton geht an ${service.label}`;
+}
+
+function keyHint(service: SpeechService) {
+  if (service.key === "stored") return "privat auf diesem Rechner gespeichert";
+  if (service.key === "environment") return `aus ${service.keyEnv}`;
+  return service.needsKey ? "nötig" : "nur falls der Dienst einen verlangt";
+}
+
+/** Write-only: a saved key is never shown again, only replaced or removed. */
+function KeyField(props: {
+  service: SpeechService;
+  onSave: (key: string) => Promise<unknown>;
+  onRemove: () => Promise<unknown>;
+}) {
+  const [draft, setDraft] = createSignal("");
+  const [replacing, setReplacing] = createSignal(false);
+  const save = async () => {
+    const value = draft().trim();
+    if (!value) return;
+    await props.onSave(value);
+    setDraft("");
+    setReplacing(false);
+  };
+  return (
+    <Field label="API-Schlüssel" hint={keyHint(props.service)}>
+      <Show
+        when={props.service.key !== "stored" || replacing()}
+        fallback={
+          <span class="inline">
+            <Button size="sm" onClick={() => setReplacing(true)}>
+              Ersetzen
+            </Button>
+            <Button size="sm" onClick={() => void props.onRemove()}>
+              Entfernen
+            </Button>
+          </span>
+        }
+      >
+        <input
+          class="input"
+          type="password"
+          autocomplete="off"
+          spellcheck={false}
+          placeholder={props.service.key === "environment" ? "eigenen Schlüssel verwenden" : "einfügen"}
+          value={draft()}
+          onInput={(event) => setDraft(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void save();
+            if (event.key === "Escape") setReplacing(false);
+          }}
+        />
+        <Button size="sm" variant="solid" disabled={!draft().trim()} onClick={() => void save()}>
+          Speichern
+        </Button>
+      </Show>
+    </Field>
+  );
+}
+
 function SpeechSettings(props: { store: AppStore }) {
   const update = useSettings(props.store);
   const speech = () => props.store.settings()!.speech;
+  const [services, setServices] = createSignal<SpeechService[]>([]);
+  const refresh = async () => setServices((await props.store.commands.speechServices()) ?? []);
+  onMount(() => void refresh());
+  const service = createMemo(() => services().find((entry) => entry.id === speech().provider));
+  const choices = (local: boolean) =>
+    services().filter((entry) => entry.local === local && (entry.supported || entry.id === speech().provider));
+  const unavailable = () => {
+    const status = props.store.status()?.speech;
+    return status?.state === "unavailable" ? status.error : undefined;
+  };
+  const choose = (provider: SpeechProvider) =>
+    // Model and address mean something different for every service.
+    update("speech", { provider, model: null, endpoint: null });
+  const saveKey = async (key: string) => {
+    const id = speech().provider;
+    if (await props.store.commands.saveSpeechKey(id, key)) await refresh();
+  };
+  const removeKey = async () => {
+    if (await props.store.commands.removeSpeechKey(speech().provider)) await refresh();
+  };
+  const remote = () => service() !== undefined && !service()!.local;
   return (
-    <section class="group">
-      <ul class="rows">
-        <Field label="Diktat">
-          <Toggle checked={speech().enabled} label="Diktat" onChange={(enabled) => update("speech", { enabled })} />
-        </Field>
-        <Field label="Aufnahme" hint={speech().backend === "daemon" ? "kurze Lücke bei jedem Wechsel" : undefined}>
-          <Segmented
-            label="Aufnahmeart"
-            value={speech().backend}
-            options={[
-              { value: "continuous", label: "Durchgehend" },
-              { value: "daemon", label: "Über Voxtype" },
-            ]}
-            onChange={(backend) => update("speech", { backend })}
-          />
-        </Field>
-        <Field label="Gesprochenes gehört zur Aufnahme">
-          <Segmented
-            label="Zuordnung"
-            value={speech().attach}
-            options={[
-              { value: "after", label: "danach" },
-              { value: "before", label: "davor" },
-            ]}
-            onChange={(attach) => update("speech", { attach })}
-          />
-        </Field>
-        <Field label="Sprache">
-          <input
-            class="input input-short"
-            value={speech().language ?? ""}
-            placeholder="auto"
-            onChange={(event) => update("speech", { language: event.currentTarget.value.trim() || null })}
-          />
-        </Field>
-        <Field label="Modell">
-          <input
-            class="input"
-            value={speech().model ?? ""}
-            placeholder="wie in Voxtype"
-            onChange={(event) => update("speech", { model: event.currentTarget.value.trim() || null })}
-          />
-        </Field>
-        <Field label="Tonaufnahmen behalten">
-          <Toggle
-            checked={speech().keepAudio}
-            label="Tonaufnahmen behalten"
-            onChange={(keepAudio) => update("speech", { keepAudio })}
-          />
-        </Field>
-      </ul>
-    </section>
+    <>
+      <section class="group">
+        <ul class="rows">
+          <Field label="Diktat">
+            <Toggle checked={speech().enabled} label="Diktat" onChange={(enabled) => update("speech", { enabled })} />
+          </Field>
+          <Show when={unavailable()}>
+            {(reason) => (
+              <li class="row">
+                <span class="row-issue" role="status">
+                  <Icon name="warn" size={14} /> {reason()}
+                </span>
+              </li>
+            )}
+          </Show>
+        </ul>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">Dienst</h2>
+        <ul class="rows">
+          <Field label="Transkription" hint={destination(service())}>
+            <select
+              class="input"
+              value={speech().provider}
+              onChange={(event) => choose(event.currentTarget.value as SpeechProvider)}
+            >
+              <Show when={services().length === 0}>
+                <option value={speech().provider}>{speech().provider}</option>
+              </Show>
+              <optgroup label="Auf diesem Rechner">
+                <For each={choices(true)}>{(entry) => <option value={entry.id}>{entry.label}</option>}</For>
+              </optgroup>
+              <optgroup label="Online">
+                <For each={choices(false)}>{(entry) => <option value={entry.id}>{entry.label}</option>}</For>
+              </optgroup>
+            </select>
+          </Field>
+
+          <Show when={speech().provider === "voxtype"}>
+            <Field label="Aufnahme" hint={speech().backend === "daemon" ? "kurze Lücke bei jedem Wechsel" : undefined}>
+              <Segmented
+                label="Aufnahmeart"
+                value={speech().backend}
+                options={[
+                  { value: "continuous", label: "Durchgehend" },
+                  { value: "daemon", label: "Über Voxtype" },
+                ]}
+                onChange={(backend) => update("speech", { backend })}
+              />
+            </Field>
+            <Field label="Modell">
+              <input
+                class="input"
+                value={speech().model ?? ""}
+                placeholder="wie in Voxtype"
+                onChange={(event) => update("speech", { model: event.currentTarget.value.trim() || null })}
+              />
+            </Field>
+          </Show>
+
+          <Show when={speech().provider === "whisper_cpp"}>
+            <Field label="Modelldatei" hint="ggml-Modell, z. B. ggml-base.bin">
+              <input
+                class="input"
+                value={speech().model ?? ""}
+                placeholder="/Pfad/zu/ggml-base.bin"
+                spellcheck={false}
+                onChange={(event) => update("speech", { model: event.currentTarget.value.trim() || null })}
+              />
+            </Field>
+            <Field label="Programm">
+              <input
+                class="input"
+                value={speech().whisperCppPath}
+                placeholder="whisper-cli"
+                spellcheck={false}
+                onChange={(event) =>
+                  update("speech", { whisperCppPath: event.currentTarget.value.trim() || "whisper-cli" })
+                }
+              />
+            </Field>
+          </Show>
+
+          <Show when={remote() && service()}>
+            {(current) => (
+              <>
+                <KeyField service={current()} onSave={saveKey} onRemove={removeKey} />
+                <Field
+                  label="Adresse"
+                  hint={current().id === "openai_compatible" ? "z. B. http://127.0.0.1:8000/v1" : undefined}
+                >
+                  <input
+                    class="input"
+                    value={speech().endpoint ?? ""}
+                    placeholder={current().defaultEndpoint ?? "nötig"}
+                    spellcheck={false}
+                    onChange={(event) => update("speech", { endpoint: event.currentTarget.value.trim() || null })}
+                  />
+                </Field>
+                <Field label="Modell">
+                  <input
+                    class="input"
+                    value={speech().model ?? ""}
+                    placeholder={current().defaultModel ?? ""}
+                    spellcheck={false}
+                    onChange={(event) => update("speech", { model: event.currentTarget.value.trim() || null })}
+                  />
+                </Field>
+              </>
+            )}
+          </Show>
+        </ul>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">Verhalten</h2>
+        <ul class="rows">
+          <Field label="Gesprochenes gehört zur Aufnahme">
+            <Segmented
+              label="Zuordnung"
+              value={speech().attach}
+              options={[
+                { value: "after", label: "danach" },
+                { value: "before", label: "davor" },
+              ]}
+              onChange={(attach) => update("speech", { attach })}
+            />
+          </Field>
+          <Field label="Sprache" hint="leer: automatisch erkennen">
+            <input
+              class="input input-short"
+              value={speech().language ?? ""}
+              placeholder="auto"
+              onChange={(event) => update("speech", { language: event.currentTarget.value.trim() || null })}
+            />
+          </Field>
+          <Show when={!remote()}>
+            <Field label="Tonaufnahmen behalten">
+              <Toggle
+                checked={speech().keepAudio}
+                label="Tonaufnahmen behalten"
+                onChange={(keepAudio) => update("speech", { keepAudio })}
+              />
+            </Field>
+          </Show>
+        </ul>
+      </section>
+    </>
   );
 }
 

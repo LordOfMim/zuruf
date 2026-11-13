@@ -1,4 +1,10 @@
 //! Sample-clock segmentation with immutable, epoch-bound asynchronous results.
+mod recorder;
+mod services;
+
+pub use recorder::SAMPLE_RATE;
+pub use services::{Http, Provider, ProviderInfo, Service, WhisperCpp, wav};
+
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
@@ -8,8 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
-    process::Child,
+    io::{AsyncBufReadExt, BufReader},
     sync::{Semaphore, watch},
 };
 #[derive(Debug, thiserror::Error)]
@@ -88,6 +93,11 @@ impl SegmentHandle {
 pub trait Transcriber: Send + Sync + 'static {
     fn transcribe(&self, samples: Vec<i16>) -> AsyncResult<'_, String>;
 }
+impl<T: Transcriber + ?Sized> Transcriber for Box<T> {
+    fn transcribe(&self, samples: Vec<i16>) -> AsyncResult<'_, String> {
+        (**self).transcribe(samples)
+    }
+}
 pub trait SpeechAdapter: Send {
     fn state(&self) -> SpeechState;
     fn start(&mut self, epoch: String) -> AsyncResult<'_, ()>;
@@ -145,7 +155,7 @@ pub async fn voxtype_service_env() -> Vec<(String, String)> {
     env
 }
 /// True when no 100 ms window of 16 kHz audio rises above the noise floor.
-fn silent(samples: &[i16]) -> bool {
+pub(crate) fn silent(samples: &[i16]) -> bool {
     const FLOOR: f64 = 200.0;
     !samples.chunks(1600).any(|window| {
         let power = window.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
@@ -179,29 +189,7 @@ impl Transcriber for Voxtype {
             if silent(&samples) {
                 return Ok(String::new());
             }
-            zuruf_platform::private_dir(&self.directory)?;
-            let path = self
-                .directory
-                .join(format!("segment-{}.wav", uuid::Uuid::new_v4()));
-            let output_path = path.clone();
-            tokio::task::spawn_blocking(move || -> Result<()> {
-                let mut w = hound::WavWriter::create(
-                    output_path,
-                    hound::WavSpec {
-                        channels: 1,
-                        sample_rate: 16000,
-                        bits_per_sample: 16,
-                        sample_format: hound::SampleFormat::Int,
-                    },
-                )?;
-                for s in samples {
-                    w.write_sample(s)?;
-                }
-                w.finalize()?;
-                Ok(())
-            })
-            .await
-            .map_err(|_| Error::Backend("WAV worker failed".into()))??;
+            let path = services::write_wav(&self.directory, samples).await?;
             let mut cmd = command(&self.executable);
             cmd.arg("--quiet").envs(self.env.iter().cloned());
             // Without a model Voxtype's own configuration decides (local or remote endpoint);
@@ -235,11 +223,11 @@ impl Transcriber for Voxtype {
     }
 }
 #[derive(Default)]
-struct Clock {
-    total: u64,
-    start: u64,
-    samples: Vec<i16>,
-    failed: Option<String>,
+pub(crate) struct Clock {
+    pub(crate) total: u64,
+    pub(crate) start: u64,
+    pub(crate) samples: Vec<i16>,
+    pub(crate) failed: Option<String>,
 }
 /// PCM sample clock; mark and ingest share a short synchronous lock, never IO.
 pub struct Continuous<T: Transcriber> {
@@ -250,8 +238,7 @@ pub struct Continuous<T: Transcriber> {
     workers: Arc<Semaphore>,
     pending: Arc<std::sync::atomic::AtomicUsize>,
     generation: Arc<std::sync::atomic::AtomicU64>,
-    recorder: Option<Child>,
-    reader: Option<tokio::task::JoinHandle<()>>,
+    capture: Option<recorder::Capture>,
     active: bool,
     level_tx: watch::Sender<f32>,
 }
@@ -266,8 +253,7 @@ impl<T: Transcriber> Continuous<T> {
             workers: Arc::new(Semaphore::new(workers.clamp(1, 2))),
             pending: Arc::default(),
             generation: Arc::default(),
-            recorder: None,
-            reader: None,
+            capture: None,
             active: false,
             level_tx,
         }
@@ -365,14 +351,8 @@ impl<T: Transcriber> Continuous<T> {
         Ok(SegmentHandle { id, receiver })
     }
     pub async fn stop_recorder(&mut self) -> Result<()> {
-        if let Some(mut child) = self.recorder.take() {
-            child.kill().await?;
-            child.wait().await?;
-        }
-        if let Some(reader) = self.reader.take() {
-            reader
-                .await
-                .map_err(|_| Error::Backend("capture task failed".into()))?;
+        if let Some(capture) = self.capture.take() {
+            capture.stop().await?;
         }
         self.active = false;
         if let Ok(mut clock) = self.clock.lock() {
@@ -410,79 +390,8 @@ impl<T: Transcriber> SpeechAdapter for Continuous<T> {
                     .map_err(|_| Error::Backend("sample clock poisoned".into()))?;
                 c.failed = None;
             }
-            let mut child = command("pw-record")
-                .args([
-                    "--raw",
-                    "--rate",
-                    "16000",
-                    "--channels",
-                    "1",
-                    "--format",
-                    "s16",
-                    "-",
-                ])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true)
-                .spawn()?;
-            let mut stdout = child
-                .stdout
-                .take()
-                .ok_or_else(|| Error::Backend("no audio pipe".into()))?;
-            let clock = self.clock.clone();
-            let levels = self.level_tx.clone();
-            self.reader = Some(tokio::spawn(async move {
-                let mut buffer = [0; 4096];
-                let mut carry = None;
-                let mut last_level = Instant::now();
-                loop {
-                    match stdout.read(&mut buffer).await {
-                        Ok(0) => {
-                            if let Ok(mut c) = clock.lock() {
-                                c.failed = Some("PipeWire stream ended".into());
-                            }
-                            break;
-                        }
-                        Ok(n) => {
-                            let mut bytes = Vec::with_capacity(n + 1);
-                            if let Some(b) = carry.take() {
-                                bytes.push(b);
-                            }
-                            bytes.extend_from_slice(&buffer[..n]);
-                            if bytes.len() % 2 != 0 {
-                                carry = bytes.pop();
-                            }
-                            let samples: Vec<_> = bytes
-                                .as_chunks::<2>()
-                                .0
-                                .iter()
-                                .map(|b| i16::from_le_bytes([b[0], b[1]]))
-                                .collect();
-                            if last_level.elapsed() >= Duration::from_millis(66) {
-                                let rms = (samples
-                                    .iter()
-                                    .map(|s| (*s as f32 / 32768.0).powi(2))
-                                    .sum::<f32>()
-                                    / samples.len().max(1) as f32)
-                                    .sqrt();
-                                let _ = levels.send(rms);
-                                last_level = Instant::now();
-                            }
-                            if let Ok(mut c) = clock.lock() {
-                                c.total += samples.len() as u64;
-                                c.samples.extend(samples);
-                            }
-                        }
-                        Err(e) => {
-                            if let Ok(mut c) = clock.lock() {
-                                c.failed = Some(e.to_string());
-                            }
-                            break;
-                        }
-                    }
-                }
-            }));
-            self.recorder = Some(child);
+            let feed = recorder::Feed::new(self.clock.clone(), self.level_tx.clone());
+            self.capture = Some(recorder::Capture::start(feed).await?);
             self.epoch = epoch;
             self.annotation = None;
             self.active = true;
@@ -511,7 +420,7 @@ impl<T: Transcriber> SpeechAdapter for Continuous<T> {
                     let _ = self.stop_recorder().await;
                     match other {
                         Ok(Err(error)) => Err(error),
-                        _ => Err(Error::Backend("PipeWire startup timed out".into())),
+                        _ => Err(Error::Backend("Mikrofonstart: Zeitüberschreitung".into())),
                     }
                 }
             }
@@ -544,11 +453,8 @@ impl<T: Transcriber> SpeechAdapter for Continuous<T> {
 }
 impl<T: Transcriber> Drop for Continuous<T> {
     fn drop(&mut self) {
-        if let Some(child) = &mut self.recorder {
-            let _ = child.start_kill();
-        }
-        if let Some(reader) = self.reader.take() {
-            reader.abort();
+        if let Some(capture) = &mut self.capture {
+            capture.abort();
         }
     }
 }
@@ -943,7 +849,7 @@ pub async fn select(
     }
 }
 
-fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
+pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(program);
     zuruf_platform::background(command.as_std_mut());
     command

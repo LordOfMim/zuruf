@@ -8,7 +8,12 @@ import { join, resolve } from "node:path";
 import { chromium } from "../../apps/page/node_modules/playwright-core/index.mjs";
 
 const prefixArgument = process.argv.indexOf("--prefix");
-const prefix = resolve(prefixArgument >= 0 ? process.argv[prefixArgument + 1] : `.release-stage/${process.platform === "win32" ? "windows" : "linux"}-x64`);
+const stages = { win32: "windows-x64", darwin: "macos-arm64/Zuruf.app", linux: "linux-x64" };
+// On macOS the prefix is the app bundle; the programs live in Contents/MacOS.
+const prefix = resolve(prefixArgument >= 0 ? process.argv[prefixArgument + 1] : `.release-stage/${stages[process.platform] ?? stages.linux}`);
+const cli = process.platform === "darwin"
+  ? join(prefix, "Contents/MacOS/zuruf")
+  : join(prefix, `bin/zuruf${process.platform === "win32" ? ".exe" : ""}`);
 const directory = await mkdtemp(join(tmpdir(), "zuruf release smoke "));
 const listener = createServer();
 await new Promise((done) => listener.listen(0, "127.0.0.1", done));
@@ -62,7 +67,7 @@ const fixture = createServer((request, response) => {
 await new Promise((done) => fixture.listen(0, "127.0.0.1", done));
 const url = `http://127.0.0.1:${fixture.address().port}/`;
 try {
-  daemon = spawn(viaLauncher ? join(prefix, "Zuruf.exe") : join(prefix, "bin/zuruf"), viaLauncher ? [] : ["daemon"], { env, windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
+  daemon = spawn(viaLauncher ? join(prefix, "Zuruf.exe") : cli, viaLauncher ? [] : ["daemon"], { env, windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
   daemon.stderr.on("data", (chunk) => (log += chunk));
   daemon.on("error", (error) => (log += error.message));
   await until("the packaged daemon", async () => {
@@ -131,7 +136,7 @@ try {
     console.log(`PASS native panel Stop and redock cycle ${cycle + 1}`);
   }
   // Updates use this CLI while windows are still open. It must wait for browser cleanup.
-  const stop = spawn(join(prefix, `bin/zuruf${process.platform === "win32" ? ".exe" : ""}`), ["stop"], { env, windowsHide: true, stdio: "ignore" });
+  const stop = spawn(cli, ["stop"], { env, windowsHide: true, stdio: "ignore" });
   const stopped = new Promise((done, reject) => {
     stop.once("error", reject);
     stop.once("exit", (code) => code === 0 ? done() : reject(new Error(`CLI stop exited ${code}`)));

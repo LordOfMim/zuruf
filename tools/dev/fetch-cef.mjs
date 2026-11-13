@@ -27,6 +27,7 @@ const platforms = {
   "linux-x64": ["linux64", "cef_linux_x86_64"],
   "linux-arm64": ["linuxarm64", "cef_linux_aarch64"],
   "win32-x64": ["windows64", "cef_windows_x86_64"],
+  "darwin-arm64": ["macosarm64", "cef_macos_aarch64"],
 };
 const platform = platforms[`${process.platform}-${process.arch}`];
 if (!platform) {
@@ -87,7 +88,8 @@ if (process.platform === "win32") {
 const extracted = join(location, file.name.replace(/\.tar\.bz2$/, ""));
 rmSync(target, { recursive: true, force: true });
 renameSync(join(extracted, "Release"), target);
-cpSync(join(extracted, "Resources"), target, { recursive: true });
+// macOS keeps its resources inside the framework bundle; there is no separate folder.
+if (process.platform !== "darwin") cpSync(join(extracted, "Resources"), target, { recursive: true });
 for (const entry of ["CMakeLists.txt", "cmake", "include", "libcef_dll", "CREDITS.html", "LICENSE.txt"])
   renameSync(join(extracted, entry), join(target, entry));
 writeFileSync(

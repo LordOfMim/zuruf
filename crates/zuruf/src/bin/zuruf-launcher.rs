@@ -36,6 +36,14 @@ fn main() {
                 MB_OK | MB_ICONERROR,
             );
         }
+        #[cfg(target_os = "macos")]
+        {
+            // Started from Finder there is no terminal to read; show a dialog instead.
+            let script = "display alert \"Zuruf konnte nicht gestartet werden\" message \"Bitte im Terminal „zuruf doctor“ ausführen. Das Protokoll liegt unter ~/Library/Application Support/Zuruf/state/daemon.log.\" as critical";
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", script])
+                .status();
+        }
         #[cfg(not(windows))]
         eprintln!("Zuruf konnte nicht gestartet werden; bitte zuruf doctor ausführen.");
         std::process::exit(1);
