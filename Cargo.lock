@@ -3375,7 +3375,7 @@ dependencies = [
 name = "zuruf-browser"
 version = "0.2.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures-util",
  "png",
  "serde",
@@ -3415,7 +3415,7 @@ name = "zuruf-mcp"
 version = "0.2.0"
 dependencies = [
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "serde",
  "serde_json",
  "tokio",
@@ -3479,7 +3479,7 @@ dependencies = [
 name = "zuruf-t3"
 version = "0.2.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "reqwest",
  "serde",
  "serde_json",
