@@ -6,7 +6,7 @@ license.workspace = true
 [dependencies]
 zuruf-platform = { path = "../zuruf-platform" }
 zuruf-core = { path = "../zuruf-core" }
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v7"] }
