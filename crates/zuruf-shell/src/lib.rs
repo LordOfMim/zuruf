@@ -4,6 +4,8 @@
 //! protocol and steers the window with one JSON command per line on stdin.
 mod commands;
 mod handlers;
+#[cfg(target_os = "macos")]
+pub mod mac;
 mod options;
 mod shell;
 
@@ -63,7 +65,8 @@ wrap_browser_process_handler! {
 
 /// Run the shell inside the platform's CEF process host.
 /// # Safety
-/// `sandbox_info` must be null on Linux or the pointer supplied by CEF's Windows bootstrap.
+/// `sandbox_info` must be null on Linux and macOS or the pointer supplied by CEF's Windows
+/// bootstrap. On macOS the Chromium framework must already be loaded and `mac::prepare` done.
 pub unsafe fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
     let Some(command_line) = args.as_cmd_line() else {
@@ -105,6 +108,8 @@ pub unsafe fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
         eprintln!("zuruf-shell: Chromium did not start");
         return 1;
     }
+    #[cfg(target_os = "macos")]
+    mac::install_menu();
     run_message_loop();
     shutdown();
     0
