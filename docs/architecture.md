@@ -34,7 +34,7 @@ crates/
   zuruf-store     SQLite (rusqlite, Migrationen, WAL) + Asset-Dateiablage, atomare Schreibvorgänge.
   zuruf-browser   Shell-Start, CDP-Client, Seiten-Brücke, Capture-Pipeline, Kontroll-Arbitration, CDP-Proxy.
   zuruf-shell     Das Browserfenster: eingebettetes Chromium (CEF), App-Panel, Tabs, Adressleiste. Eigenes Programm.
-  zuruf-speech    SpeechAdapter + Voxtype-Backends.
+  zuruf-speech    SpeechAdapter, eigene Aufnahme (PipeWire/CoreAudio) und Transkriptionsdienste (Voxtype, whisper.cpp, HTTP-Dienste).
   zuruf-t3        T3Adapter: MCP/OAuth primär, CLI-Fallback, Capability Detection.
   zuruf-hypr      Hyprland: globale Binds (Lua/Legacy erkennen), Fenster finden/anordnen.
   zuruf-mcp       Eigener MCP-Server (Tools aus Spec §9).
@@ -64,6 +64,8 @@ Abhängigkeiten schlank halten: tokio, axum, serde, rusqlite (bundled), tokio-tu
 ~/.config/zuruf/settings.json    lesbare Einstellungen inkl. Tastenbelegung
 ```
 
+Unter macOS liegen dieselben drei Bereiche unter `~/Library/Application Support/Zuruf/{data,state,config}`, unter Windows unter `%LOCALAPPDATA%\Zuruf`. `ZURUF_DATA_DIR`, `ZURUF_STATE_DIR` und `ZURUF_CONFIG_DIR` überschreiben sie überall.
+
 Entitäten wie in Spec §12 mit UUIDv7, Zeitstempeln, Statushistorie (`task_events`) und Schema-Migrationen. Jede Zustandsänderung wird vor der Bestätigung an den Client committet; nach einem Absturz stellt der Daemon offenen Batch, unversendete Captures, Outbox und Thread-Zuordnungen wieder her (AT-18).
 
 ## Authentifizierung (lokal)
@@ -84,7 +86,8 @@ Entitäten wie in Spec §12 mit UUIDv7, Zeitstempeln, Statushistorie (`task_even
 - **Meldungen der Seite:** Die Brücke sammelt je Tab Konsolenfehler und -warnungen (`Runtime.consoleAPICalled`), unbehandelte Ausnahmen (`Runtime.exceptionThrown`) und das Protokoll des Browsers, vor allem fehlgeschlagene Anfragen (`Log.entryAdded`) – ohne die Netzwerk-Domain einzuschalten. Höchstens 50 werden gehalten, gleiche hintereinander gezählt, mit dem nächsten Dokument beginnt die Liste neu. Jede Aufnahme nimmt die letzten 20 als `Annotation.diagnostics` mit; sie stehen im Manifest und in der UI.
 - **Erst wählen, dann aufnehmen:** Nur der Viewport wird beim Tastendruck sofort aufgenommen. Für Element und Bereich wechselt der Seiten-Agent in eine Auswahl: Das Element unter dem Zeiger wird farbig markiert und per Klick oder Enter bestätigt; ein Bereich wird auf abgedunkelter Seite aufgezogen. Währenddessen erreichen Zeigerereignisse die Seite nicht. Die Auswahl gilt für alle Frames des Tabs – der Agent meldet `mode`, die Brücke reicht es an die übrigen Frames weiter.
 - **Zusammenarbeit:** Der Proxy meldet Mausbefehle eines Agenten (`Input.dispatchMouseEvent`) an die Brücke; die Seite zeichnet seinen Zeiger und Klicks. `report_progress` erscheint zusätzlich in der Seite, und über das MCP-Werkzeug `show_in_browser` markiert ein Agent ein Element samt Nachricht für den Menschen. Alles davon ist reine Anzeige im Overlay und braucht keine Kontroll-Lease.
-- **Fenster-Kurzbefehle** gehören der Shell: Strg+T/W/L, Strg+Tab, Strg+R/F5, Alt+←/→, Strg+Plus/Minus/0, F12 (Entwicklerwerkzeuge in eigenem Fenster).
+- **Fenster-Kurzbefehle** gehören der Shell: Strg+T/W/L, Strg+Tab, Strg+R/F5, Alt+←/→, Strg+Plus/Minus/0, F12 (Entwicklerwerkzeuge in eigenem Fenster). Unter macOS gilt ⌘ statt Strg, Zurück/Vorwärts ist ⌘[ / ⌘], die Entwicklerwerkzeuge zusätzlich ⌥⌘I; Strg+Tab bleibt.
+- **macOS:** Chromium lädt das Framework zur Laufzeit aus dem App-Bundle (`Contents/Frameworks`) und verlangt eine eigene `NSApplication`-Unterklasse (`CefAppProtocol`); `terminate:` schließt das Fenster, statt den Prozess sofort zu beenden. Ein kleines Hauptmenü trägt Beenden, die Bearbeiten-Befehle (⌘C/⌘V/…) und das Fenstermenü. Renderer, GPU und weitere Hilfsprozesse laufen aus eigenen Helper-Bundles (`zuruf-shell Helper*.app`, Programm `zuruf-shell-helper`) in Chromiums Sandbox.
 - **Capture-Pipeline:** Aktion → an aktiven Batch binden → Overlay ausblenden (von jedem Frame bestätigt) → Metriken lesen → `Page.captureScreenshot` (Region: Clip = (Rechteck + visualViewport-Offset) × Browserzoom aus `Page.getLayoutMetrics`, `scale:1`) → Rohbild atomar schreiben → Ringkopie mit dem `png`-Crate → Annotation + Assets in einer Transaktion → Event. Ziel: Annotation erscheint < 150 ms nach Tastendruck in der UI (Platzhalter sofort, Bild folgt).
 - **DOM-Capture:** Locator-Kandidaten in der Reihenfolge Test-ID, Rolle+Name, eindeutiger Text, CSS, XPath, jeweils mit `stable` und Begründung; Accessible Name über CDP `Accessibility.getPartialAXTree` validiert; Attribut-Allowlist; Frame-/Shadow-Pfad; nicht auflösbare Pfade als solche markiert.
 - **Gemeinsame Steuerung:** `ControlState` je Session. Agenten erreichen den Browser nur über `/cdp/<sessionId>`; der Proxy lässt ausschließlich Seiten-Targets der Session durch (nie das App-Panel, kein `Browser.close`), serialisiert Eingaben je Tab und prüft vor jedem Befehl Besitzer und Lease. `Target.createTarget` eines Agenten öffnet einen Tab im Session-Fenster; der Proxy meldet die neue Seite, bevor er antwortet – so funktioniert unverändertes Playwright (`connectOverCDP`, `newPage`).
@@ -95,12 +98,22 @@ Entitäten wie in Spec §12 mit UUIDv7, Zeitstempeln, Statushistorie (`task_even
 
 ## Sprache
 
-Zwei Backends hinter einem `SpeechAdapter`; welches aktiv ist, steht in den Einstellungen und im Status.
+Ein `SpeechAdapter`; der Dienst steht in den Einstellungen (`speech.provider`), der Zustand im Status. Stille wird nie verschickt.
 
-1. **continuous (bevorzugt, sobald verifiziert):** Der Daemon nimmt selbst lückenlos auf (PipeWire, 16 kHz mono), setzt bei jedem Capture und bei `Shift+N` exakte Marker, schneidet Segmente und transkribiert sie nebenläufig über `voxtype transcribe <wav>`. Keine Audiolücke, kein Warten. WAV-Schnipsel werden nach der Transkription gelöscht, außer `keepAudio` ist an.
-2. **daemon (Fallback, verifiziert):** `voxtype record start --file=… --no-auto-submit --no-smart-auto-submit --no-osd` / `record stop --wait --json`. Stop → Finalize → Restart an jeder Grenze; die Lücke wird gemessen und als `lastGapMs` gemeldet.
+1. **Voxtype (nur Linux, Voreinstellung dort).**
+   - *continuous (bevorzugt):* Der Daemon nimmt selbst lückenlos auf (PipeWire über `pw-record`, 16 kHz mono), setzt bei jedem Capture und bei `Shift+N` exakte Marker, schneidet Segmente und transkribiert sie nebenläufig über `voxtype transcribe <wav>`. Keine Audiolücke, kein Warten.
+   - *daemon (Fallback):* `voxtype record start --file=… --no-auto-submit --no-smart-auto-submit --no-osd` / `record stop --wait --json`. Stop → Finalize → Restart an jeder Grenze; die Lücke wird gemessen und als `lastGapMs` gemeldet.
+2. **Eigene Aufnahme + Transkriptionsdienst** (Linux und macOS). Aufnahme und Marker wie bei *continuous*; unter macOS über CoreAudio (`cpal`) mit Umrechnung auf 16 kHz mono. Jedes Segment geht als WAV an genau einen Dienst, bis zu zwei gleichzeitig:
+   - `whisper_cpp`: lokal, `whisper-cli --model <ggml-Datei> --language <Sprache|auto> --no-timestamps --no-prints --file <wav>`.
+   - `openai` (`gpt-4o-mini-transcribe`), `groq` (`whisper-large-v3-turbo`), `mistral` (`voxtral-mini-latest`), `openai_compatible` (eigene Adresse, z. B. ein lokaler Server): `POST <Adresse>/audio/transcriptions`, Multipart.
+   - `deepgram` (`nova-3`): `POST /v1/listen`, Rohdaten, `Authorization: Token`.
+   - `elevenlabs` (`scribe_v2`): `POST /v1/speech-to-text`, Multipart, Kopfzeile `xi-api-key`.
 
-Regeln: Sprache nach einem Capture gehört zu diesem Capture, bis zum nächsten Marker (`attach: "after"`, umstellbar). Sprache vor dem ersten Capture eines Batches wird Batch-Notiz. Transkripte, die nur aus Satzzeichen bestehen, gelten als leer. Der Originaltext eines Segments wird nie überschrieben; bearbeitet wird `Annotation.transcript`. Läuft bereits eine fremde Voxtype-Aufnahme, meldet der Adapter `busy_external` und greift nicht ein. Modell und Sprache werden pro Aufruf gesetzt (`--model`, `--language`); die Voxtype-Konfiguration bleibt unberührt.
+   Modell und Adresse sind je Dienst einstellbar; leer heißt Voreinstellung des Dienstes. Verbindungsfehler, 429 und 5xx werden bis zu dreimal wiederholt; Fehler erscheinen deutsch im Status (Schlüssel abgelehnt, Ratenlimit, HTTP-Code).
+
+**API-Schlüssel** liegen nur in `state/speech-keys.json` (0600, unter Windows private ACL) und sind über die API schreib-, aber nie lesbar: `GET /speech/services` meldet je Dienst nur `stored`, `environment` oder `none`; `PUT|DELETE /speech/services/:id/key` setzt oder entfernt einen Schlüssel. Ohne gespeicherten Schlüssel gilt die Umgebungsvariable des Dienstes (`OPENAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`). Der Daemon prüft beim Start und nach jeder Änderung, ob das Diktat starten kann, und meldet sonst `unavailable` mit dem Grund (fehlender Schlüssel, fehlende Modelldatei, fehlende Adresse).
+
+Regeln: Sprache nach einem Capture gehört zu diesem Capture, bis zum nächsten Marker (`attach: "after"`, umstellbar). Sprache vor dem ersten Capture eines Batches wird Batch-Notiz. Transkripte, die nur aus Satzzeichen bestehen, gelten als leer. Der Originaltext eines Segments wird nie überschrieben; bearbeitet wird `Annotation.transcript`. Läuft bereits eine fremde Voxtype-Aufnahme, meldet der Adapter `busy_external` und greift nicht ein. Modell und Sprache werden pro Aufruf gesetzt (`--model`, `--language`); die Voxtype-Konfiguration bleibt unberührt. WAV-Schnipsel lokaler Dienste werden nach der Transkription gelöscht, außer `keepAudio` ist an; Online-Dienste bekommen die Daten nur im Speicher. Unter Windows ist das Diktat noch nicht verfügbar; die Aufnahme über `cpal` würde es dort ohne neue Abhängigkeit ermöglichen.
 
 ## Batch, Task, Dispatch
 
@@ -130,7 +143,7 @@ Jede Änderung wird geprüft (`BindingIssue`: Duplikat, fehlender Modifier, vom 
 
 Die Chromium-Laufzeit lädt der Build einmal je Version nach `~/.cache/zuruf/cef` (`CEF_PATH`). Hinter einem TLS-prüfenden Proxy erledigt das `tools/dev/fetch-cef.mjs`. `tools/dev/` enthält außerdem einen Linux-Build-Container, in dem sich alles ohne Desktop bauen und unter einem virtuellen Bildschirm (X11 oder Wayland) testen lässt.
 
-Zielplattform ist Linux. Die Shell selbst ist plattformneutral geschrieben; Daemon und Adapter (`zuruf-store`, `zuruf-t3`, `zuruf-speech`, `zuruf-hypr`) verwenden Unix-Schnittstellen. Ein Windows-Port steht aus.
+Release-Ziele sind Linux x64, Windows x64 und macOS auf Apple silicon (arm64). Unter macOS ist `Zuruf.app` das Paket: `Contents/MacOS` enthält `zuruf-launcher` (Startprogramm des Bundles), `zuruf` und `zuruf-shell`, `Contents/Frameworks` das Chromium-Framework und die Helper-Bundles. Das Startprogramm heißt bewusst nicht „Zuruf“, weil es auf dem üblichen Dateisystem ohne Groß-/Kleinschreibung dieselbe Datei wie `zuruf` wäre. Ohne systemd startet `zuruf open` den Daemon als eigenen Hintergrundprozess in einer eigenen Prozessgruppe mit Protokoll in `state/daemon.log`. Desktopweite Hotkeys gibt es nur unter Hyprland.
 
 ## Zuständigkeiten
 

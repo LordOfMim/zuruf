@@ -2,7 +2,7 @@
 
 ## Was veröffentlicht wird
 
-Ein Tag `v<Version aus Cargo.toml>` startet die Release-Pipeline. Beide Plattformen werden aus diesem Tag gebaut, getestet und paketiert. Erst wenn beide Jobs erfolgreich sind und ihre Prüfsummen stimmen, wird der GitHub-Release mit allen vier Downloads veröffentlicht.
+Ein Tag `v<Version aus Cargo.toml>` startet die Release-Pipeline. Linux, Windows und macOS werden aus diesem Tag gebaut, getestet und paketiert. Erst wenn alle drei Jobs erfolgreich sind und ihre Prüfsummen stimmen, wird der GitHub-Release mit allen sechs Downloads veröffentlicht.
 
 | Datei | Inhalt |
 | --- | --- |
@@ -10,9 +10,15 @@ Ein Tag `v<Version aus Cargo.toml>` startet die Release-Pipeline. Beide Plattfor
 | `zuruf-windows-x64.zip` | Portables Windows-Bundle; Einstieg über `Zuruf.exe` |
 | `zuruf-linux-amd64.deb` | Systempaket mit deklarierten Chromium-Abhängigkeiten |
 | `zuruf-linux-x64.tar.gz` | Fertige Programme und Benutzer-Installer für Arch und andere Distributionen |
+| `Zuruf-macos-arm64.dmg` | Disk-Image mit `Zuruf.app` für Apple silicon (macOS 12+) |
+| `zuruf-macos-arm64.zip` | Dieselbe App als ZIP |
 | `SHA256SUMS.txt` | SHA-256-Prüfsummen aller Downloads |
 
-Jedes Bundle enthält `BUILD.json` mit Quellcommit, Version und CEF-Archiv sowie Lizenzhinweise unter `share/doc/zuruf`. Zusätzlich erstellt GitHub Build-Nachweise für die Pakete. Der Windows-Installer hat noch keine Authenticode-Signatur; eine solche Signatur erfordert ein gesondertes Zertifikat.
+Jedes Bundle enthält `BUILD.json` mit Quellcommit, Version und CEF-Archiv sowie Lizenzhinweise unter `share/doc/zuruf` (macOS: `Contents/Resources`). Zusätzlich erstellt GitHub Build-Nachweise für die Pakete. Der Windows-Installer hat noch keine Authenticode-Signatur, die macOS-App nur eine Ad-hoc-Signatur ohne Notarisierung; beides erfordert gesonderte Zertifikate beziehungsweise ein Apple-Entwicklerkonto.
+
+## macOS-App
+
+`Zuruf.app` wird auf einem Apple-silicon-Runner (`macos-15`) gebaut. Das Bundle enthält `Contents/MacOS/{zuruf-launcher,zuruf,zuruf-shell}`, das Chromium-Framework und fünf Helper-Bundles (`zuruf-shell Helper.app`, `… Helper (GPU|Renderer|Plugin|Alerts).app`), die alle dasselbe Programm `zuruf-shell-helper` enthalten. Chromium leitet ihre Namen aus dem Namen der Shell ab. Die Helfer laufen in Chromiums Sandbox. `package.py` signiert von innen nach außen ad hoc (`codesign --sign -`), prüft die Signatur und erstellt Disk-Image (`hdiutil`) und ZIP (`ditto`). `Info.plist` beschreibt die Mikrofonnutzung fürs Diktat. Ohne Notarisierung muss der erste Start einmal bestätigt werden (siehe README).
 
 ## Windows-Browser
 
@@ -35,7 +41,7 @@ cargo fetch --locked
 python tools/release/package.py
 ```
 
-Unter Windows den Downloadaufruf in PowerShell mit `$env:CEF_PATH` ausführen. NSIS muss für den Setup-Installer installiert sein. Unter Linux wird `dpkg-deb` für das Debian-Paket benötigt. `--stage-only` erstellt nur das Laufzeitverzeichnis unter `.release-stage`, ohne Installer.
+Unter Windows den Downloadaufruf in PowerShell mit `$env:CEF_PATH` ausführen. NSIS muss für den Setup-Installer installiert sein. Unter Linux wird `dpkg-deb` für das Debian-Paket benötigt. Unter macOS reichen die Xcode-Befehlszeilenwerkzeuge und `brew install cmake ninja`. `--stage-only` erstellt nur das Laufzeitverzeichnis unter `.release-stage`, ohne Installer.
 
 Für die Lizenzsammlung lädt das Skript eine festgelegte `cargo-about`-Version und verifiziert deren hinterlegte SHA-256-Prüfsumme. Rust-Lizenztexte, CEF-Lizenz, Chromium-Credits, Solid und beide Schriftlizenzen werden ins Paket aufgenommen.
 
@@ -47,13 +53,13 @@ Für die Lizenzsammlung lädt das Skript eine festgelegte `cargo-about`-Version 
 ZURUF_SHELL_ARGS=--disable-gpu xvfb-run -a -s '-screen 0 1600x1000x24' python tools/release/test-installers.py
 ```
 
-Der native Test verwendet einen echten Daemon und Chromium, private temporäre Daten und einen lokalen HTTP-Prüfserver. Er prüft Start, Klicks, Screenshot, gefilterten Agentenzugang, Seitenbreite, Profilwiederherstellung und gezieltes Stoppen. Es werden keine echten Modellaufrufe, Mikrofonaufnahmen oder T3-Aufgaben ausgelöst. Windows wird auf einem Windows-Runner gebaut und ausgeführt; Diktat und desktopweite Hotkeys bleiben Linux-Funktionen.
+Der native Test verwendet einen echten Daemon und Chromium, private temporäre Daten und einen lokalen HTTP-Prüfserver. Er prüft Start, Klicks, Screenshot, gefilterten Agentenzugang, Seitenbreite, Profilwiederherstellung und gezieltes Stoppen. Es werden keine echten Modellaufrufe, Mikrofonaufnahmen oder T3-Aufgaben ausgelöst. Windows und macOS werden auf eigenen Runnern gebaut und ausgeführt. Unter macOS installiert der Test die App aus dem Disk-Image, prüft Signatur und Helper-Bundles und startet den Browser mit `--use-mock-keychain`, damit der Schlüsselbund des Runners keinen Dialog öffnet. Die Transkriptionsdienste werden in Unit-Tests gegen einen lokalen Prüfserver geprüft.
 
 Der Sitzungsstopp wird dreimal über den tatsächlichen „Stoppen“-Button im nativen Panel ausgelöst. Dabei darf dessen Clientverbindung mit dem alten Fenster enden: Die Sitzungsverwaltung muss das Hauptfenster unabhängig davon erhalten und beim erneuten Start wieder andocken. Der Prüfclient als Besitzer darf dafür den privaten Panel-Target untersuchen; der gefilterte Agentenzugang bleibt davon getrennt.
 
 ## Neuen Release erstellen
 
-1. Änderungen per Pull Request prüfen und beide Plattform-Jobs abwarten.
+1. Änderungen per Pull Request prüfen und alle drei Plattform-Jobs abwarten.
 2. Version in `Cargo.toml` und Lockdatei aktualisieren; `docs/release-notes.md` an den endgültigen Inhalt anpassen.
 3. Geprüften Commit in `main` integrieren.
 4. Den passenden Tag erstellen und pushen, beispielsweise `git tag v0.1.0` und `git push origin v0.1.0`.

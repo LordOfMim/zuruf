@@ -24,10 +24,14 @@ Die [aktuelle Veröffentlichung](https://github.com/LordOfMim/zuruf/releases/lat
 | Windows, portabel | [ZIP-Paket](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-windows-x64.zip) | Entpacken und `Zuruf.exe` öffnen. |
 | Ubuntu / Debian, x64 | [Debian-Paket](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-linux-amd64.deb) | Über die Paketverwaltung öffnen oder `sudo apt install ./zuruf-linux-amd64.deb`. |
 | Arch / andere Linux-Distributionen, x64 | [Linux-Bundle](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-linux-x64.tar.gz) | Entpacken und `./install.sh` ausführen. Installiert in deinen Benutzerbereich. |
+| macOS 12 oder neuer, Apple silicon | [Disk-Image](https://github.com/LordOfMim/zuruf/releases/latest/download/Zuruf-macos-arm64.dmg) | Öffnen und Zuruf in den Programme-Ordner ziehen. Beim ersten Start siehe unten. |
+| macOS, ohne Image | [ZIP-Paket](https://github.com/LordOfMim/zuruf/releases/latest/download/zuruf-macos-arm64.zip) | Entpacken und `Zuruf.app` nach „Programme“ verschieben. |
 
-Linux benötigt glibc ab 2.35 sowie die üblichen GTK-/NSS-/Audio-Bibliotheken von Chromium. Das Debian-Paket bringt die passenden Paketabhängigkeiten mit. Unter Arch: `gtk3 nss nspr alsa-lib libxss`. X11 und Wayland werden unterstützt. ARM und macOS sind derzeit keine Release-Ziele.
+Linux benötigt glibc ab 2.35 sowie die üblichen GTK-/NSS-/Audio-Bibliotheken von Chromium. Das Debian-Paket bringt die passenden Paketabhängigkeiten mit. Unter Arch: `gtk3 nss nspr alsa-lib libxss`. X11 und Wayland werden unterstützt. Linux und Windows auf ARM sowie Intel-Macs sind derzeit keine Release-Ziele.
 
-Die Release-Seite enthält SHA-256-Prüfsummen und Lizenzhinweise. Der Windows-Installer ist derzeit nicht Authenticode-signiert. Veröffentlichungen werden aus dem zugehörigen Git-Tag auf GitHub gebaut; Details stehen unter [Releases und Builds](docs/releases.md).
+**macOS, erster Start:** Zuruf ist nur ad hoc signiert, nicht von Apple notarisiert. macOS blockiert deshalb den ersten Start. Einmal unter *Systemeinstellungen › Datenschutz & Sicherheit* „Dennoch öffnen“ wählen oder im Terminal `xattr -dr com.apple.quarantine /Applications/Zuruf.app` ausführen. Die CLI erreichst du mit `ln -s /Applications/Zuruf.app/Contents/MacOS/zuruf /usr/local/bin/zuruf`. Starte Zuruf über die App, damit die Mikrofonfreigabe für das Diktat bei Zuruf liegt; nach Updates fragt macOS unter Umständen erneut.
+
+Die Release-Seite enthält SHA-256-Prüfsummen und Lizenzhinweise. Der Windows-Installer ist derzeit nicht Authenticode-signiert, die macOS-App nicht notarisiert. Veröffentlichungen werden aus dem zugehörigen Git-Tag auf GitHub gebaut; Details stehen unter [Releases und Builds](docs/releases.md).
 
 ## Was Zuruf kann
 
@@ -69,18 +73,20 @@ Im Review-Modus außerhalb von Textfeldern:
 
 In Textfeldern bleibt das Tippen unbeeinflusst. Mit `Alt` dazu, etwa `Alt+W`, kannst du auch dort eine Aufnahme auslösen. Die Belegung ist einstellbar.
 
-Der Browser kennt `Strg+T`, `Strg+W`, `Strg+L`, `Strg+R`, `Alt+←/→`, Zoom und `F12`.
+Der Browser kennt `Strg+T`, `Strg+W`, `Strg+L`, `Strg+R`, `Alt+←/→`, Zoom und `F12`. Unter macOS gilt `⌘` statt `Strg`, Zurück und Vorwärts sind `⌘[` und `⌘]`.
 
 ## Plattformen und Grenzen
 
-| Funktion | Linux | Windows |
-| --- | --- | --- |
-| Integrierter Browser, Screenshots, Kommentare | Ja | Ja |
-| T3-Anbindung, Aufgaben, Browsersteuerung durch Agenten | Ja | Ja |
-| Wiederherstellung nach Browser-Unterbrechungen | Ja | Ja |
-| Diktat | Mit Voxtype und PipeWire | Derzeit nicht verfügbar |
-| Desktopweite Tastenkürzel | Hyprland | Derzeit nicht verfügbar |
-| Tastenkürzel in der geprüften Seite | Ja | Ja |
+| Funktion | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Integrierter Browser, Screenshots, Kommentare | Ja | Ja | Ja |
+| T3-Anbindung, Aufgaben, Browsersteuerung durch Agenten | Ja | Ja | Ja |
+| Wiederherstellung nach Browser-Unterbrechungen | Ja | Ja | Ja |
+| Diktat | Voxtype, whisper.cpp oder Online-Dienst | whisper.cpp oder Online-Dienst | Derzeit nicht verfügbar |
+| Desktopweite Tastenkürzel | Hyprland | Derzeit nicht verfügbar | Derzeit nicht verfügbar |
+| Tastenkürzel in der geprüften Seite | Ja | Ja | Ja |
+
+Für das Diktat wählst du unter *Einstellungen › Diktat* einen Dienst: lokal mit Voxtype (nur Linux) oder whisper.cpp (`whisper-cli` und eine ggml-Modelldatei), oder online über OpenAI, Groq, Mistral, Deepgram, ElevenLabs oder einen eigenen OpenAI-kompatiblen Server. Für Online-Dienste brauchst du einen eigenen API-Schlüssel; er wird nur lokal gespeichert und nie wieder angezeigt.
 
 Der Browser ist für Reviews gedacht. Downloads, Passwortverwaltung und Kamera-/Mikrofon-Berechtigungsdialoge einer Website gehören derzeit nicht zum Umfang. Wiederhergestellt werden gespeicherte Daten und Tab-Adressen; ungespeicherte Formulareingaben gehören nicht dazu. Die Oberfläche ist deutsch.
 
@@ -88,11 +94,12 @@ Der Browser ist für Reviews gedacht. Downloads, Passwortverwaltung und Kamera-/
 
 Projekte, Screenshots, Aufgaben und Browserprofile liegen lokal. Jede Sitzung verwendet ein eigenes Profil. Agenten erhalten einen widerrufbaren Zugang zu ihrer Aufgabe und nur bei Freigabe Browserkontrolle. Menschliches Übernehmen hat Vorrang.
 
-Beim **Senden** geht dein Feedback über T3 an den dort gewählten Anbieter. Unter Linux kann Voxtype je nach deiner bestehenden Konfiguration lokal oder über einen Remote-Endpunkt transkribieren. „Lokal“ bedeutet daher keine pauschale Zusage, dass übergebene Inhalte den Rechner nie verlassen.
+Beim **Senden** geht dein Feedback über T3 an den dort gewählten Anbieter. Diktat geht an den Dienst, den du dafür wählst: Mit einem Online-Dienst verlässt die Tonaufnahme den Rechner, mit whisper.cpp nicht; Voxtype transkribiert je nach deiner bestehenden Konfiguration lokal oder über einen Remote-Endpunkt. Stille wird nie verschickt. „Lokal“ bedeutet daher keine pauschale Zusage, dass übergebene Inhalte den Rechner nie verlassen.
 
 | System | Persönliche Daten |
 | --- | --- |
 | Linux | `~/.local/share/zuruf`, `~/.local/state/zuruf`, `~/.config/zuruf` beziehungsweise deine XDG-Pfade |
+| macOS | `~/Library/Application Support/Zuruf/data`, `state` und `config` |
 | Windows | `%LOCALAPPDATA%\Zuruf\data`, `state` und `config` |
 
 Updates und die normalen Deinstallationsprogramme erhalten diese Daten. Tokens und Zugangsdaten gehören weder in Issues noch in Screenshots. [Sicherheitsprobleme melden](SECURITY.md).
