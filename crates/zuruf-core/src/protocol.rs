@@ -706,18 +706,88 @@ pub enum SettingsSpeechAttach {
     #[serde(rename = "before")]
     Before,
 }
+/// Where dictation is transcribed. Settings written before this choice existed mean Voxtype.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SpeechProvider {
+    #[serde(rename = "voxtype")]
+    Voxtype,
+    #[serde(rename = "whisper_cpp")]
+    WhisperCpp,
+    #[serde(rename = "openai")]
+    Openai,
+    #[serde(rename = "groq")]
+    Groq,
+    #[serde(rename = "mistral")]
+    Mistral,
+    #[serde(rename = "deepgram")]
+    Deepgram,
+    #[serde(rename = "elevenlabs")]
+    Elevenlabs,
+    #[serde(rename = "openai_compatible")]
+    OpenaiCompatible,
+}
+impl SpeechProvider {
+    /// Voxtype is a Linux program; elsewhere a new installation starts with a cloud service.
+    pub fn platform_default() -> Self {
+        if cfg!(target_os = "linux") {
+            Self::Voxtype
+        } else {
+            Self::Openai
+        }
+    }
+    fn legacy() -> Self {
+        Self::Voxtype
+    }
+}
+fn default_whisper_cpp_path() -> String {
+    "whisper-cli".into()
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsSpeech {
     pub enabled: bool,
+    #[serde(default = "SpeechProvider::legacy")]
+    pub provider: SpeechProvider,
     pub backend: SettingsSpeechBackend,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Base URL of an HTTP service; empty means the service's own address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
     pub attach: SettingsSpeechAttach,
     pub keep_audio: bool,
     pub voxtype_path: String,
+    #[serde(default = "default_whisper_cpp_path")]
+    pub whisper_cpp_path: String,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpeechServiceKey {
+    #[serde(rename = "stored")]
+    Stored,
+    #[serde(rename = "environment")]
+    Environment,
+    #[serde(rename = "none")]
+    None,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechService {
+    pub id: SpeechProvider,
+    pub label: String,
+    pub supported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsupported_reason: Option<String>,
+    pub local: bool,
+    pub needs_key: bool,
+    pub key: SpeechServiceKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_env: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_endpoint: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

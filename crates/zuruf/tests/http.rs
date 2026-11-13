@@ -772,3 +772,39 @@ async fn first_run_projects_profiles_and_switching() {
     assert!(h.state().await["status"]["activeProjectId"].is_null());
     h.app.close().await.unwrap();
 }
+#[tokio::test]
+async fn speech_keys_are_write_only() {
+    let h = Harness::new().await;
+    let services = h.call("GET", "/speech/services", json!({})).await;
+    let ids: Vec<&str> = services
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&"openai") && ids.contains(&"whisper_cpp"));
+    let stored = h
+        .call(
+            "PUT",
+            "/speech/services/mistral/key",
+            json!({"apiKey": "mistral-secret"}),
+        )
+        .await;
+    assert_eq!(stored["key"], "stored");
+    let listed = h.call("GET", "/speech/services", json!({})).await;
+    assert!(!listed.to_string().contains("mistral-secret"));
+    assert!(!h.state().await.to_string().contains("mistral-secret"));
+    let removed = h
+        .call("DELETE", "/speech/services/mistral/key", json!({}))
+        .await;
+    assert_ne!(removed["key"], "stored");
+    assert!(!h.paths.state.join("speech-keys.json").exists());
+    let unknown = reqwest::Client::new()
+        .put(format!("{}/api/v1/speech/services/nope/key", h.base))
+        .bearer_auth(&h.token)
+        .json(&json!({"apiKey": "x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), 404);
+}

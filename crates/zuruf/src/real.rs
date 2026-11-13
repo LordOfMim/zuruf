@@ -364,9 +364,38 @@ pub struct Speech {
     app: std::sync::OnceLock<std::sync::Weak<Inner>>,
     inner: AsyncMutex<SpeechInner>,
     directory: PathBuf,
+    keys: PathBuf,
     pub(crate) settings: std::sync::RwLock<SettingsSpeech>,
 }
 impl Speech {
+    /// Takes over a started backend and forwards its microphone levels to the UI.
+    fn attach(
+        &self,
+        i: &mut SpeechInner,
+        backend: Box<dyn zuruf_speech::SpeechAdapter>,
+        levels: tokio::sync::watch::Receiver<f32>,
+        boundary: SpeechBoundary,
+    ) {
+        if let Some(weak) = self.app.get().cloned() {
+            i.levels = Some(
+                tokio::spawn(async move {
+                    let mut levels = levels;
+                    while levels.changed().await.is_ok() {
+                        let Some(app) = weak.upgrade() else {
+                            break;
+                        };
+                        let _ = app.events.send(
+                            json!({"type":"speech.level","payload":{"level":*levels.borrow()}}),
+                        );
+                    }
+                })
+                .abort_handle(),
+            );
+        }
+        i.started = boundary.at.clone();
+        i.boundary = Some(boundary);
+        i.backend = Some(backend);
+    }
     fn handle(
         h: zuruf_speech::SegmentHandle,
         old: SpeechBoundary,
@@ -424,6 +453,32 @@ impl SpeechAdapter for Speech {
         Box::pin(async move {
             use zuruf_speech::SpeechAdapter;
             let settings = self.settings.read().map_err(io)?.clone();
+            let notify = |level: &str, code: &str, detail: &str| {
+                if let Some(app) = self.app.get().and_then(std::sync::Weak::upgrade) {
+                    let _ = app.events.send(json!({"type":"notice","payload":{"level":level,"code":code,"detail":detail}}));
+                }
+            };
+            if settings.provider != SpeechProvider::Voxtype {
+                // A service other than Voxtype: Zuruf records itself and sends finished segments.
+                let service = crate::speech_services::build(&settings, &self.keys, &self.directory)
+                    .map_err(|detail| {
+                        notify("error", "speech.unavailable", &detail);
+                        AdapterError::Unavailable(detail)
+                    })?;
+                let mut i = self.inner.lock().await;
+                if i.backend.is_some() {
+                    return Err(AdapterError::Rejected("Sprache läuft bereits".into()));
+                }
+                let mut b = zuruf_speech::Continuous::new(service, 2);
+                let levels = b.levels();
+                if let Err(error) = b.start(boundary.batch_id.clone()).await {
+                    let detail = error.to_string();
+                    notify("error", "speech.microphone", &detail);
+                    return Err(AdapterError::Unavailable(detail));
+                }
+                self.attach(&mut i, Box::new(b), levels, boundary);
+                return Ok(());
+            }
             // No model set: Voxtype's own configuration decides, including a remote endpoint.
             if let Some(model) = &settings.model {
                 let home = std::env::var_os("HOME")
@@ -435,9 +490,7 @@ impl SpeechAdapter for Speech {
                 {
                     let detail =
                         format!("Sprachmodell {model} fehlt. Kein automatischer Download.");
-                    if let Some(app) = self.app.get().and_then(std::sync::Weak::upgrade) {
-                        let _ = app.events.send(json!({"type":"notice","payload":{"level":"error","code":"speech.model_missing","detail":detail}}));
-                    }
+                    notify("error", "speech.model_missing", &detail);
                     return Err(AdapterError::Unavailable(detail));
                 }
             }
@@ -469,12 +522,13 @@ impl SpeechAdapter for Speech {
             let backend: Box<dyn zuruf_speech::SpeechAdapter> = match continuous {
                 Ok(()) => Box::new(b),
                 Err(error) => {
-                    if let Some(app) = self.app.get().and_then(std::sync::Weak::upgrade) {
-                        let detail = format!(
+                    notify(
+                        "warning",
+                        "speech.daemon_fallback",
+                        &format!(
                             "Daemon-Sprachbackend: verzögerte Segmentgrenzen, keine Sprachüberschreibung. {error}"
-                        );
-                        let _ = app.events.send(json!({"type":"notice","payload":{"level":"warning","code":"speech.daemon_fallback","detail":detail}}));
-                    }
+                        ),
+                    );
                     let mut fallback = zuruf_speech::Daemon::new(
                         settings.voxtype_path.into(),
                         self.directory.clone(),
@@ -487,25 +541,7 @@ impl SpeechAdapter for Speech {
                     Box::new(fallback)
                 }
             };
-            if let Some(weak) = self.app.get().cloned() {
-                i.levels = Some(
-                    tokio::spawn(async move {
-                        let mut levels = levels;
-                        while levels.changed().await.is_ok() {
-                            let Some(app) = weak.upgrade() else {
-                                break;
-                            };
-                            let _ = app.events.send(
-                                json!({"type":"speech.level","payload":{"level":*levels.borrow()}}),
-                            );
-                        }
-                    })
-                    .abort_handle(),
-                );
-            }
-            i.started = boundary.at.clone();
-            i.boundary = Some(boundary);
-            i.backend = Some(backend);
+            self.attach(&mut i, backend, levels, boundary);
             Ok(())
         })
     }
@@ -1136,6 +1172,7 @@ impl Daemon {
                 levels: None,
             }),
             directory: paths.state.join("audio"),
+            keys: crate::speech_services::keys_path(&paths.state),
             settings: std::sync::RwLock::new(settings.speech),
         });
         let tabs = tokio::fs::read(paths.state.join("tab-ids.json"))

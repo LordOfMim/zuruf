@@ -1,6 +1,7 @@
 pub mod fakes;
 mod mcp_mount;
 pub mod real;
+mod speech_services;
 mod worker;
 use axum::{
     Router,
@@ -313,8 +314,41 @@ impl Daemon {
         })
         .await
     }
+    async fn speech_keys(&self) -> Result<std::path::PathBuf> {
+        self.access(|p| Ok(speech_services::keys_path(&p.store.paths.state)))
+            .await
+    }
+    /// Shows whether dictation can start with the current settings, so the UI can say why not
+    /// before the first try. Test doubles always count as ready.
+    async fn refresh_speech(&self) -> Result<()> {
+        if self.0.real.get().is_none() {
+            return Ok(());
+        }
+        let keys = self.speech_keys().await?;
+        self.mutate(move |s, _| {
+            let speech = &mut s.status.speech;
+            if matches!(
+                speech.state,
+                SpeechStateState::Recording | SpeechStateState::Transcribing
+            ) {
+                return Ok(());
+            }
+            match speech_services::readiness(&s.settings.speech, &keys) {
+                Some(reason) => {
+                    speech.state = SpeechStateState::Unavailable;
+                    speech.error = Some(reason);
+                }
+                None if speech.state == SpeechStateState::Unavailable => {
+                    speech.state = SpeechStateState::Idle;
+                    speech.error = None;
+                }
+                None => {}
+            }
+            Ok(())
+        })
+        .await
+    }
     pub async fn recover(&self) -> Result<()> {
-        let speech_unavailable = cfg!(target_os = "windows") && self.0.real.get().is_some();
         // The page side starts switched off; bring it in line with what the app shows.
         let review = self.snapshot().await?.status.review_mode;
         self.0.browser.set_review_mode(review).await?;
@@ -326,6 +360,7 @@ impl Daemon {
             Ok(())
         })
         .await?;
+        self.refresh_speech().await?;
         self.mutate(move |s, _| {
             // Free dictation used to be collected invisibly on the batch; show it as an entry.
             let notes: Vec<(Id, String)> = s
@@ -340,13 +375,8 @@ impl Daemon {
             }
             // No recording survives a restart; a stale "on" would make the next toggle a no-op.
             s.settings.speech.enabled = false;
-            s.status.speech.state = if speech_unavailable {
-                s.status.speech.error =
-                    Some("Diktat ist derzeit unter Linux mit Voxtype verfügbar.".into());
-                SpeechStateState::Unavailable
-            } else {
-                SpeechStateState::Idle
-            };
+            s.status.speech.state = SpeechStateState::Idle;
+            s.status.speech.error = None;
             for segment in &mut s.segments {
                 if matches!(
                     segment.state,
@@ -808,9 +838,13 @@ impl Daemon {
                     } else {
                         SpeechStateState::Idle
                     };
+                    s.status.speech.error = None;
                     Ok(())
                 })
                 .await?;
+                if !enabled {
+                    self.refresh_speech().await?;
+                }
             }
             "capture.viewport" | "capture.region" | "capture.dom" => {
                 let mut s = self.action_snapshot().await?;
@@ -1625,12 +1659,38 @@ async fn api(
                 .browser
                 .push_bindings(settings.bindings.clone())
                 .await?;
-            app.mutate(move |s, store| {
-                store.save_settings(&settings)?;
-                s.settings = settings;
-                val(&s.settings)
-            })
-            .await?
+            let saved = app
+                .mutate(move |s, store| {
+                    store.save_settings(&settings)?;
+                    s.settings = settings;
+                    val(&s.settings)
+                })
+                .await?;
+            app.refresh_speech().await?;
+            saved
+        }
+        ("GET", "speech", "services", "") => {
+            let keys = app.speech_keys().await?;
+            val(speech_services::catalog(&keys))?
+        }
+        ("PUT" | "DELETE", "speech", "services", id)
+            if parts.get(3) == Some(&"key") && parts.len() == 4 =>
+        {
+            let provider = speech_services::parse(id).ok_or_else(|| {
+                Error::Api(StatusCode::NOT_FOUND, "unknown speech service".into())
+            })?;
+            let keys = app.speech_keys().await?;
+            let stored = if method == Method::PUT {
+                let key = v["apiKey"]
+                    .as_str()
+                    .ok_or_else(|| invalid("apiKey required"))?;
+                speech_services::store_key(&keys, provider, key)
+            } else {
+                speech_services::remove_key(&keys, provider)
+            };
+            stored.map_err(StoreError::from)?;
+            app.refresh_speech().await?;
+            val(speech_services::describe(&keys, provider))?
         }
         ("POST", "reviews", _, _) => {
             app.mutate(move |s, _| {
