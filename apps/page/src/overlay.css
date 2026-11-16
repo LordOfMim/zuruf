@@ -5,14 +5,14 @@
  */
 :host {
   --zuruf-signal: #ff5a36;
-  --zuruf-agent: #8fa8ff;
-  --zuruf-danger: #f0655a;
-  --zuruf-surface: rgba(21, 22, 24, 0.92);
-  --zuruf-text: #e8e7e3;
-  --zuruf-muted: #9b9c98;
-  --zuruf-line: rgba(255, 255, 255, 0.13);
-  --zuruf-shade: rgba(10, 11, 12, 0.42);
-  --zuruf-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --zuruf-agent: oklch(0.707 0.165 254.624);
+  --zuruf-danger: oklch(0.704 0.191 22.216);
+  --zuruf-surface: rgba(46, 45, 43, 0.92);
+  --zuruf-text: #ecebe9;
+  --zuruf-muted: #aaa8a5;
+  --zuruf-line: rgba(214, 213, 212, 0.12);
+  --zuruf-shade: rgba(18, 17, 16, 0.42);
+  --zuruf-ease: cubic-bezier(0.23, 1, 0.32, 1);
   all: initial;
   pointer-events: none;
 }
