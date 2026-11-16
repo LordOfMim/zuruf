@@ -239,7 +239,7 @@ exec "$ZURUF_TEST_REAL_SHELL" "$@"
   live = await ready(live.pid);
   connection = await rawBrowser(live);
   const panel = await until("the restored app panel", () => connection.contexts()[0].pages().find((page) => page.url().startsWith(`${base}/panel.html`)));
-  await panel.getByRole("button", { name: "Sitzungen", exact: true }).waitFor({ timeout: 15000 });
+  await panel.getByRole("button", { name: "Starten", exact: true }).waitFor({ timeout: 15000 });
   assert.equal((await current()).tabs.length, 2);
   await until("the width after daemon restart", visibleFixturePage);
   await connection.close(); connection = undefined;
