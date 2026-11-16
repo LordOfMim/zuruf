@@ -1,0 +1,22 @@
+{
+  "id": "example",
+  "projectId": "example",
+  "name": "example",
+  "url": "example",
+  "repositoryPath": "example",
+  "command": "example",
+  "workingDir": "example",
+  "memoryLimitMb": 1.0,
+  "browser": {
+    "mode": "shared"
+  },
+  "process": {
+    "state": "running",
+    "pid": 1.0,
+    "startedAt": "example",
+    "exitCode": 1.0,
+    "error": "example"
+  },
+  "createdAt": "example",
+  "updatedAt": "example"
+}

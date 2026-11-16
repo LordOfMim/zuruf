@@ -201,12 +201,7 @@ impl Daemon {
                     .await?;
                 continue;
             }
-            let project = s
-                .projects
-                .iter()
-                .find(|p| p.id == task.project_id)
-                .cloned()
-                .ok_or_else(missing)?;
+            let project = task_project(&s, &task).ok_or_else(missing)?;
             let receipt = self
                 .access({
                     let id = id.clone();
@@ -339,11 +334,7 @@ impl Daemon {
                         .iter()
                         .find(|b| b.id == task.batch_id)
                         .ok_or_else(missing)?;
-                    let project = s
-                        .projects
-                        .iter()
-                        .find(|p| p.id == task.project_id)
-                        .ok_or_else(missing)?;
+                    let project = task_project(s, task).ok_or_else(missing)?;
                     let annotations = s
                         .annotations
                         .iter()
@@ -352,7 +343,7 @@ impl Daemon {
                         .collect::<Vec<_>>();
                     let manifest = build_manifest(
                         batch,
-                        project,
+                        &project,
                         &task.profile,
                         &annotations,
                         &s.settings.redaction,

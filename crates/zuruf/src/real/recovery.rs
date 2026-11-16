@@ -362,12 +362,20 @@ impl Browsers {
         ));
         config.urls = session.tabs.iter().map(|tab| tab.url.clone()).collect();
         if config.urls.is_empty() {
+            // A session opened for a start option begins at that option's address.
+            let of_launcher = session
+                .launcher_id
+                .as_ref()
+                .and_then(|id| snapshot.launchers.iter().find(|l| &l.id == id))
+                .map(|launcher| launcher.url.clone());
+            let of_project = snapshot
+                .projects
+                .iter()
+                .find(|p| p.id == session.project_id)
+                .map(|p| p.base_url.clone());
             config.urls.push(
-                snapshot
-                    .projects
-                    .iter()
-                    .find(|p| p.id == session.project_id)
-                    .map(|p| p.base_url.clone())
+                of_launcher
+                    .or(of_project)
                     .filter(|url| !url.is_empty())
                     .unwrap_or_else(|| "about:blank".into()),
             );
@@ -395,7 +403,7 @@ impl Browsers {
             mapped.push(self.tab(tab).await?);
         }
         session.tabs = mapped;
-        if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated {
+        if window_mode(&snapshot, Some(&session)) == SettingsUiBrowser::Integrated {
             self.close_app().await;
         }
         Ok(LaunchedSession {

@@ -1,4 +1,5 @@
 pub mod fakes;
+mod launcher;
 mod mcp_mount;
 pub mod real;
 mod speech_services;
@@ -16,7 +17,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -95,6 +96,8 @@ struct Inner {
     hotkeys: Arc<dyn DesktopHotkeys>,
     workers: Mutex<HashSet<Id>>,
     handles: Mutex<Vec<tokio::task::AbortHandle>>,
+    /// Commands of start options that are running right now.
+    launchers: tokio::sync::Mutex<HashMap<Id, launcher::Running>>,
 }
 #[derive(Clone)]
 pub struct Daemon(Arc<Inner>);
@@ -142,6 +145,7 @@ impl Daemon {
             hotkeys,
             workers: Mutex::new(HashSet::new()),
             handles: Mutex::new(vec![]),
+            launchers: tokio::sync::Mutex::new(HashMap::new()),
         })))
     }
     pub fn fake(paths: Paths) -> impl std::future::Future<Output = Result<Self>> {
@@ -184,6 +188,7 @@ impl Daemon {
     }
     pub async fn close(&self) -> Result<()> {
         self.shutdown();
+        self.stop_launcher_commands(None).await;
         if let Some(runtime) = self.0.real.get() {
             runtime.browsers.cancel_recovery();
         }
@@ -373,6 +378,10 @@ impl Daemon {
                 let a = new_annotation(s, &batch, AnnotationType::Text, note)?;
                 s.annotations.push(a);
             }
+            // No command of a start option survives a restart either.
+            for launcher in &mut s.launchers {
+                launcher.process = LauncherProcess::default();
+            }
             // No recording survives a restart; a stale "on" would make the next toggle a no-op.
             s.settings.speech.enabled = false;
             s.status.speech.state = SpeechStateState::Idle;
@@ -493,6 +502,7 @@ impl Daemon {
                 base_url: "http://localhost:3000".into(),
                 t3_project_id: Some("fake-project".into()),
                 default_profile_id: None,
+                browser: BrowserOptions::default(),
                 created_at: now(),
                 updated_at: now(),
             };
@@ -537,6 +547,7 @@ impl Daemon {
                     settling: false,
                 },
                 tabs: vec![],
+                launcher_id: None,
                 created_at: now(),
             };
             s.status.active_session_id = Some(session.id.clone());
@@ -579,6 +590,8 @@ impl Daemon {
                     thread_id: Some(id()),
                     thread_url: None,
                     workspace_path: None,
+                    repository_path: None,
+                    launcher_id: None,
                     branch: None,
                     last_message: Some("Demo-Ergebnis".into()),
                     error: None,
@@ -1192,6 +1205,7 @@ fn empty_snapshot(settings: Settings) -> Snapshot {
             t3: disconnected_connection(),
         },
         projects: vec![],
+        launchers: vec![],
         profiles: vec![],
         sessions: vec![],
         reviews: vec![],
@@ -1336,6 +1350,7 @@ fn diff(before: &Snapshot, after: &Snapshot) -> Result<Vec<Value>> {
     let mut events = vec![];
     for (key, prefix) in [
         ("projects", "project"),
+        ("launchers", "launcher"),
         ("profiles", "profile"),
         ("sessions", "session"),
         ("reviews", "review"),
@@ -2044,14 +2059,10 @@ async fn api(
                             .iter()
                             .find(|b| b.id == a.batch_id)
                             .ok_or_else(missing)?;
-                        let project = next
-                            .projects
-                            .iter()
-                            .find(|pr| pr.id == task.project_id)
-                            .ok_or_else(missing)?;
+                        let project = task_project(&next, &task).ok_or_else(missing)?;
                         let manifest = build_manifest(
                             batch,
-                            project,
+                            &project,
                             &task.profile,
                             &[a],
                             &next.settings.redaction,
@@ -2115,6 +2126,7 @@ async fn api(
             app.start_worker(key);
             result
         }
+        (_, "launchers", _, _) => app.launcher_api(method.as_str(), key, operation, v).await?,
         ("POST", "sessions", _, "control") => {
             app.session_control(key, serde_json::from_value(v)?).await?
         }
@@ -2184,38 +2196,58 @@ async fn api(
             let mut v = v;
             if entity == "projects" {
                 let request: CreateProjectRequest = serde_json::from_value(v.clone())?;
-                let path = std::fs::canonicalize(&request.repository_path)
-                    .map_err(|_| invalid("Repository-Pfad existiert nicht."))?;
-                if !path.is_dir() {
-                    return Err(invalid("Repository-Pfad muss ein Verzeichnis sein."));
+                if request.name.trim().is_empty() {
+                    return Err(invalid("Das Projekt braucht einen Namen."));
                 }
-                let url = reqwest::Url::parse(&request.base_url)
-                    .map_err(|_| invalid("Basis-URL muss HTTP oder HTTPS verwenden."))?;
-                if !matches!(url.scheme(), "http" | "https") {
-                    return Err(invalid("Basis-URL muss HTTP oder HTTPS verwenden."));
+                // A general project has neither folder nor address; its start options bring theirs.
+                let folder = request
+                    .repository_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|path| !path.is_empty());
+                let address = request
+                    .base_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty());
+                if let Some(address) = address {
+                    let url = reqwest::Url::parse(address)
+                        .map_err(|_| invalid("Basis-URL muss HTTP oder HTTPS verwenden."))?;
+                    if !matches!(url.scheme(), "http" | "https") {
+                        return Err(invalid("Basis-URL muss HTTP oder HTTPS verwenden."));
+                    }
                 }
-                if app.snapshot().await?.projects.iter().any(|project| {
-                    std::fs::canonicalize(&project.repository_path)
-                        .ok()
-                        .as_ref()
-                        == Some(&path)
-                }) {
-                    return Err(invalid(
-                        "Für diesen Repository-Pfad existiert bereits ein Projekt.",
-                    ));
-                }
-                v["repositoryPath"] = json!(path.to_string_lossy());
-                if request.t3_project_id.is_none()
-                    && app.snapshot().await?.status.t3.state == T3ConnectionState::Connected
-                {
-                    let projects = app.0.t3.list_projects().await?;
-                    v["t3ProjectId"] = json!(
-                        projects
-                            .iter()
-                            .find(|p| std::fs::canonicalize(&p.workspace_root).ok().as_ref()
-                                == Some(&path))
-                            .map(|p| &p.id)
-                    );
+                v["baseUrl"] = json!(address.unwrap_or_default());
+                v["repositoryPath"] = json!("");
+                if let Some(folder) = folder {
+                    let path = std::fs::canonicalize(folder)
+                        .map_err(|_| invalid("Repository-Pfad existiert nicht."))?;
+                    if !path.is_dir() {
+                        return Err(invalid("Repository-Pfad muss ein Verzeichnis sein."));
+                    }
+                    if app.snapshot().await?.projects.iter().any(|project| {
+                        std::fs::canonicalize(&project.repository_path)
+                            .ok()
+                            .as_ref()
+                            == Some(&path)
+                    }) {
+                        return Err(invalid(
+                            "Für diesen Repository-Pfad existiert bereits ein Projekt.",
+                        ));
+                    }
+                    v["repositoryPath"] = json!(path.to_string_lossy());
+                    if request.t3_project_id.is_none()
+                        && app.snapshot().await?.status.t3.state == T3ConnectionState::Connected
+                    {
+                        let projects = app.0.t3.list_projects().await?;
+                        v["t3ProjectId"] = json!(
+                            projects
+                                .iter()
+                                .find(|p| std::fs::canonicalize(&p.workspace_root).ok().as_ref()
+                                    == Some(&path))
+                                .map(|p| &p.id)
+                        );
+                    }
                 }
                 app.set_review(false).await?;
             }
@@ -2227,9 +2259,10 @@ async fn api(
                     item["createdAt"] = json!(now());
                     item["updatedAt"] = json!(now());
                     let p: Project = serde_json::from_value(item)?;
-                    if s.projects
-                        .iter()
-                        .any(|other| other.repository_path == p.repository_path)
+                    if !p.repository_path.is_empty()
+                        && s.projects
+                            .iter()
+                            .any(|other| other.repository_path == p.repository_path)
                     {
                         return Err(invalid(
                             "Für diesen Repository-Pfad existiert bereits ein Projekt.",
@@ -2282,6 +2315,12 @@ async fn api(
                         .find(|p| p.id == key)
                         .ok_or_else(missing)?;
                     p.updated_at = now();
+                    let folder = v["repositoryPath"].as_str().map(str::to_owned);
+                    if let Some(folder) = folder.filter(|path| !path.is_empty())
+                        && !std::path::Path::new(&folder).is_dir()
+                    {
+                        return Err(invalid("Repository-Pfad muss ein Verzeichnis sein."));
+                    }
                     patch(
                         p,
                         v,
@@ -2291,6 +2330,7 @@ async fn api(
                             "baseUrl",
                             "t3ProjectId",
                             "defaultProfileId",
+                            "browser",
                         ],
                     )
                 }
@@ -2330,6 +2370,7 @@ async fn api(
         }
         ("DELETE", "projects" | "profiles" | "sessions", _, _) => {
             if entity == "projects" {
+                app.stop_launcher_commands(Some(&key)).await;
                 let snapshot = app.snapshot().await?;
                 if snapshot.status.active_project_id.as_ref() == Some(&key)
                     && !snapshot
@@ -2362,6 +2403,7 @@ async fn api(
                             .cloned()
                             .ok_or_else(missing)?;
                         s.projects.retain(|p| p.id != key);
+                        s.launchers.retain(|launcher| launcher.project_id != key);
                         let batches: HashSet<_> = s.batches.iter().filter(|b| b.project_id == key).map(|b| b.id.clone()).collect();
                         s.sessions.retain(|session| session.project_id != key);
                         s.reviews.retain(|review| review.project_id != key);
