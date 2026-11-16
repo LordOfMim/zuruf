@@ -48,7 +48,7 @@ def licenses(destination, cef):
         copy(ROOT / filename, destination / filename)
     copy(cef / "LICENSE.txt", destination / "CEF-LICENSE.txt")
     copy(cef / "CREDITS.html", destination / "CHROMIUM-CREDITS.html")
-    for package, filename in [("solid-js", "SOLID-LICENSE.txt"), ("@fontsource-variable/inter", "INTER-LICENSE.txt"), ("@fontsource-variable/jetbrains-mono", "JETBRAINS-MONO-LICENSE.txt")]:
+    for package, filename in [("solid-js", "SOLID-LICENSE.txt"), ("@fontsource-variable/inter", "INTER-LICENSE.txt"), ("@fontsource-variable/geist-mono", "GEIST-MONO-LICENSE.txt")]:
         copy(ROOT / "apps/ui/node_modules" / package / "LICENSE", destination / filename)
     tool = subprocess.check_output([sys.executable, "tools/release/install-tools.py"], cwd=ROOT, text=True).strip().splitlines()[-1]
     subprocess.run([tool, "generate", "--workspace", "--fail", "--locked", "--offline", "-o", str(destination / "RUST-LICENSES.html"), "packaging/licenses.hbs"], cwd=ROOT, check=True)

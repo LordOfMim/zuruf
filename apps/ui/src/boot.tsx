@@ -1,5 +1,5 @@
 import "@fontsource-variable/inter";
-import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/geist-mono";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import { type JSX, Show, createEffect } from "solid-js";

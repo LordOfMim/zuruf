@@ -203,6 +203,8 @@ Die App soll **nicht** einfach ein langes Transkript beliebig auf Screenshots ve
 
 ### 7.1 Konzepte
 
+- **Projekt:** Klammer für Startoptionen, Browser-Sitzungen, Reviews und Aufgaben. Mit Ordner (ein Repository) oder allgemein ohne Ordner (zum Beispiel „Allgemein“ oder „Prototypen“). Trägt eigene Browseroptionen.
+- **Startoption:** Etwas, das ein Projekt starten kann: Adresse, optional Startbefehl mit Ordner und Speicherlimit, optional eigener Ordner für Agenten und eigene Browseroptionen. Nur lokal in der App anlegbar, nie durch Agenten.
 - **Review:** Eine gesamte Feedback-Sitzung.
 - **Capture/Annotation:** Eine spezifische, kontextreiche Markierung mit Text/Audio.
 - **Active Batch:** Aktuell gesammelte, noch nicht abgeschickte Annotationen und Freitext.

@@ -1,10 +1,12 @@
-Zuruf läuft jetzt auch auf dem Mac, und das Diktat arbeitet mit dem Transkriptionsdienst deiner Wahl.
+Zuruf trennt jetzt sauber nach Projekten: Jedes Projekt hat eigene Startoptionen, Browser-Sitzungen und Browseroptionen. Dazu kommt ein neues Erscheinungsbild.
 
-- **macOS:** Neue App für Apple silicon (macOS 12 oder neuer) als Disk-Image und ZIP. Tastenkürzel mit `⌘`, eigene Menüleiste, Daten unter `~/Library/Application Support/Zuruf`.
-- **Diktat mit wählbarem Dienst:** lokal mit Voxtype (Linux) oder whisper.cpp, online über OpenAI, Groq, Mistral, Deepgram, ElevenLabs oder einen eigenen OpenAI-kompatiblen Server. Die Einstellungen zeigen, ob der Ton den Rechner verlässt, und nennen fehlende Schlüssel oder Modelldateien.
-- **API-Schlüssel bleiben privat:** Sie werden nur lokal und nur für dich lesbar gespeichert und nie wieder angezeigt. Stille wird nie verschickt.
+- **Startoptionen:** Lege je Projekt fest, was sich starten lässt: eine Adresse, auf Wunsch mit Startbefehl (etwa `pnpm dev`). „Starten“ führt den Befehl aus, wartet, bis die Adresse antwortet, und öffnet sie in einer eigenen Sitzung; „Stoppen“ beendet beides. Startbefehle lassen sich nur in der lokalen App anlegen, nie durch Agenten.
+- **Allgemeine Projekte:** Ein Projekt braucht keinen Ordner mehr. So entsteht etwa ein Projekt „Allgemein“ für alles, was du immer wieder öffnest, oder „Prototypen“ mit allen Wegen, Prototypen zu starten. Jede Startoption kann ihren eigenen Ordner für Agenten mitbringen.
+- **Browseroptionen je Projekt und Startoption:** Sitzungsart, Agentenzugriff und ein oder zwei Fenster – jeweils mit Rückfall auf Projekt und Einstellungen.
+- **Neuer Bereich „Starten“:** Er ersetzt „Sitzungen“ und zeigt nur, was zum gewählten Projekt gehört.
+- **Neues Design:** Die Oberfläche folgt dem Palermo-Designsystem, mit einem einheitlichen Icon-Satz und Geist Mono als Festbreitenschrift.
 
-**macOS, erster Start:** Die App ist ad hoc signiert, aber nicht von Apple notarisiert. Einmal unter *Systemeinstellungen › Datenschutz & Sicherheit* „Dennoch öffnen“ wählen oder `xattr -dr com.apple.quarantine /Applications/Zuruf.app` ausführen.
+**Hinweise:** Das Speicherlimit für Startbefehle wirkt nur unter Linux mit systemd. Ohne Ordner bei Projekt und Startoption funktioniert das Review, „Senden“ ist dann gesperrt. Bestehende Projekte und Sitzungen bleiben unverändert erhalten.
 
 **Plattformumfang:** Windows 10/11 und Linux, jeweils x64, sowie macOS 12+ auf Apple silicon. Diktat gibt es unter Linux und macOS, desktopweite Hotkeys nur unter Hyprland. T3, Modell- und Transkriptionsanbieter werden separat eingerichtet. Die Oberfläche ist deutsch. Der Windows-Installer ist noch nicht Authenticode-signiert.
 

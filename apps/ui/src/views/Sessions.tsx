@@ -4,6 +4,7 @@ import { Button, Icon } from "../components/basics";
 import type { AppStore } from "../lib/store";
 import { plain } from "../lib/store";
 import { sessionModeLabel, shortUrl } from "../lib/text";
+import { Launchers } from "./Launchers";
 import { Segmented } from "./Settings";
 
 function controlLine(session: BrowserSession): string {
@@ -87,24 +88,32 @@ function SessionRow(props: { session: BrowserSession; store: AppStore }) {
 export function Sessions(props: { store: AppStore }) {
   const store = props.store;
   const [name, setName] = createSignal("");
-  const [mode, setMode] = createSignal<SessionMode>("isolated");
+  // A new session follows the project's browser options unless the user picks otherwise.
+  const [pickedMode, setMode] = createSignal<SessionMode | undefined>();
+  const projectOptions = () => store.activeProject()?.browser ?? {};
+  const mode = () => pickedMode() ?? projectOptions().mode ?? "isolated";
 
   const create = async (event: SubmitEvent) => {
     event.preventDefault();
     const projectId = store.status()?.activeProjectId;
     if (!projectId || !name().trim()) return;
-    await store.commands.createSession({ projectId, name: name().trim(), mode: mode(), agentAccess: mode() === "shared" });
+    await store.commands.createSession({
+      projectId,
+      name: name().trim(),
+      mode: mode(),
+      agentAccess: projectOptions().agentAccess ?? mode() === "shared",
+    });
     setName("");
   };
 
   return (
     <div class="page">
       <header class="page-head">
-        <h1>Sitzungen</h1>
+        <h1>{store.activeProject()?.name ?? "Starten"}</h1>
         <Show when={store.settings()}>
           {(settings) => (
             <Segmented
-              label="Fenster"
+              label="Fenster (Standard für alle Projekte)"
               value={settings().ui.browser ?? "integrated"}
               options={[
                 { value: "integrated", label: "Ein Fenster" },
@@ -118,10 +127,14 @@ export function Sessions(props: { store: AppStore }) {
           )}
         </Show>
       </header>
+      <Launchers store={store} />
       <section class="group">
-        <ul class="sessions">
-          <For each={store.snapshot()?.sessions}>{(session) => <SessionRow session={session} store={store} />}</For>
-        </ul>
+        <h2 class="group-title">Sitzungen</h2>
+        <Show when={store.sessions().length > 0}>
+          <ul class="sessions">
+            <For each={store.sessions()}>{(session) => <SessionRow session={session} store={store} />}</For>
+          </ul>
+        </Show>
         <form class="create" onSubmit={create}>
           <input
             class="input"

@@ -226,6 +226,66 @@ pub fn sensitive(key: &str, patterns: &[String]) -> bool {
     .any(|p| k.contains(p))
         || patterns.iter().any(|p| k.contains(&p.to_lowercase()))
 }
+/// Browser choices for a project, or for one of its start options: the start option's
+/// own values win, the project's fill the gaps.
+pub fn browser_options(s: &Snapshot, project: &str, launcher: Option<&str>) -> BrowserOptions {
+    let of_project = s
+        .projects
+        .iter()
+        .find(|p| p.id == project)
+        .map(|p| p.browser.clone())
+        .unwrap_or_default();
+    let of_launcher = launcher
+        .and_then(|id| s.launchers.iter().find(|l| l.id == id))
+        .map(|l| l.browser.clone())
+        .unwrap_or_default();
+    BrowserOptions {
+        mode: of_launcher.mode.or(of_project.mode),
+        agent_access: of_launcher.agent_access.or(of_project.agent_access),
+        window: of_launcher.window.or(of_project.window),
+    }
+}
+/// Whether a session of this project shares one window with the app.
+pub fn window_mode(s: &Snapshot, session: Option<&BrowserSession>) -> SettingsUiBrowser {
+    session
+        .and_then(|session| {
+            browser_options(s, &session.project_id, session.launcher_id.as_deref()).window
+        })
+        .unwrap_or(s.settings.ui.browser)
+}
+/// The start option feedback in a batch belongs to: the session its entries were taken in,
+/// or the session in front when the batch has no captures yet.
+pub fn batch_launcher<'a>(s: &'a Snapshot, batch: &Batch) -> Option<&'a Launcher> {
+    let session = s
+        .annotations
+        .iter()
+        .filter(|a| a.batch_id == batch.id)
+        .find_map(|a| a.session_id.as_ref())
+        .or(s.status.active_session_id.as_ref())?;
+    let launcher = s
+        .sessions
+        .iter()
+        .find(|x| &x.id == session && x.project_id == batch.project_id)?
+        .launcher_id
+        .as_ref()?;
+    s.launchers.iter().find(|l| &l.id == launcher)
+}
+/// The project as an agent task sees it: folder and address are those of the start option
+/// the feedback came from. `None` when the project is gone.
+pub fn task_project(s: &Snapshot, task: &Task) -> Option<Project> {
+    let mut project = s.projects.iter().find(|p| p.id == task.project_id)?.clone();
+    if let Some(path) = task.repository_path.as_ref().filter(|p| !p.is_empty()) {
+        project.repository_path = path.clone();
+    }
+    if let Some(launcher) = task
+        .launcher_id
+        .as_ref()
+        .and_then(|id| s.launchers.iter().find(|l| &l.id == id))
+    {
+        project.base_url = launcher.url.clone();
+    }
+    Some(project)
+}
 pub fn build_manifest(
     batch: &Batch,
     project: &Project,

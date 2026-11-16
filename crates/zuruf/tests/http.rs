@@ -808,3 +808,226 @@ async fn speech_keys_are_write_only() {
         .unwrap();
     assert_eq!(unknown.status(), 404);
 }
+async fn status_of(h: &Harness, method: &str, path: &str, body: Value) -> u16 {
+    reqwest::Client::new()
+        .request(method.parse().unwrap(), format!("{}/api/v1{path}", h.base))
+        .bearer_auth(&h.token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+#[tokio::test]
+async fn general_project_routes_feedback_through_its_start_options() {
+    let h = Harness::with_seed(false).await;
+    let general = h
+        .call("POST", "/projects", json!({"name":"Allgemein"}))
+        .await;
+    assert_eq!(general["repositoryPath"], "");
+    assert_eq!(general["baseUrl"], "");
+    // A second project without a folder is no duplicate of the first.
+    let prototypes = h
+        .call("POST", "/projects", json!({"name":"Prototypen"}))
+        .await;
+    h.call("POST", "/active", json!({"projectId":general["id"]}))
+        .await;
+    h.call("POST", "/profiles", json!({"name":"First","providerInstanceId":"fake-codex","model":"fake","options":{},"workspaceStrategy":"shared_root"})).await;
+
+    for refused in [
+        json!({"projectId":general["id"],"name":"","url":"http://127.0.0.1:1"}),
+        json!({"projectId":general["id"],"name":"Docs","url":"file:///etc/passwd"}),
+        json!({"projectId":general["id"],"name":"Docs","url":"http://127.0.0.1:1","repositoryPath":"/does/not/exist"}),
+        json!({"projectId":general["id"],"name":"Docs","url":"http://127.0.0.1:1","memoryLimitMb":1}),
+    ] {
+        assert_eq!(status_of(&h, "POST", "/launchers", refused).await, 400);
+    }
+    assert_eq!(
+        status_of(
+            &h,
+            "POST",
+            "/launchers",
+            json!({"projectId":"nope","name":"Docs","url":"http://127.0.0.1:1"})
+        )
+        .await,
+        404
+    );
+
+    let launcher = h
+        .call(
+            "POST",
+            "/launchers",
+            json!({"projectId":general["id"],"name":"Docs","url":"http://127.0.0.1:1/docs","browser":{"mode":"shared","agentAccess":false}}),
+        )
+        .await;
+    let lid = launcher["id"].as_str().unwrap();
+    assert_eq!(launcher["process"]["state"], "stopped");
+    h.call("POST", &format!("/launchers/{lid}/start"), json!({}))
+        .await;
+    let s = h.state().await;
+    let session = s["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|session| session["launcherId"] == launcher["id"])
+        .expect("the start option opened its own session")
+        .clone();
+    assert_eq!(session["mode"], "shared");
+    assert_eq!(session["agentAccess"], false);
+    assert_eq!(session["state"], "running");
+    assert_eq!(s["status"]["activeSessionId"], session["id"]);
+    // Starting again reuses the session.
+    h.call("POST", &format!("/launchers/{lid}/start"), json!({}))
+        .await;
+    let sessions = h.state().await["sessions"].as_array().unwrap().len();
+    assert_eq!(sessions, 1);
+
+    // Neither the project nor the start option names a folder: nothing an agent could work in.
+    let batch = h.state().await["status"]["activeBatchId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    h.call(
+        "POST",
+        "/annotations",
+        json!({"batchId":batch,"type":"text","note":"Tippfehler"}),
+    )
+    .await;
+    assert_eq!(
+        status_of(&h, "POST", &format!("/batches/{batch}/dispatch"), json!({})).await,
+        409
+    );
+    let folder = h._dir.path().join("docs");
+    std::fs::create_dir(&folder).unwrap();
+    let changed = h
+        .call(
+            "PATCH",
+            &format!("/launchers/{lid}"),
+            json!({"repositoryPath":folder}),
+        )
+        .await;
+    let folder = std::fs::canonicalize(&folder).unwrap();
+    assert_eq!(changed["repositoryPath"], json!(folder));
+    assert_eq!(
+        status_of(
+            &h,
+            "PATCH",
+            &format!("/launchers/{lid}"),
+            json!({"process":{"state":"running"}})
+        )
+        .await,
+        400
+    );
+    let sent = h.dispatch().await;
+    assert_eq!(sent["task"]["repositoryPath"], json!(folder));
+    assert_eq!(sent["task"]["launcherId"], launcher["id"]);
+
+    h.call("POST", &format!("/launchers/{lid}/stop"), json!({}))
+        .await;
+    let s = h.state().await;
+    assert_eq!(s["sessions"][0]["state"], "stopped");
+    h.call("DELETE", &format!("/launchers/{lid}"), json!({}))
+        .await;
+    let s = h.state().await;
+    assert!(s["launchers"].as_array().unwrap().is_empty());
+    assert!(s["sessions"][0]["launcherId"].is_null());
+
+    // Deleting a project takes its start options along.
+    let other = h
+        .call(
+            "POST",
+            "/launchers",
+            json!({"projectId":prototypes["id"],"name":"Entwurf","url":"http://127.0.0.1:1"}),
+        )
+        .await;
+    assert_eq!(other["projectId"], prototypes["id"]);
+    h.call(
+        "DELETE",
+        &format!("/projects/{}", prototypes["id"].as_str().unwrap()),
+        json!({}),
+    )
+    .await;
+    assert!(h.state().await["launchers"].as_array().unwrap().is_empty());
+}
+#[cfg(unix)]
+#[tokio::test]
+async fn start_option_runs_its_command_and_stops_it() {
+    let h = Harness::with_seed(false).await;
+    let folder = h._dir.path().join("app");
+    std::fs::create_dir(&folder).unwrap();
+    let project = h
+        .call(
+            "POST",
+            "/projects",
+            json!({"name":"App","repositoryPath":folder}),
+        )
+        .await;
+    // The "dev server" is a listener of the test; the command only has to stay alive.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let launcher = h
+        .call(
+            "POST",
+            "/launchers",
+            json!({"projectId":project["id"],"name":"Dev","url":url,"command":"pwd > where.txt; exec sleep 30"}),
+        )
+        .await;
+    let lid = launcher["id"].as_str().unwrap().to_owned();
+    let state_of = async |h: &Harness| h.state().await["launchers"][0]["process"].clone();
+    let started = h
+        .call("POST", &format!("/launchers/{lid}/start"), json!({}))
+        .await;
+    assert_eq!(started["process"]["state"], "starting");
+    let mut process = Value::Null;
+    for _ in 0..200 {
+        process = state_of(&h).await;
+        let opened = !h.state().await["sessions"].as_array().unwrap().is_empty();
+        if process["state"] == "running" && opened {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(process["state"], "running", "{process}");
+    let s = h.state().await;
+    assert_eq!(s["sessions"][0]["launcherId"], launcher["id"]);
+    assert_eq!(s["sessions"][0]["state"], "running");
+    let ran_in = std::fs::read_to_string(folder.join("where.txt")).unwrap();
+    assert_eq!(
+        std::path::Path::new(ran_in.trim()),
+        std::fs::canonicalize(&folder).unwrap()
+    );
+
+    h.call("POST", &format!("/launchers/{lid}/stop"), json!({}))
+        .await;
+    for _ in 0..200 {
+        process = state_of(&h).await;
+        if process["state"] == "stopped" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(process["state"], "stopped", "{process}");
+    assert!(process["error"].is_null());
+    assert_eq!(h.state().await["sessions"][0]["state"], "stopped");
+
+    // A command that ends by itself with an error is reported as failed.
+    h.call(
+        "PATCH",
+        &format!("/launchers/{lid}"),
+        json!({"command":"exit 3"}),
+    )
+    .await;
+    h.call("POST", &format!("/launchers/{lid}/start"), json!({}))
+        .await;
+    for _ in 0..200 {
+        process = state_of(&h).await;
+        if process["state"] == "failed" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(process["state"], "failed", "{process}");
+    assert_eq!(process["exitCode"], 3.0);
+    drop(listener);
+}

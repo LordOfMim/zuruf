@@ -31,6 +31,20 @@ fn contract_project() {
     );
 }
 #[test]
+fn contract_browseroptions() {
+    check::<BrowserOptions>(
+        "BrowserOptions",
+        r##"{"mode": "isolated", "agentAccess": true, "window": "integrated"}"##,
+    );
+}
+#[test]
+fn contract_launcher() {
+    check::<Launcher>(
+        "Launcher",
+        r##"{"id": "example", "projectId": "example", "name": "example", "url": "example", "repositoryPath": "example", "command": "example", "workingDir": "example", "memoryLimitMb": 1, "browser": {"mode": "shared"}, "process": {"state": "running", "pid": 1, "startedAt": "example", "exitCode": 1, "error": "example"}, "createdAt": "example", "updatedAt": "example"}"##,
+    );
+}
+#[test]
 fn contract_workspacestrategy() {
     check::<WorkspaceStrategy>("WorkspaceStrategy", r##""new_worktree""##);
 }

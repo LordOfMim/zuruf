@@ -5,6 +5,7 @@ import type {
   ServerEnvelope,
   ServerEvent,
   Settings,
+  Launcher,
   Project,
   Snapshot,
   SpeechService,
@@ -213,8 +214,65 @@ function createDemoSnapshot(): Snapshot {
         baseUrl: "http://localhost:3000",
         t3ProjectId: "t3-example",
         defaultProfileId: "profile-codex",
+        browser: {},
         createdAt: ago(900),
         updatedAt: ago(900),
+      },
+      {
+        id: "project-general",
+        name: "Allgemein",
+        repositoryPath: "",
+        baseUrl: "",
+        browser: { mode: "isolated" },
+        createdAt: ago(800),
+        updatedAt: ago(800),
+      },
+    ],
+    launchers: [
+      {
+        id: "launcher-dev",
+        projectId,
+        name: "Entwicklungsserver",
+        url: "http://localhost:3000",
+        command: "pnpm dev",
+        memoryLimitMb: 2048,
+        browser: {},
+        process: { state: "running", pid: 4211, startedAt: ago(600) },
+        createdAt: ago(900),
+        updatedAt: ago(900),
+      },
+      {
+        id: "launcher-storybook",
+        projectId,
+        name: "Storybook",
+        url: "http://localhost:6006",
+        command: "pnpm storybook",
+        browser: { mode: "isolated", agentAccess: false },
+        process: { state: "stopped" },
+        createdAt: ago(880),
+        updatedAt: ago(880),
+      },
+      {
+        id: "launcher-staging",
+        projectId,
+        name: "Staging",
+        url: "https://staging.example.com",
+        browser: { mode: "isolated" },
+        process: { state: "stopped" },
+        createdAt: ago(860),
+        updatedAt: ago(860),
+      },
+      {
+        id: "launcher-docs",
+        projectId: "project-general",
+        name: "Handbuch",
+        url: "http://localhost:4000",
+        command: "pnpm docs:dev",
+        repositoryPath: "~/Projects/Handbuch",
+        browser: {},
+        process: { state: "stopped" },
+        createdAt: ago(700),
+        updatedAt: ago(700),
       },
     ],
     profiles,
@@ -222,7 +280,8 @@ function createDemoSnapshot(): Snapshot {
       {
         id: sessionId,
         projectId,
-        name: "Hauptsitzung",
+        name: "Entwicklungsserver",
+        launcherId: "launcher-dev",
         mode: "shared",
         state: "running",
         agentAccess: true,
@@ -338,6 +397,7 @@ function createDemoSnapshot(): Snapshot {
 function emptied(snapshot: Snapshot): Snapshot {
   Object.assign(snapshot, {
     projects: [],
+    launchers: [],
     profiles: [],
     sessions: [],
     reviews: [],
@@ -676,8 +736,56 @@ export function createDemoTransport(empty = false): Transport {
       ]);
     }
 
+    if (resource === "launchers") {
+      const target = snapshot.launchers.find((entry) => entry.id === resourceId);
+      if (!target) {
+        const created = {
+          browser: {},
+          ...data,
+          id: id("launcher"),
+          process: { state: "stopped" },
+          createdAt: now(),
+          updatedAt: now(),
+        } as Launcher;
+        snapshot.launchers.push(created);
+        emit({ type: "launcher.upserted", payload: created });
+        return reply(created);
+      }
+      if (method === "DELETE") {
+        snapshot.launchers = snapshot.launchers.filter((entry) => entry.id !== target.id);
+        emit({ type: "launcher.removed", payload: { id: target.id } });
+        return reply({});
+      }
+      const session = snapshot.sessions.find((entry) => entry.launcherId === target.id);
+      const showSession = (state: "running" | "stopped") => {
+        if (!session) return;
+        session.state = state;
+        emit({ type: "session.upserted", payload: session });
+      };
+      if (method === "PATCH") Object.assign(target, data, { updatedAt: now() });
+      if (verb === "stop") {
+        target.process = { state: "stopped" };
+        showSession("stopped");
+      }
+      if (verb === "start") {
+        if (target.command && target.process.state !== "running") {
+          target.process = { state: "starting", pid: 4300, startedAt: now() };
+          setTimeout(() => {
+            target.process = { ...target.process, state: "running" };
+            emit({ type: "launcher.upserted", payload: target });
+            showSession("running");
+          }, 1400);
+        } else {
+          showSession("running");
+        }
+      }
+      emit({ type: "launcher.upserted", payload: target });
+      return reply(target);
+    }
+
     if (resource === "projects") {
       if (method === "DELETE") {
+        snapshot.launchers = snapshot.launchers.filter((entry) => entry.projectId !== resourceId);
         snapshot.projects = snapshot.projects.filter((entry) => entry.id !== resourceId);
         emit({ type: "project.removed", payload: { id: resourceId! } });
         if (snapshot.status.activeProjectId === resourceId) {
@@ -689,7 +797,7 @@ export function createDemoTransport(empty = false): Transport {
       const existing = snapshot.projects.find((entry) => entry.id === resourceId);
       const saved = existing
         ? Object.assign(existing, data, { updatedAt: now() })
-        : ({ ...data, id: id("project"), createdAt: now(), updatedAt: now() } as Project);
+        : ({ browser: {}, ...data, id: id("project"), createdAt: now(), updatedAt: now() } as Project);
       if (!existing) {
         snapshot.projects.push(saved);
         snapshot.status.activeProjectId = saved.id;

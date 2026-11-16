@@ -21,13 +21,69 @@ export type Timestamp = string;
 export interface Project {
   id: Id;
   name: string;
+  /** Empty for a general project: its start options bring their own folders. */
   repositoryPath: string;
+  /** Empty when the project has no address of its own. */
   baseUrl: string;
   /** Id of the matching project in the connected T3 instance, if resolved. */
   t3ProjectId?: string | null;
   defaultProfileId?: Id | null;
+  /** How this project's sessions open, where it differs from the app settings. */
+  browser: BrowserOptions;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/** Browser behaviour of a project or start option. A missing field inherits. */
+export interface BrowserOptions {
+  mode?: SessionMode | null;
+  agentAccess?: boolean | null;
+  window?: "separate" | "integrated" | null;
+}
+
+export type LauncherProcessState = "stopped" | "starting" | "running" | "failed";
+
+/** The command of a start option, as far as Zuruf is running it. */
+export interface LauncherProcess {
+  state: LauncherProcessState;
+  pid?: number | null;
+  startedAt?: Timestamp | null;
+  exitCode?: number | null;
+  error?: string | null;
+}
+
+/**
+ * A start option: something a project can open. It names an address and may carry a
+ * command (a dev server, say) that Zuruf runs, watches and stops.
+ * Only the local app creates or changes start options; agents cannot.
+ */
+export interface Launcher {
+  id: Id;
+  projectId: Id;
+  name: string;
+  url: string;
+  /** Folder agents work in for feedback from this start option. Falls back to the project's. */
+  repositoryPath?: string | null;
+  command?: string | null;
+  /** Where the command runs. Falls back to repositoryPath, then to the project's folder. */
+  workingDir?: string | null;
+  /** Memory limit for the command. Enforced on Linux with systemd only. */
+  memoryLimitMb?: number | null;
+  browser: BrowserOptions;
+  process: LauncherProcess;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface CreateLauncherRequest {
+  projectId: Id;
+  name: string;
+  url: string;
+  repositoryPath?: string | null;
+  command?: string | null;
+  workingDir?: string | null;
+  memoryLimitMb?: number | null;
+  browser?: BrowserOptions;
 }
 
 export type WorkspaceStrategy = "new_worktree" | "existing_worktree" | "shared_root";
@@ -129,6 +185,8 @@ export interface BrowserSession {
   agentAccess: boolean;
   control: ControlState;
   tabs: BrowserTab[];
+  /** The start option this session was opened for, if any. */
+  launcherId?: Id | null;
   createdAt: Timestamp;
 }
 
@@ -296,6 +354,9 @@ export interface Task {
   threadId?: string | null;
   threadUrl?: string | null;
   workspacePath?: string | null;
+  /** The folder the feedback was sent for, frozen at dispatch. */
+  repositoryPath?: string | null;
+  launcherId?: Id | null;
   branch?: string | null;
   /** Latest assistant message of the tracked run, possibly truncated. */
   lastMessage?: string | null;
@@ -472,6 +533,7 @@ export interface AppStatus {
 export interface Snapshot {
   status: AppStatus;
   projects: Project[];
+  launchers: Launcher[];
   profiles: AgentProfile[];
   sessions: BrowserSession[];
   reviews: Review[];
@@ -492,6 +554,8 @@ export type ServerEvent =
   | { type: "speech.partial"; payload: { segmentId: Id; text: string } }
   | { type: "project.upserted"; payload: Project }
   | { type: "project.removed"; payload: { id: Id } }
+  | { type: "launcher.upserted"; payload: Launcher }
+  | { type: "launcher.removed"; payload: { id: Id } }
   | { type: "profile.upserted"; payload: AgentProfile }
   | { type: "profile.removed"; payload: { id: Id } }
   | { type: "session.upserted"; payload: BrowserSession }
@@ -530,9 +594,10 @@ export interface T3PairRequest {
 
 export interface CreateProjectRequest {
   name: string;
-  repositoryPath: string;
-  baseUrl: string;
-  t3ProjectId?: string;
+  /** Leave both out for a general project. */
+  repositoryPath?: string;
+  baseUrl?: string;
+  t3ProjectId?: string | null;
 }
 
 export interface DispatchRequest {

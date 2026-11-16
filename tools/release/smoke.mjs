@@ -119,7 +119,7 @@ try {
     assert(endpoint, "the native test browser must publish its diagnostic endpoint");
     ownerBrowser = await chromium.connectOverCDP(endpoint);
     const panel = await until("the actual docked app", () => ownerBrowser.contexts()[0].pages().find((page) => page.url().startsWith(`${base}/panel.html`)));
-    await panel.getByRole("button", { name: "Sitzungen", exact: true }).click();
+    await panel.getByRole("button", { name: "Starten", exact: true }).click();
     await panel.getByRole("button", { name: "Stoppen", exact: true }).click({ noWaitAfter: true }).catch((error) => {
       if (!panel.isClosed()) throw error;
     });

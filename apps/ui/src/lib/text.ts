@@ -1,4 +1,4 @@
-import type { ActionId, SessionMode, TaskStatus, WorkspaceStrategy } from "@zuruf/protocol";
+import type { ActionId, LauncherProcessState, SessionMode, TaskStatus, WorkspaceStrategy } from "@zuruf/protocol";
 
 /** All interface copy in one place (German). Short, concrete, no explanations where the layout already explains. */
 
@@ -43,6 +43,13 @@ export const sessionModeLabel: Record<SessionMode, string> = {
   shared: "Gemeinsam",
   isolated: "Getrennt",
   observer: "Beobachten",
+};
+
+export const launcherStateLabel: Record<LauncherProcessState, string> = {
+  stopped: "aus",
+  starting: "startet …",
+  running: "läuft",
+  failed: "fehlgeschlagen",
 };
 
 /** Copy for daemon notices and request errors, keyed by their machine code. */

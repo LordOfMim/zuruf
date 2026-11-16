@@ -687,7 +687,12 @@ impl Browsers {
         view: &str,
     ) -> std::result::Result<&'static str, AdapterError> {
         let snapshot = daemon.snapshot().await.map_err(io)?;
-        if snapshot.settings.ui.browser == SettingsUiBrowser::Integrated {
+        let in_front = snapshot
+            .status
+            .active_session_id
+            .as_ref()
+            .and_then(|id| snapshot.sessions.iter().find(|session| &session.id == id));
+        if window_mode(&snapshot, in_front) == SettingsUiBrowser::Integrated {
             let sessions = self.sessions.lock().await;
             let browser = snapshot
                 .status

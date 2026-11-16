@@ -15,7 +15,7 @@ type View = "review" | "tasks" | "sessions" | "settings";
 const NAV: { id: View; label: string; icon: IconName }[] = [
   { id: "review", label: "Review", icon: "review" },
   { id: "tasks", label: "Aufgaben", icon: "tasks" },
-  { id: "sessions", label: "Sitzungen", icon: "browser" },
+  { id: "sessions", label: "Starten", icon: "play" },
   { id: "settings", label: "Einstellungen", icon: "settings" },
 ];
 

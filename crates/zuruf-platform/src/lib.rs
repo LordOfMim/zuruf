@@ -141,6 +141,99 @@ pub fn detach(command: &mut std::process::Command) {
     }
 }
 
+/// Whether `shell` can enforce a memory limit here. Only Linux with a systemd user manager can.
+pub fn memory_limit_supported() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let on_path = std::env::var_os("PATH").is_some_and(|paths| {
+            std::env::split_paths(&paths).any(|dir| dir.join("systemd-run").is_file())
+        });
+        on_path && Path::new("/run/systemd/system").exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
+/// A command line the user wrote, run by the platform's shell as the leader of its own
+/// process group, so `stop_tree` reaches everything it starts. With a limit, and where
+/// `memory_limit_supported`, the whole tree runs in a transient systemd scope capped at it.
+pub fn shell(command_line: &str, memory_limit_mb: Option<u64>) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = memory_limit_mb;
+        let mut command = std::process::Command::new("cmd");
+        // cmd parses its own line; Rust's argument quoting would change what the user wrote.
+        command.arg("/C").raw_arg(command_line);
+        background(&mut command);
+        command
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let limit = memory_limit_mb.filter(|_| memory_limit_supported());
+        let mut command = match limit {
+            Some(megabytes) => {
+                let mut scoped = std::process::Command::new("systemd-run");
+                scoped
+                    .args(["--user", "--scope", "--quiet", "--collect", "-p"])
+                    .arg(format!("MemoryMax={megabytes}M"))
+                    .args(["-p", "MemorySwapMax=0", "--", "sh", "-c", command_line]);
+                scoped
+            }
+            None => {
+                let mut plain = std::process::Command::new("sh");
+                plain.args(["-c", command_line]);
+                plain
+            }
+        };
+        command.process_group(0);
+        command
+    }
+}
+
+/// End a process started by `shell` together with everything it started.
+/// Without `force` the processes are asked to stop and may clean up.
+pub fn stop_tree(pid: u32, force: bool) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T"]);
+        if force {
+            command.arg("/F");
+        }
+        background(&mut command);
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|_| ())
+    }
+    #[cfg(unix)]
+    {
+        // The system call, not the `kill` program: some versions of that program read a
+        // negative id as an option and then signal every process of the user.
+        let group = libc::pid_t::try_from(pid)
+            .ok()
+            .filter(|group| *group > 1)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "not a process group"))?;
+        let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        // SAFETY: kill takes plain integers. A negative id addresses the process group, and
+        // the check above rules out 0 and -1, which would reach beyond it.
+        let result = unsafe { libc::kill(-group, signal) };
+        if result == 0 {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        // The group is already gone: nothing left to stop.
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        Err(error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,5 +275,19 @@ mod tests {
         assert!(path.as_os_str().len() > 260);
         atomic_write(&path, b"private state").unwrap();
         assert_eq!(fs::read(path).unwrap(), b"private state");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_shell_command_and_its_children_end_together() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("child");
+        let line = format!("(sleep 30; touch {}) & wait", marker.display());
+        let mut child = shell(&line, None).spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        stop_tree(child.id(), true).unwrap();
+        let status = child.wait().unwrap();
+        assert!(!status.success());
+        assert!(!marker.exists());
     }
 }

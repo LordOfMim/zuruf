@@ -370,6 +370,29 @@ impl Store {
                     .ok_or_else(|| StoreError::Invalid("follow-up task missing thread".into()))
             })
             .transpose()?;
+        let launcher = zuruf_core::batch_launcher(s, b);
+        let project_path = s
+            .projects
+            .iter()
+            .find(|p| p.id == b.project_id)
+            .map(|p| p.repository_path.clone());
+        let repository_path = parent
+            .as_ref()
+            .and_then(|t| t.repository_path.clone())
+            .or_else(|| launcher.and_then(|l| l.repository_path.clone()))
+            .filter(|path| !path.is_empty())
+            .or(project_path)
+            .filter(|path| !path.is_empty())
+            .ok_or_else(|| {
+                StoreError::Invalid(
+                    "Kein Ordner hinterlegt: Trage beim Projekt oder bei der Startoption einen Ordner ein, damit ein Agent daran arbeiten kann."
+                        .into(),
+                )
+            })?;
+        let launcher_id = parent
+            .as_ref()
+            .map(|t| t.launcher_id.clone())
+            .unwrap_or_else(|| launcher.map(|l| l.id.clone()));
         let task = Task {
             id: id(),
             batch_id: b.id.clone(),
@@ -402,6 +425,8 @@ impl Store {
             workspace_conflict: false,
             marked_done: false,
             annotation_count: count as f64,
+            repository_path: Some(repository_path),
+            launcher_id,
             created_at: now(),
             dispatched_at: None,
             finished_at: None,

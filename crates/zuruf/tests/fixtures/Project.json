@@ -3,6 +3,7 @@
   "name": "example",
   "repositoryPath": "example",
   "baseUrl": "example",
+  "browser": {},
   "t3ProjectId": "example",
   "defaultProfileId": "example",
   "createdAt": "example",

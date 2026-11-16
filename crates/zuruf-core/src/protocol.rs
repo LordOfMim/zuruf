@@ -8,12 +8,94 @@ pub type Timestamp = String;
 pub struct Project {
     pub id: Id,
     pub name: String,
+    /// Empty: the project has no folder of its own; its start options bring theirs.
+    #[serde(default)]
     pub repository_path: String,
+    /// Empty: the project has no address of its own.
+    #[serde(default)]
     pub base_url: String,
+    /// Browser defaults for this project's sessions and start options.
+    #[serde(default)]
+    pub browser: BrowserOptions,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub t3_project_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_profile_id: Option<Id>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+/// Browser choices that can be set per project and again per start option.
+/// A missing field falls through: start option, then project, then the app-wide setting.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<SessionMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_access: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<SettingsUiBrowser>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LauncherProcessState {
+    #[serde(rename = "stopped")]
+    Stopped,
+    #[serde(rename = "starting")]
+    Starting,
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "failed")]
+    Failed,
+}
+/// What Zuruf knows about a start option's command. Never survives a daemon restart.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LauncherProcess {
+    pub state: LauncherProcessState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+impl Default for LauncherProcess {
+    fn default() -> Self {
+        Self {
+            state: LauncherProcessState::Stopped,
+            pid: None,
+            started_at: None,
+            exit_code: None,
+            error: None,
+        }
+    }
+}
+/// A start option: one thing a project can open, with its own address, folder,
+/// optional start command and browser choices.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Launcher {
+    pub id: Id,
+    pub project_id: Id,
+    pub name: String,
+    pub url: String,
+    /// Folder agents work in for feedback from this start option. Falls back to the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository_path: Option<String>,
+    /// Command line the daemon runs before opening the address. Only the local app sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Where the command runs. Falls back to the folder above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_limit_mb: Option<f64>,
+    #[serde(default)]
+    pub browser: BrowserOptions,
+    #[serde(default)]
+    pub process: LauncherProcess,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -187,6 +269,9 @@ pub struct BrowserSession {
     pub agent_access: bool,
     pub control: ControlState,
     pub tabs: Vec<BrowserTab>,
+    /// The start option this session was opened for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_id: Option<Id>,
     pub created_at: Timestamp,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -527,6 +612,11 @@ pub struct Task {
     pub workspace_conflict: bool,
     pub marked_done: bool,
     pub annotation_count: f64,
+    /// Folder frozen when the batch was sealed: the start option's, else the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_id: Option<Id>,
     pub created_at: Timestamp,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dispatched_at: Option<Timestamp>,
@@ -871,6 +961,8 @@ pub struct AppStatus {
 pub struct Snapshot {
     pub status: AppStatus,
     pub projects: Vec<Project>,
+    #[serde(default)]
+    pub launchers: Vec<Launcher>,
     pub profiles: Vec<AgentProfile>,
     pub sessions: Vec<BrowserSession>,
     pub reviews: Vec<Review>,
@@ -1000,6 +1092,10 @@ pub enum ServerEvent {
     SegmentUpserted(TranscriptSegment),
     #[serde(rename = "task.upserted")]
     TaskUpserted(Task),
+    #[serde(rename = "launcher.upserted")]
+    LauncherUpserted(Launcher),
+    #[serde(rename = "launcher.removed")]
+    LauncherRemoved(Removed),
     #[serde(rename = "project.removed")]
     ProjectRemoved(Removed),
     #[serde(rename = "profile.removed")]
@@ -1064,7 +1160,10 @@ pub struct T3PairRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CreateProjectRequest {
     pub name: String,
-    pub repository_path: String,
-    pub base_url: String,
+    #[serde(default)]
+    pub repository_path: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
     pub t3_project_id: Option<String>,
 }
