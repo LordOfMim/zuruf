@@ -7,7 +7,10 @@ import type {
   BindingIssue,
   BrowserSession,
   ControlRequest,
+  CreateLauncherRequest,
+  CreateProjectRequest,
   DispatchResponse,
+  Launcher,
   Notice,
   Project,
   ServerEnvelope,
@@ -98,6 +101,12 @@ export function createAppStore(transport: Transport) {
       case "project.removed":
         mutate((s) => removeById(s.projects, event.payload.id));
         break;
+      case "launcher.upserted":
+        mutate((s) => upsert(s.launchers, event.payload));
+        break;
+      case "launcher.removed":
+        mutate((s) => removeById(s.launchers, event.payload.id));
+        break;
       case "profile.upserted":
         mutate((s) => upsert(s.profiles, event.payload));
         break;
@@ -181,6 +190,21 @@ export function createAppStore(transport: Transport) {
   const activeSession = createMemo<BrowserSession | undefined>(() =>
     state.snapshot?.sessions.find((session) => session.id === state.snapshot?.status.activeSessionId),
   );
+  // Everything below the project switch is scoped to the project in front.
+  const launchers = createMemo<Launcher[]>(() => {
+    const projectId = state.snapshot?.status.activeProjectId;
+    return (state.snapshot?.launchers ?? []).filter((launcher) => launcher.projectId === projectId);
+  });
+  const sessions = createMemo<BrowserSession[]>(() => {
+    const projectId = state.snapshot?.status.activeProjectId;
+    return (state.snapshot?.sessions ?? []).filter((session) => session.projectId === projectId);
+  });
+  /** The folder an agent would work in for feedback sent right now, if there is one. */
+  const dispatchFolder = createMemo<string | undefined>(() => {
+    const launcherId = activeSession()?.launcherId;
+    const launcher = state.snapshot?.launchers?.find((entry) => entry.id === launcherId);
+    return launcher?.repositoryPath || activeProject()?.repositoryPath || undefined;
+  });
   const draft = createMemo<Batch | undefined>(() =>
     state.snapshot?.batches.find((entry) => entry.id === state.snapshot?.status.activeBatchId),
   );
@@ -233,8 +257,7 @@ export function createAppStore(transport: Transport) {
       run(() => api<Task>("POST", `/tasks/${id}/follow-up`, body)),
     taskEvents: (id: string) => run(() => api<TaskEvent[]>("GET", `/tasks/${id}/events`)),
 
-    createProject: (body: Pick<Project, "name" | "repositoryPath" | "baseUrl" | "t3ProjectId">) =>
-      run(() => api<Project>("POST", "/projects", body)),
+    createProject: (body: CreateProjectRequest) => run(() => api<Project>("POST", "/projects", body)),
     removeProject: (id: string) => run(() => api("DELETE", `/projects/${id}`)),
     t3Projects: () => run(() => api<T3ProjectRef[]>("GET", "/t3/projects")),
     pairT3: (origin?: string) => run(() => api("POST", "/t3/pair", origin ? { origin } : {})),
@@ -252,6 +275,13 @@ export function createAppStore(transport: Transport) {
       return result;
     },
     reconnectT3: () => run(() => api("POST", "/t3/reconnect", {})),
+
+    createLauncher: (body: CreateLauncherRequest) => run(() => api<Launcher>("POST", "/launchers", body)),
+    patchLauncher: (id: string, body: Partial<CreateLauncherRequest>) =>
+      run(() => api<Launcher>("PATCH", `/launchers/${id}`, body)),
+    removeLauncher: (id: string) => run(() => api("DELETE", `/launchers/${id}`)),
+    launcherCommand: (id: string, command: "start" | "stop") =>
+      run(() => api<Launcher>("POST", `/launchers/${id}/${command}`, {})),
 
     createSession: (body: Pick<BrowserSession, "projectId" | "name" | "mode" | "agentAccess">) =>
       run(() => api<BrowserSession>("POST", "/sessions", body)),
@@ -280,6 +310,9 @@ export function createAppStore(transport: Transport) {
     catalog,
     activeProject,
     activeSession,
+    launchers,
+    sessions,
+    dispatchFolder,
     draft,
     draftAnnotations,
     draftProfile,

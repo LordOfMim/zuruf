@@ -800,6 +800,7 @@ button.entry-thumb:hover {
 /* ───────── dispatch bar */
 .dispatch {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
@@ -809,6 +810,21 @@ button.entry-thumb:hover {
 
 .dispatch .menu {
   flex: 1;
+}
+
+.dispatch-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--fs-mini);
+  line-height: var(--lh-mini);
+}
+
+.dispatch-note .icon {
+  margin-top: 1px;
 }
 
 .profile {
@@ -1351,6 +1367,15 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.session-issue {
+  margin: 0;
+  padding: 0 var(--s4) var(--s2) calc(var(--s4) + 9px + var(--s3));
+  color: var(--danger);
+  font-size: var(--fs-mini);
+  line-height: var(--lh-mini);
+  overflow-wrap: anywhere;
+}
+
 .session-detail {
   display: grid;
   gap: var(--s3);
@@ -1537,6 +1562,74 @@ input[type="range"] {
   display: flex;
   justify-content: flex-end;
   gap: var(--s2);
+}
+
+.form-note {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--fs-mini);
+  line-height: var(--lh-mini);
+}
+
+/* Labelled fields, side by side where the width allows. */
+.fields {
+  display: grid;
+  gap: var(--s2) var(--s3);
+}
+
+@media (min-width: 560px) {
+  .fields-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fields-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.labeled {
+  display: grid;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.labeled > span {
+  color: var(--text-secondary);
+  font-size: var(--fs-mini);
+  line-height: var(--lh-mini);
+  font-weight: 500;
+}
+
+.labeled small {
+  margin-left: var(--s1);
+  color: var(--text-quaternary);
+  font-size: inherit;
+  font-weight: 400;
+}
+
+.labeled .input {
+  width: 100%;
+}
+
+.input-mono {
+  font-family: var(--mono);
+  font-size: var(--fs-mini);
+}
+
+/* An empty list that says what belongs here and offers the one way to fill it. */
+.blank {
+  display: grid;
+  justify-items: start;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-low);
+  color: var(--text-secondary);
+}
+
+.blank p {
+  margin: 0;
+  max-width: 52ch;
 }
 
 .card {

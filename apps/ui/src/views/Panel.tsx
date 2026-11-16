@@ -56,10 +56,18 @@ function DispatchBar(props: { store: AppStore }) {
   const store = props.store;
   const profile = () => store.draftProfile();
   const count = () => store.draftAnnotations().length;
-  const canSend = () => count() > 0 || Boolean(store.draft()?.note.trim());
+  const hasContent = () => count() > 0 || Boolean(store.draft()?.note.trim());
+  // Without a folder there is nothing an agent could work in; the daemon would refuse.
+  const noFolder = () => !store.dispatchFolder();
+  const canSend = () => hasContent() && !noFolder();
 
   return (
     <footer class="dispatch">
+      <Show when={noFolder() && hasContent()}>
+        <p class="dispatch-note">
+          <Icon name="folder" size={14} /> Kein Ordner hinterlegt. Trage beim Projekt oder bei der Startoption einen ein, um zu senden.
+        </p>
+      </Show>
       <Menu
         placement="top"
         trigger={(toggle, open) => (
