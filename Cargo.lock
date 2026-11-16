@@ -3428,6 +3428,7 @@ name = "zuruf-platform"
 version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
+ "libc",
  "tempfile",
  "windows-sys 0.61.2",
 ]

@@ -196,7 +196,7 @@ pub fn shell(command_line: &str, memory_limit_mb: Option<u64>) -> std::process::
 /// Without `force` the processes are asked to stop and may clean up.
 pub fn stop_tree(pid: u32, force: bool) -> io::Result<()> {
     #[cfg(windows)]
-    let mut command = {
+    {
         let mut command = std::process::Command::new("taskkill");
         command.args(["/PID", &pid.to_string(), "/T"]);
         if force {
@@ -204,20 +204,34 @@ pub fn stop_tree(pid: u32, force: bool) -> io::Result<()> {
         }
         background(&mut command);
         command
-    };
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|_| ())
+    }
     #[cfg(unix)]
-    let mut command = {
-        let mut command = std::process::Command::new("kill");
-        // A negative id addresses the whole process group.
-        command.args([if force { "-KILL" } else { "-TERM" }, &format!("-{pid}")]);
-        command
-    };
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|_| ())
+    {
+        // The system call, not the `kill` program: some versions of that program read a
+        // negative id as an option and then signal every process of the user.
+        let group = libc::pid_t::try_from(pid)
+            .ok()
+            .filter(|group| *group > 1)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "not a process group"))?;
+        let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        // SAFETY: kill takes plain integers. A negative id addresses the process group, and
+        // the check above rules out 0 and -1, which would reach beyond it.
+        let result = unsafe { libc::kill(-group, signal) };
+        if result == 0 {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        // The group is already gone: nothing left to stop.
+        if error.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        Err(error)
+    }
 }
 
 #[cfg(test)]
