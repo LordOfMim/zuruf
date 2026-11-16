@@ -115,6 +115,21 @@ Ein `SpeechAdapter`; der Dienst steht in den Einstellungen (`speech.provider`), 
 
 Regeln: Sprache nach einem Capture gehört zu diesem Capture, bis zum nächsten Marker (`attach: "after"`, umstellbar). Sprache vor dem ersten Capture eines Batches wird Batch-Notiz. Transkripte, die nur aus Satzzeichen bestehen, gelten als leer. Der Originaltext eines Segments wird nie überschrieben; bearbeitet wird `Annotation.transcript`. Läuft bereits eine fremde Voxtype-Aufnahme, meldet der Adapter `busy_external` und greift nicht ein. Modell und Sprache werden pro Aufruf gesetzt (`--model`, `--language`); die Voxtype-Konfiguration bleibt unberührt. WAV-Schnipsel lokaler Dienste werden nach der Transkription gelöscht, außer `keepAudio` ist an; Online-Dienste bekommen die Daten nur im Speicher. Unter Windows ist das Diktat noch nicht verfügbar; die Aufnahme über `cpal` würde es dort ohne neue Abhängigkeit ermöglichen.
 
+## Projekte und Startoptionen
+
+- `Project.repositoryPath` und `baseUrl` dürfen leer sein (allgemeines Projekt). `Project.browser` trägt die Browseroptionen des Projekts.
+- `Launcher` (Startoption) gehört zu genau einem Projekt: Name, Adresse, optional `command`, `workingDir`, `memoryLimitMb`, `repositoryPath` und eigene `browser`-Optionen. `BrowserOptions` (`mode`, `agentAccess`, `window`) vererben feldweise: Startoption → Projekt → Einstellungen (`domain::browser_options`, `domain::window_mode`).
+- Routen: `GET|POST /launchers`, `PATCH|DELETE /launchers/:id`, `POST /launchers/:id/start|stop`. Sie liegen nur hinter dem Bearer-Token der lokalen App. `zuruf-mcp` bietet kein Werkzeug dafür; Agenten können keine Befehle anlegen, ändern oder starten.
+- Start (`crates/zuruf/src/launcher.rs`): Befehl über `zuruf_platform::shell` in eigener Prozessgruppe starten (unter Linux mit systemd optional in einem Scope mit `MemoryMax`), Ausgabe in `state/launchers/<id>.log` (privat), per TCP-Verbindung auf die Adresse warten, dann die Sitzung der Startoption anlegen oder wiederverwenden (`BrowserSession.launcherId`) und nach vorn holen. Ein Wächter-Task setzt `Launcher.process` auf `stopped` oder `failed`. Stopp: `zuruf_platform::stop_tree` (erst TERM, nach fünf Sekunden KILL; Windows `taskkill /T`).
+- Der Prozesszustand lebt nur zur Laufzeit; `recover` setzt ihn auf `stopped`, `close` beendet alle Befehle.
+- **Ordner für Agenten:** Beim Versiegeln friert `Task.repositoryPath` den Ordner ein: Folgeauftrag → Startoption der Sitzung, aus der die erste Annotation stammt → Projekt. Ohne Ordner wird der Versand mit `invalid_state` abgewiesen.
+
+## Gestaltung
+
+Die Oberfläche folgt dem Palermo-Designsystem (palermo.tryprofound.com/docs): Farb-, Schatten-, Radius-, Schrift- und Bewegungswerte stehen als Tokens in `apps/ui/src/styles/tokens.css`, das Overlay spiegelt sie in `apps/page/src/overlay.css`. Übernommen sind nur Werte und Erscheinungsbild, kein Code. Zurufs einzige eigene Farbe ist das Signalrot für „Mikrofon ist an“. Abweichung zugunsten der Bedienbarkeit: ein deutlicher Fokusrahmen von 2 px auf allen Flächen.
+
+Palermo veröffentlicht keine Icon-Bibliothek. Alle Icons kommen deshalb aus einem einzigen Satz in `apps/ui/src/components/icons.tsx`; die Regeln stehen dort im Kopfkommentar und gelten für jedes neue Icon: Raster 20 × 20 mit 3 px Rand, nur Kontur mit 1,5 px Strich und runden Enden, ein Pfad, `currentColor`, Größen 12/14/16/18. Keine Emoji, keine Icon-Schrift, keine zweite Quelle. Zustände zeigen die Punkt-Glyphen, nicht Icons.
+
 ## Batch, Task, Dispatch
 
 - Genau ein Batch je Review ist `draft`. `batch.dispatch` (Shift+N) läuft in **einer** SQLite-Transaktion: Batch → `sealed`, Profil einfrieren, Task anlegen (`finalizing_transcript` oder `queued`), neuen leeren Draft anlegen und aktivieren, Sprach-Epoch wechseln. Die Antwort kommt sofort; T3 wird dabei nicht berührt. Ein leerer Batch wird nicht versendet.
